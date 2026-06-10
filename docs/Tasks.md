@@ -54,18 +54,18 @@
 
 ---
 
-### Phase 3: 练习模块（MVP 核心）
+### Phase 3: 练习模块（MVP 核心） ✅ 已完成
 
 **目标：** 实现单词卡、拼写练习、选择题三种模式。
 
-- [ ] Practice 数据模型：PracticeSession, PracticeRecord
-- [ ] 出题权重算法实现（utils/weighting.py）
-- [ ] 单词卡模式 Service + API
-- [ ] 拼写练习模式 Service + API
-- [ ] 选择题模式 Service + API
-- [ ] 练习结果提交 + Mastery 自动更新
-- [ ] 单元测试
-- [ ] Review
+- [x] Practice 数据模型：PracticeSession, PracticeRecord
+- [x] 出题权重算法实现（utils/weighting.py）
+- [x] 单词卡模式 Service + API
+- [x] 拼写练习模式 Service + API
+- [x] 选择题模式 Service + API
+- [x] 练习结果提交 + Mastery 自动更新
+- [x] 单元测试
+- [x] Review
 
 **交付物：** 前端可发起练习，后端按权重出题，提交答案后自动更新掌握状态。
 
@@ -142,7 +142,7 @@
 | Phase 0: 基础设施 | ✅ 已完成 |
 | Phase 1: 数据模型 | ✅ 已完成 |
 | Phase 2: OCR 解析 | ✅ 已完成 |
-| Phase 3: 练习模块 | ⚪ 待开始 |
+| Phase 3: 练习模块 | ✅ 已完成 |
 | Phase 4: 前端界面 | ⚪ 待开始 |
 | Phase 5: 学习计划 | ⚪ 待开始 |
 | Phase 6: 数据统计 | ⚪ 待开始 |

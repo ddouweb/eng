@@ -19,3 +19,11 @@ class MasteryLevel(str, enum.Enum):
     learning = "learning"
     familiar = "familiar"
     permanent = "permanent"
+
+
+class PracticeMode(str, enum.Enum):
+    flashcard = "flashcard"
+    spelling = "spelling"
+    choice = "choice"
+    dictation = "dictation"
+    dialogue = "dialogue"

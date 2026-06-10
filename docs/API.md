@@ -305,6 +305,113 @@ Content-Type: `multipart/form-data`
 
 ---
 
+## Practice API
+
+### POST /api/v1/practice/start — 开始练习会话
+
+```json
+// Request
+{
+  "member_id": 1,
+  "mode": "flashcard",
+  "unit_ids": [1, 2],
+  "count": 10
+}
+
+// Response — 返回会话 ID + 第一批题目
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "session_id": 1,
+    "mode": "flashcard",
+    "total": 10,
+    "questions": [
+      {
+        "question_id": 0,
+        "word_id": 5,
+        "english": "hello",
+        "chinese": "你好",
+        "type": "flashcard"
+      }
+    ]
+  }
+}
+```
+
+`mode` 可选值：`flashcard`（单词卡）、`spelling`（拼写）、`choice`（选择题）
+- flashcard: 返回英文，用户翻转看中文
+- spelling: 返回中文，用户输入英文
+- choice: 返回英文 + 4 个选项（含正确答案）
+
+### POST /api/v1/practice/{session_id}/submit — 提交单题答案
+
+```json
+// Request
+{
+  "word_id": 5,
+  "is_correct": true,
+  "user_answer": "hello"
+}
+
+// Response — 返回更新后的掌握状态
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "is_correct": true,
+    "correct_answer": "hello",
+    "mastery": {
+      "level": "learning",
+      "consecutive_correct": 1,
+      "correct_count": 1,
+      "wrong_count": 0
+    }
+  }
+}
+```
+
+### POST /api/v1/practice/{session_id}/finish — 结束练习会话
+
+```json
+// Response
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "session_id": 1,
+    "mode": "flashcard",
+    "total_count": 10,
+    "correct_count": 8,
+    "accuracy": 80.0,
+    "started_at": "2026-06-10T10:00:00",
+    "ended_at": "2026-06-10T10:15:00"
+  }
+}
+```
+
+### GET /api/v1/practice/{session_id} — 查询会话详情
+
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "session_id": 1,
+    "mode": "flashcard",
+    "total_count": 10,
+    "correct_count": 8,
+    "status": "in_progress",
+    "records": [
+      {"word_id": 5, "is_correct": true, "user_answer": "hello", "created_at": "..."},
+      {"word_id": 6, "is_correct": false, "user_answer": "helo", "created_at": "..."}
+    ]
+  }
+}
+```
+
+---
+
 ## Health API
 
 ### GET /api/v1/health — 健康检查
