@@ -71,17 +71,17 @@
 
 ---
 
-### Phase 4: Streamlit 前端
+### Phase 4: Streamlit 前端 ✅ 已完成
 
 **目标：** 完成完整的前端交互界面。
 
-- [ ] API Client 封装
-- [ ] Units 页面（上传图片、查看 Unit 列表）
-- [ ] Words 页面（单词列表、标签管理、编辑）
-- [ ] Practice 页面（选择模式 → 练习 → 提交）
-- [ ] Stats 页面（掌握率统计）
-- [ ] 组件：word_card, spelling_input, choice_quiz, mastery_badge
-- [ ] Review
+- [x] API Client 封装
+- [x] Units 页面（上传图片、查看 Unit 列表）
+- [x] Words 页面（单词列表、标签管理、编辑）
+- [x] Practice 页面（选择模式 → 练习 → 提交）
+- [x] Stats 页面（掌握率统计）
+- [x] 组件：word_card, spelling_input, choice_quiz, mastery_badge
+- [x] Review
 
 **交付物：** 完整的浏览器交互体验，覆盖 MVP 全流程。
 
@@ -143,7 +143,7 @@
 | Phase 1: 数据模型 | ✅ 已完成 |
 | Phase 2: OCR 解析 | ✅ 已完成 |
 | Phase 3: 练习模块 | ✅ 已完成 |
-| Phase 4: 前端界面 | ⚪ 待开始 |
+| Phase 4: 前端界面 | ✅ 已完成 |
 | Phase 5: 学习计划 | ⚪ 待开始 |
 | Phase 6: 数据统计 | ⚪ 待开始 |
 | Phase 7: AI 增强 | ⚪ 待开始 |
