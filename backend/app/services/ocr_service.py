@@ -1,4 +1,4 @@
-import os
+import logging
 import uuid
 from pathlib import Path
 
@@ -7,10 +7,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.ai.base import OCRResult
 from app.ai.factory import get_ai_provider
 from app.schemas.common import error, success
+from app.schemas.exceptions import AppException
 from app.services.word_service import WordService
+
+logger = logging.getLogger(__name__)
 
 UPLOAD_DIR = Path("uploads")
 UPLOAD_DIR.mkdir(exist_ok=True)
+
+MAX_UPLOAD_SIZE = 10 * 1024 * 1024  # 10MB
 
 _drafts: dict[int, list[dict]] = {}
 
@@ -27,7 +32,15 @@ class OCRService:
         unit_repo = UnitRepo(self.session)
         unit = await unit_repo.get_by_id(unit_id)
         if not unit:
-            return error(code=404, message="Unit not found")
+            raise AppException(404, "Unit not found")
+
+        if len(image_bytes) > MAX_UPLOAD_SIZE:
+            raise AppException(413, f"文件大小超过 {MAX_UPLOAD_SIZE // 1024 // 1024}MB 限制")
+
+        allowed_ext = {".jpg", ".jpeg", ".png", ".gif", ".webp"}
+        ext = Path(filename).suffix.lower() if filename else ""
+        if ext not in allowed_ext:
+            raise AppException(400, f"不支持的文件格式: {ext}，仅支持 {', '.join(allowed_ext)}")
 
         saved_name = f"unit_{unit_id}_{uuid.uuid4().hex[:8]}_{filename}"
         saved_path = UPLOAD_DIR / saved_name
@@ -39,6 +52,7 @@ class OCRService:
             provider = get_ai_provider()
             ocr_result: OCRResult = await provider.parse_image(image_bytes, filename)
         except Exception as e:
+            logger.error("OCR failed for unit %s: %s", unit_id, e)
             return error(code=500, message=f"OCR failed: {e}")
 
         draft_words = [
@@ -71,7 +85,7 @@ class OCRService:
         unit_repo = UnitRepo(self.session)
         unit = await unit_repo.get_by_id(unit_id)
         if not unit:
-            return error(code=404, message="Unit not found")
+            raise AppException(404, "Unit not found")
 
         result = await self.word_service.batch_create(unit_id, words)
         _drafts.pop(unit_id, None)

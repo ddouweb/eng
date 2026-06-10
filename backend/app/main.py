@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from app.api.router import api_router
+from app.schemas.exceptions import AppException, app_exception_handler
 
 UPLOAD_DIR = Path("uploads")
 
@@ -22,6 +23,8 @@ app = FastAPI(
     version="0.1.0",
     lifespan=lifespan,
 )
+
+app.add_exception_handler(AppException, app_exception_handler)
 
 app.add_middleware(
     CORSMiddleware,

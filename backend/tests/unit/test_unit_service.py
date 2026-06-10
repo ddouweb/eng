@@ -2,6 +2,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from app.schemas.exceptions import AppException
 from app.services.unit_service import UnitService
 
 
@@ -34,15 +35,17 @@ async def test_create_unit_success(service, mock_session):
 @pytest.mark.asyncio
 async def test_create_unit_duplicate_sequence(service):
     service.repo.get_by_sequence = AsyncMock(return_value=MagicMock())
-    result = await service.create_unit({"title": "Unit 1", "sequence": 1})
-    assert result["code"] == 409
+    with pytest.raises(AppException) as exc_info:
+        await service.create_unit({"title": "Unit 1", "sequence": 1})
+    assert exc_info.value.code == 409
 
 
 @pytest.mark.asyncio
 async def test_get_unit_not_found(service):
     service.repo.get_by_id = AsyncMock(return_value=None)
-    result = await service.get_unit(999)
-    assert result["code"] == 404
+    with pytest.raises(AppException) as exc_info:
+        await service.get_unit(999)
+    assert exc_info.value.code == 404
 
 
 @pytest.mark.asyncio

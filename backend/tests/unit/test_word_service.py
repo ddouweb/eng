@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from app.models.enums import MasteryLevel, TagType
+from app.schemas.exceptions import AppException
 from app.services.word_service import WordService
 
 
@@ -41,8 +42,9 @@ async def test_batch_create(service, mock_session):
 @pytest.mark.asyncio
 async def test_update_word_not_found(service):
     service.repo.get_by_id = AsyncMock(return_value=None)
-    result = await service.update_word(999, {"english": "hi"})
-    assert result["code"] == 404
+    with pytest.raises(AppException) as exc_info:
+        await service.update_word(999, {"english": "hi"})
+    assert exc_info.value.code == 404
 
 
 @pytest.mark.asyncio
@@ -67,8 +69,9 @@ async def test_remove_tag_success(service, mock_session):
 @pytest.mark.asyncio
 async def test_remove_tag_invalid(service):
     service.repo.get_by_id = AsyncMock(return_value=_make_word())
-    result = await service.remove_tag(1, "nonexistent_tag")
-    assert result["code"] == 400
+    with pytest.raises(AppException) as exc_info:
+        await service.remove_tag(1, "nonexistent_tag")
+    assert exc_info.value.code == 400
 
 
 @pytest.mark.asyncio

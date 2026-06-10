@@ -5,6 +5,7 @@ from app.models.word import Word, WordTag
 from app.repositories.mastery_repo import MasteryRepo
 from app.repositories.word_repo import WordRepo
 from app.schemas.common import error, success
+from app.schemas.exceptions import AppException
 
 
 class WordService:
@@ -32,15 +33,15 @@ class WordService:
         items = []
         for w in words:
             d = self._to_dict(w)
-            d["tags"] = await self.repo.get_tags(w.id)
-            d["mastery"] = await self._get_mastery_summary(w.id)
+            d["tags"] = [t.tag.value for t in w.tags]
+            d["mastery"] = self._mastery_from_record(w.mastery_records)
             items.append(d)
         return success(data={"items": items, "total": total, "page": page, "page_size": page_size})
 
     async def update_word(self, word_id: int, data: dict) -> dict:
         word = await self.repo.get_by_id(word_id)
         if not word:
-            return error(code=404, message="Word not found")
+            raise AppException(404, "Word not found")
         word = await self.repo.update(word, data)
         await self.session.commit()
         return success(data=self._to_dict(word))
@@ -48,7 +49,7 @@ class WordService:
     async def delete_word(self, word_id: int) -> dict:
         word = await self.repo.get_by_id(word_id)
         if not word:
-            return error(code=404, message="Word not found")
+            raise AppException(404, "Word not found")
         await self.repo.delete(word)
         await self.session.commit()
         return success(message="Word deleted")
@@ -56,7 +57,7 @@ class WordService:
     async def set_tags(self, word_id: int, tags: list[str]) -> dict:
         word = await self.repo.get_by_id(word_id)
         if not word:
-            return error(code=404, message="Word not found")
+            raise AppException(404, "Word not found")
         tag_enums = [TagType(t) for t in tags]
         await self.repo.set_tags(word_id, tag_enums)
         await self.session.commit()
@@ -65,21 +66,21 @@ class WordService:
     async def remove_tag(self, word_id: int, tag: str) -> dict:
         word = await self.repo.get_by_id(word_id)
         if not word:
-            return error(code=404, message="Word not found")
+            raise AppException(404, "Word not found")
         try:
             tag_enum = TagType(tag)
         except (ValueError, KeyError):
-            return error(code=400, message=f"Invalid tag: {tag}")
+            raise AppException(400, f"Invalid tag: {tag}")
         removed = await self.repo.remove_tag(word_id, tag_enum)
         if not removed:
-            return error(code=404, message=f"Tag {tag} not found on word {word_id}")
+            raise AppException(404, f"Tag {tag} not found on word {word_id}")
         await self.session.commit()
         return success(message=f"Tag {tag} removed")
 
     async def get_mastery(self, word_id: int, member_id: int = 1) -> dict:
         word = await self.repo.get_by_id(word_id)
         if not word:
-            return error(code=404, message="Word not found")
+            raise AppException(404, "Word not found")
         record = await self.mastery_repo.get_or_create(member_id, word_id)
         await self.session.commit()
         return success(data={
@@ -92,16 +93,17 @@ class WordService:
             "updated_at": record.updated_at.isoformat() if record.updated_at else None,
         })
 
-    async def _get_mastery_summary(self, word_id: int, member_id: int = 1) -> dict | None:
-        record = await self.mastery_repo.get_by_member_word(member_id, word_id)
-        if record is None:
-            return None
-        return {
-            "level": record.level.value,
-            "consecutive_correct": record.consecutive_correct,
-            "correct_count": record.correct_count,
-            "wrong_count": record.wrong_count,
-        }
+    @staticmethod
+    def _mastery_from_record(records: list, member_id: int = 1) -> dict | None:
+        for r in records:
+            if r.member_id == member_id:
+                return {
+                    "level": r.level.value,
+                    "consecutive_correct": r.consecutive_correct,
+                    "correct_count": r.correct_count,
+                    "wrong_count": r.wrong_count,
+                }
+        return None
 
     def _to_dict(self, word: Word) -> dict:
         return {

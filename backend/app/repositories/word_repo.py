@@ -1,5 +1,6 @@
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.models.enums import TagType, WordType
 from app.models.word import Word, WordTag
@@ -14,7 +15,12 @@ class WordRepo(BaseRepo[Word]):
         self, unit_id: int, *, page: int = 1, page_size: int = 50,
         word_type: WordType | None = None
     ):
-        stmt = select(Word).where(Word.unit_id == unit_id).order_by(Word.id)
+        stmt = (
+            select(Word)
+            .where(Word.unit_id == unit_id)
+            .options(selectinload(Word.tags), selectinload(Word.mastery_records))
+            .order_by(Word.id)
+        )
         if word_type:
             stmt = stmt.where(Word.type == word_type)
         return await self.get_paginated(stmt, page=page, page_size=page_size)
