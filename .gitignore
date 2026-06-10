@@ -29,6 +29,9 @@ Thumbs.db
 *.sqlite3
 *.db
 
+# Uploads
+backend/uploads/
+
 # Test
 .pytest_cache/
 .coverage

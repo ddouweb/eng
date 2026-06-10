@@ -229,6 +229,82 @@ Query 参数：`member_id=1`（默认 1）
 
 ---
 
+## OCR API
+
+### POST /api/v1/units/{unit_id}/upload-image — 上传图片并 OCR 解析
+
+Content-Type: `multipart/form-data`
+
+表单字段：`file`（图片文件）
+
+```json
+// Response — 返回草稿单词列表（未入库）
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "unit_id": 1,
+    "image_url": "/uploads/unit_1.jpg",
+    "draft_words": [
+      { "english": "hello", "chinese": "你好", "type": "word" },
+      { "english": "good morning", "chinese": "早上好", "type": "word" },
+      { "english": "How are you?", "chinese": "你好吗？", "type": "sentence" }
+    ],
+    "parsed_count": 3
+  }
+}
+```
+
+### GET /api/v1/units/{unit_id}/ocr-result — 获取 OCR 草稿结果
+
+```json
+// Response
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "unit_id": 1,
+    "draft_words": [
+      { "english": "hello", "chinese": "你好", "type": "word" }
+    ],
+    "parsed_count": 1,
+    "confirmed": false
+  }
+}
+```
+
+如果没有上传过图片，`draft_words` 为空数组。
+
+### POST /api/v1/units/{unit_id}/confirm-ocr — 确认 OCR 结果并入库
+
+```json
+// Request — 用户可编辑草稿后提交
+{
+  "words": [
+    { "english": "hello", "chinese": "你好", "type": "word" },
+    { "english": "good morning", "chinese": "早上好", "type": "word" },
+    { "english": "How are you?", "chinese": "你好吗？", "type": "sentence" }
+  ]
+}
+
+// Response
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "unit_id": 1,
+    "saved_count": 3,
+    "words": [
+      { "id": 1, "english": "hello", "chinese": "你好", "type": "word", "tags": [] },
+      { "id": 2, "english": "good morning", "chinese": "早上好", "type": "word", "tags": [] },
+      { "id": 3, "english": "How are you?", "chinese": "你好吗？", "type": "sentence", "tags": [] }
+    ]
+  }
+}
+```
+
+---
+
 ## Health API
 
 ### GET /api/v1/health — 健康检查

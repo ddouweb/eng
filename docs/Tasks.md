@@ -39,16 +39,16 @@
 
 ---
 
-### Phase 2: OCR 解析
+### Phase 2: OCR 解析 ✅ 已完成
 
 **目标：** 上传教材图片，自动生成单词库。
 
-- [ ] OCR 接口设计（/api/v1/units/{id}/upload-image）
-- [ ] AI Provider 抽象层实现（至少一个 Provider）
-- [ ] OCR 结果结构化解析逻辑
-- [ ] 用户确认/编辑 OCR 结果的接口
-- [ ] 单元测试 + 集成测试
-- [ ] Review
+- [x] OCR 接口设计（/api/v1/units/{id}/upload-image）
+- [x] AI Provider 抽象层实现（Claude Provider）
+- [x] OCR 结果结构化解析逻辑
+- [x] 用户确认/编辑 OCR 结果的接口
+- [x] 单元测试
+- [x] Review
 
 **交付物：** 上传图片 → AI 解析 → 返回单词列表 → 用户确认 → 存入数据库。
 
@@ -141,7 +141,7 @@
 |---|---|
 | Phase 0: 基础设施 | ✅ 已完成 |
 | Phase 1: 数据模型 | ✅ 已完成 |
-| Phase 2: OCR 解析 | ⚪ 待开始 |
+| Phase 2: OCR 解析 | ✅ 已完成 |
 | Phase 3: 练习模块 | ⚪ 待开始 |
 | Phase 4: 前端界面 | ⚪ 待开始 |
 | Phase 5: 学习计划 | ⚪ 待开始 |
