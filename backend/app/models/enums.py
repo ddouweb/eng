@@ -27,3 +27,16 @@ class PracticeMode(str, enum.Enum):
     choice = "choice"
     dictation = "dictation"
     dialogue = "dialogue"
+
+
+class PlanStatus(str, enum.Enum):
+    active = "active"
+    completed = "completed"
+    paused = "paused"
+
+
+class TaskStatus(str, enum.Enum):
+    pending = "pending"
+    in_progress = "in_progress"
+    completed = "completed"
+    skipped = "skipped"

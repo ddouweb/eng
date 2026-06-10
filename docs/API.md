@@ -412,6 +412,143 @@ Content-Type: `multipart/form-data`
 
 ---
 
+## Plan API
+
+### POST /api/v1/plans — 创建学习计划
+
+```json
+// Request
+{
+  "name": "三年级上册",
+  "daily_goal": 15,
+  "unit_ids": [1, 2],
+  "deadline": "2026-07-31"
+}
+
+// Response
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "id": 1,
+    "member_id": 1,
+    "name": "三年级上册",
+    "daily_goal": 15,
+    "deadline": "2026-07-31",
+    "status": "active",
+    "created_at": "2026-06-10T10:00:00"
+  }
+}
+```
+
+创建时自动根据剩余未掌握单词数、每日目标和截止日期生成 DailyTask 列表。
+
+### GET /api/v1/plans — 查询计划列表
+
+Query 参数：`status=active|paused|completed`（可选筛选）
+
+```json
+// Response
+{
+  "code": 200,
+  "message": "success",
+  "data": [
+    {
+      "id": 1,
+      "member_id": 1,
+      "name": "三年级上册",
+      "daily_goal": 15,
+      "deadline": "2026-07-31",
+      "status": "active",
+      "created_at": "2026-06-10T10:00:00"
+    }
+  ]
+}
+```
+
+### GET /api/v1/plans/{plan_id} — 查看计划详情
+
+```json
+// Response
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "id": 1,
+    "member_id": 1,
+    "name": "三年级上册",
+    "daily_goal": 15,
+    "deadline": "2026-07-31",
+    "status": "active",
+    "created_at": "2026-06-10T10:00:00",
+    "tasks": [
+      {
+        "id": 1,
+        "plan_id": 1,
+        "task_date": "2026-06-10",
+        "new_count": 15,
+        "review_count": 4,
+        "completed_new": 10,
+        "completed_review": 2,
+        "status": "in_progress"
+      }
+    ]
+  }
+}
+```
+
+### PUT /api/v1/plans/{plan_id}/tasks/{task_id} — 更新任务进度
+
+```json
+// Request
+{
+  "completed_new": 10,
+  "completed_review": 3
+}
+
+// Response
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "id": 1,
+    "plan_id": 1,
+    "task_date": "2026-06-10",
+    "new_count": 15,
+    "review_count": 4,
+    "completed_new": 10,
+    "completed_review": 3,
+    "status": "in_progress"
+  }
+}
+```
+
+任务状态自动流转：pending → in_progress（有进度） → completed（新词和复习都达标）。
+
+### POST /api/v1/plans/{plan_id}/pause — 暂停计划
+
+```json
+// Response
+{
+  "code": 200,
+  "message": "Plan paused",
+  "data": null
+}
+```
+
+### POST /api/v1/plans/{plan_id}/resume — 恢复计划
+
+```json
+// Response
+{
+  "code": 200,
+  "message": "Plan resumed",
+  "data": null
+}
+```
+
+---
+
 ## Health API
 
 ### GET /api/v1/health — 健康检查

@@ -101,3 +101,37 @@ def finish_practice(session_id: int) -> dict:
 
 def get_practice_session(session_id: int) -> dict:
     return _handle(requests.get(_url(f"/practice/{session_id}")))
+
+
+# ── Plans ──────────────────────────────────────────────
+
+def create_plan(name: str, daily_goal: int, unit_ids: list[int], deadline: str | None = None) -> dict:
+    body: dict = {"name": name, "daily_goal": daily_goal, "unit_ids": unit_ids}
+    if deadline:
+        body["deadline"] = deadline
+    return _handle(requests.post(_url("/plans"), json=body))
+
+
+def list_plans(status: str | None = None) -> dict:
+    params = {}
+    if status:
+        params["status"] = status
+    return _handle(requests.get(_url("/plans"), params=params))
+
+
+def get_plan(plan_id: int) -> dict:
+    return _handle(requests.get(_url(f"/plans/{plan_id}")))
+
+
+def update_task(plan_id: int, task_id: int, completed_new: int, completed_review: int) -> dict:
+    return _handle(requests.put(_url(f"/plans/{plan_id}/tasks/{task_id}"), json={
+        "completed_new": completed_new, "completed_review": completed_review,
+    }))
+
+
+def pause_plan(plan_id: int) -> dict:
+    return _handle(requests.post(_url(f"/plans/{plan_id}/pause")))
+
+
+def resume_plan(plan_id: int) -> dict:
+    return _handle(requests.post(_url(f"/plans/{plan_id}/resume")))

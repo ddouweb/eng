@@ -4,7 +4,15 @@ from app.models.unit import Unit
 from app.models.word import Word, WordTag
 from app.models.mastery import MasteryRecord
 from app.models.practice import PracticeSession, PracticeRecord
-from app.models.enums import MasteryLevel, PracticeMode, TagType, WordType
+from app.models.plan import DailyTask, LearningPlan, PlanUnit
+from app.models.enums import (
+    MasteryLevel,
+    PlanStatus,
+    PracticeMode,
+    TagType,
+    TaskStatus,
+    WordType,
+)
 
 __all__ = [
     "Base",
@@ -15,8 +23,13 @@ __all__ = [
     "MasteryRecord",
     "PracticeSession",
     "PracticeRecord",
+    "LearningPlan",
+    "PlanUnit",
+    "DailyTask",
     "MasteryLevel",
+    "PlanStatus",
     "PracticeMode",
     "TagType",
+    "TaskStatus",
     "WordType",
 ]
