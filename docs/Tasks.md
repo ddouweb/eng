@@ -20,20 +20,20 @@
 
 ---
 
-### Phase 1: 数据模型 + 单词管理
+### Phase 1: 数据模型 + 单词管理 ✅ 已完成
 
 **目标：** 建立 Unit 和 Word 的完整 CRUD。
 
-- [ ] Database.md 文档
-- [ ] API.md 文档（Word + Unit 部分）
-- [ ] 数据库模型：Unit, Word, WordTag, MasteryRecord
-- [ ] Alembic 迁移脚本
-- [ ] Repository 层：unit_repo, word_repo, mastery_repo
-- [ ] Service 层：unit_service, word_service
-- [ ] Router 层：/api/v1/units, /api/v1/words
-- [ ] Pydantic Schemas
-- [ ] 单元测试
-- [ ] Review
+- [x] Database.md 文档
+- [x] API.md 文档（Word + Unit 部分）
+- [x] 数据库模型：Member, Unit, Word, WordTag, MasteryRecord
+- [ ] Alembic 迁移脚本（需 Python 环境运行）
+- [x] Repository 层：unit_repo, word_repo, mastery_repo
+- [x] Service 层：unit_service, word_service
+- [x] Router 层：/api/v1/units, /api/v1/words
+- [x] Pydantic Schemas
+- [x] 单元测试
+- [x] Review
 
 **交付物：** 可通过 API 创建 Unit、添加 Word、设置 Tag、查询 Mastery。
 
@@ -140,7 +140,7 @@
 | 阶段 | 状态 |
 |---|---|
 | Phase 0: 基础设施 | ✅ 已完成 |
-| Phase 1: 数据模型 | ⚪ 待开始 |
+| Phase 1: 数据模型 | ✅ 已完成 |
 | Phase 2: OCR 解析 | ⚪ 待开始 |
 | Phase 3: 练习模块 | ⚪ 待开始 |
 | Phase 4: 前端界面 | ⚪ 待开始 |

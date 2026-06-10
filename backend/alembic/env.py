@@ -6,6 +6,7 @@ from sqlalchemy import pool
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
 from app.config import settings
+from app.models import Base  # noqa: F401 — import all models for autogenerate
 
 config = context.config
 config.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
@@ -13,10 +14,7 @@ config.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-target_metadata = None
-
-# Import all models here so Alembic can autogenerate migrations.
-# from app.models import unit, word, mastery, tag  # noqa: F401 — uncomment in Phase 1
+target_metadata = Base.metadata
 
 
 def run_migrations_offline() -> None:
