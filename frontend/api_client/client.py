@@ -135,3 +135,17 @@ def pause_plan(plan_id: int) -> dict:
 
 def resume_plan(plan_id: int) -> dict:
     return _handle(requests.post(_url(f"/plans/{plan_id}/resume")))
+
+
+# ── Stats ──────────────────────────────────────────────
+
+def get_stats_overview() -> dict:
+    return _handle(requests.get(_url("/stats/overview")))
+
+
+def get_stats_unit(unit_id: int) -> dict:
+    return _handle(requests.get(_url(f"/stats/units/{unit_id}")))
+
+
+def get_stats_trend(days: int = 30) -> dict:
+    return _handle(requests.get(_url("/stats/trend"), params={"days": days}))

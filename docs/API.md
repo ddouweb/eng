@@ -549,6 +549,77 @@ Query 参数：`status=active|paused|completed`（可选筛选）
 
 ---
 
+## Stats API
+
+### GET /api/v1/stats/overview — 全局统计概览
+
+```json
+// Response
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "total_words": 100,
+    "mastery_distribution": {
+      "unlearned": 50,
+      "learning": 20,
+      "familiar": 15,
+      "permanent": 15
+    },
+    "mastered_count": 30,
+    "mastery_rate": 30.0,
+    "practice_session_count": 10,
+    "total_questions": 100,
+    "total_correct": 80,
+    "accuracy": 80.0,
+    "streak_days": 5
+  }
+}
+```
+
+### GET /api/v1/stats/units/{unit_id} — 单元统计
+
+```json
+// Response
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "unit_id": 1,
+    "total_words": 15,
+    "mastery_distribution": {
+      "unlearned": 5,
+      "learning": 3,
+      "familiar": 4,
+      "permanent": 3
+    },
+    "mastered_count": 7,
+    "mastery_rate": 46.7
+  }
+}
+```
+
+### GET /api/v1/stats/trend — 练习趋势
+
+Query 参数：`days=30`（1-365）
+
+```json
+// Response
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "days": 7,
+    "daily": [
+      { "date": "2026-06-09", "total": 20, "correct": 16 },
+      { "date": "2026-06-10", "total": 15, "correct": 12 }
+    ]
+  }
+}
+```
+
+---
+
 ## Health API
 
 ### GET /api/v1/health — 健康检查

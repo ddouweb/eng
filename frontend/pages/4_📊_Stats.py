@@ -1,65 +1,82 @@
+import pandas as pd
 import streamlit as st
 from api_client import client
 
 st.header("📊 学习统计")
 
 # ── 全局概览 ─────────────────────────────────────────
-resp = client.list_units(page_size=100)
-if resp["code"] != 200:
-    st.error(resp["message"])
+overview = client.get_stats_overview()
+if overview["code"] != 200:
+    st.error(overview["message"])
     st.stop()
 
-units = resp["data"]["items"]
-if not units:
-    st.info("还没有数据。")
-    st.stop()
+data = overview["data"]
+dist = data["mastery_distribution"]
 
-total_words = 0
-level_counts = {"unlearned": 0, "learning": 0, "familiar": 0, "permanent": 0}
-
-# ── 逐 Unit 统计 ─────────────────────────────────────
-for unit in units:
-    with st.container(border=True):
-        col1, col2 = st.columns([3, 2])
-        with col1:
-            st.markdown(f"**{unit['title']}**")
-
-        w_resp = client.list_words(unit["id"], page_size=200)
-        if w_resp["code"] != 200:
-            continue
-
-        words = w_resp["data"]["items"]
-        total_words += len(words)
-
-        unit_levels = {"unlearned": 0, "learning": 0, "familiar": 0, "permanent": 0}
-        for w in words:
-            mastery = w.get("mastery")
-            level = mastery["level"] if mastery else "unlearned"
-            unit_levels[level] += 1
-            level_counts[level] += 1
-
-        with col2:
-            if len(words) > 0:
-                learned = unit_levels["familiar"] + unit_levels["permanent"]
-                pct = learned / len(words) * 100
-                st.progress(pct / 100, text=f"掌握率 {pct:.0f}% ({learned}/{len(words)})")
-            else:
-                st.caption("暂无单词")
-
-        level_colors = {"unlearned": "🔴", "learning": "🟠", "familiar": "🔵", "permanent": "🟢"}
-        cols = st.columns(4)
-        for i, (lv, cnt) in enumerate(unit_levels.items()):
-            cols[i].metric(level_colors[lv] + " " + lv, cnt)
-
-# ── 全局统计 ─────────────────────────────────────────
-st.divider()
-st.subheader("📈 全局概览")
 col1, col2, col3, col4 = st.columns(4)
-col1.metric("总单词数", total_words)
-col2.metric("未学习", level_counts["unlearned"])
-col3.metric("学习中", level_counts["learning"])
-col4.metric("已掌握", level_counts["familiar"] + level_counts["permanent"])
+col1.metric("总单词数", data["total_words"])
+col2.metric("已掌握", data["mastered_count"])
+col3.metric("练习次数", data["practice_session_count"])
+col4.metric("连续学习", f"{data['streak_days']} 天")
 
-if total_words > 0:
-    mastered = level_counts["familiar"] + level_counts["permanent"]
-    st.progress(mastered / total_words, text=f"总掌握率 {mastered / total_words * 100:.1f}%")
+col1, col2, col3 = st.columns(3)
+col1.metric("掌握率", f"{data['mastery_rate']}%")
+col2.metric("正确率", f"{data['accuracy']}%")
+col3.metric("总答题数", data["total_questions"])
+
+if data["total_words"] > 0:
+    st.progress(
+        data["mastered_count"] / data["total_words"],
+        text=f"掌握率 {data['mastery_rate']}%",
+    )
+
+# ── 掌握分布 ─────────────────────────────────────────
+st.subheader("掌握分布")
+level_colors = {"unlearned": "🔴 未学习", "learning": "🟠 学习中", "familiar": "🔵 熟悉", "permanent": "🟢 永久"}
+dist_df = pd.DataFrame([
+    {"level": level_colors[k], "count": v}
+    for k, v in dist.items()
+])
+st.bar_chart(dist_df, x="level", y="count", use_container_width=True)
+
+# ── 按 Unit 统计 ─────────────────────────────────────
+st.subheader("按 Unit 统计")
+units_resp = client.list_units(page_size=100)
+if units_resp["code"] == 200:
+    for u in units_resp["data"]["items"]:
+        stats = client.get_stats_unit(u["id"])
+        if stats["code"] != 200:
+            continue
+        s = stats["data"]
+        with st.container(border=True):
+            col1, col2 = st.columns([3, 2])
+            with col1:
+                st.markdown(f"**{u['title']}**")
+            with col2:
+                st.progress(
+                    s["mastered_count"] / s["total_words"] if s["total_words"] > 0 else 0,
+                    text=f"掌握率 {s['mastery_rate']}%",
+                )
+            udist = s["mastery_distribution"]
+            cols = st.columns(4)
+            for i, (lv, label) in enumerate(level_colors.items()):
+                cols[i].metric(label, udist[lv])
+
+# ── 练习趋势 ─────────────────────────────────────────
+st.subheader("练习趋势")
+days_option = st.selectbox("时间范围", [7, 14, 30], format_func=lambda d: f"最近 {d} 天", key="trend_days")
+trend = client.get_stats_trend(days=days_option)
+if trend["code"] == 200 and trend["data"]["daily"]:
+    trend_data = trend["data"]["daily"]
+    trend_df = pd.DataFrame(trend_data)
+    trend_df["accuracy"] = (trend_df["correct"] / trend_df["total"] * 100).round(1)
+
+    col_chart1, col_chart2 = st.columns(2)
+    with col_chart1:
+        st.caption("每日练习量")
+        st.bar_chart(trend_df, x="date", y="total", use_container_width=True)
+    with col_chart2:
+        st.caption("每日正确率 (%)")
+        st.line_chart(trend_df, x="date", y="accuracy", use_container_width=True)
+else:
+    st.info("暂无练习记录。")
