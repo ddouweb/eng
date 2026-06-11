@@ -77,7 +77,7 @@ class OCRService:
             "unit_id": unit_id,
             "draft_words": draft,
             "parsed_count": len(draft),
-            "confirmed": unit_id not in _drafts,
+            "confirmed": len(draft) == 0,
         })
 
     async def confirm_ocr(self, unit_id: int, words: list[dict]) -> dict:

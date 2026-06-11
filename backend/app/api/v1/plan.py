@@ -61,7 +61,7 @@ async def update_task(
              -d '{"completed_new":10,"completed_review":3}'
     """
     svc = PlanService(db)
-    return await svc.update_task(task_id, body.completed_new, body.completed_review)
+    return await svc.update_task(task_id, plan_id, body.completed_new, body.completed_review)
 
 
 @router.post("/{plan_id}/pause")

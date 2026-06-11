@@ -22,6 +22,16 @@ def _get_redis():
         return None
 
 
+async def close_redis() -> None:
+    global _redis
+    if _redis is not None:
+        try:
+            await _redis.aclose()
+        except Exception:
+            pass
+        _redis = None
+
+
 async def get_cached(key: str) -> Any | None:
     r = _get_redis()
     if not r:
@@ -49,6 +59,7 @@ def cached(ttl: int = 300, key_prefix: str = ""):
     """Decorator for caching async function results in Redis.
 
     Falls back to no caching if Redis is unavailable.
+    Only use with methods whose args are JSON-serializable.
     """
     def decorator(func: Callable):
         @wraps(func)
@@ -57,7 +68,7 @@ def cached(ttl: int = 300, key_prefix: str = ""):
             if not r:
                 return await func(*args, **kwargs)
 
-            cache_key = f"{key_prefix or func.__name__}:{args}:{kwargs}"
+            cache_key = f"{key_prefix or func.__name__}"
             try:
                 cached_val = await get_cached(cache_key)
                 if cached_val is not None:

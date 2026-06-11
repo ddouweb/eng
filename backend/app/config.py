@@ -6,6 +6,7 @@ class Settings(BaseSettings):
     AI_PROVIDER: str = "claude"
     AI_API_KEY: str = ""
     REDIS_URL: str = "redis://localhost:6379/0"
+    CORS_ORIGINS: str = "http://localhost:8501,http://127.0.0.1:8501"
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 

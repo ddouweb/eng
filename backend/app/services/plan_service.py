@@ -63,10 +63,12 @@ class PlanService:
         d["tasks"] = [self._task_to_dict(t) for t in tasks]
         return success(data=d)
 
-    async def update_task(self, task_id: int, completed_new: int, completed_review: int) -> dict:
+    async def update_task(self, task_id: int, plan_id: int, completed_new: int, completed_review: int) -> dict:
         task = await self.task_repo.get_by_id(task_id)
         if not task:
             raise AppException(404, "Task not found")
+        if task.plan_id != plan_id:
+            raise AppException(400, "Task does not belong to this plan")
         task.completed_new = completed_new
         task.completed_review = completed_review
         if completed_new >= task.new_count and completed_review >= task.review_count:

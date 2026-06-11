@@ -30,7 +30,7 @@ if "practice_questions" not in st.session_state:
     st.session_state.practice_results = []
 
 if st.button("🚀 开始练习", disabled=not selected_ids):
-    resp = client.start_practice(member_id=1, mode=mode, unit_ids=selected_ids, count=count)
+    resp = client.start_practice(member_id=st.session_state.member_id, mode=mode, unit_ids=selected_ids, count=count)
     if resp["code"] == 200:
         st.session_state.practice_questions = resp["data"]["questions"]
         st.session_state.practice_session_id = resp["data"]["session_id"]

@@ -1,6 +1,6 @@
-from datetime import date, timedelta
+from datetime import date, datetime, time, timedelta
 
-from sqlalchemy import select, func, case
+from sqlalchemy import select, func, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.enums import MasteryLevel, TaskStatus
@@ -57,7 +57,7 @@ class StatsRepo:
         return {"session_count": row[0], "total_questions": row[1], "total_correct": row[2]}
 
     async def get_recent_practice_daily(self, member_id: int, days: int = 30) -> list[dict]:
-        since = date.today() - timedelta(days=days)
+        since_dt = datetime.combine(date.today() - timedelta(days=days), time.min)
         stmt = (
             select(
                 func.date(PracticeSession.started_at).label("day"),
@@ -66,10 +66,10 @@ class StatsRepo:
             )
             .where(
                 PracticeSession.member_id == member_id,
-                func.date(PracticeSession.started_at) >= since,
+                PracticeSession.started_at >= since_dt,
             )
-            .group_by("day")
-            .order_by("day")
+            .group_by(text("day"))
+            .order_by(text("day"))
         )
         result = await self.session.execute(stmt)
         return [
@@ -81,19 +81,19 @@ class StatsRepo:
         stmt = (
             select(func.date(PracticeSession.started_at).label("day"))
             .where(PracticeSession.member_id == member_id)
-            .group_by("day")
-            .order_by("day")
+            .group_by(text("day"))
+            .order_by(text("day DESC"))
+            .limit(400)
         )
         result = await self.session.execute(stmt)
-        days = [row[0] for row in result.all()]
+        days = {row[0] for row in result.all()}
         if not days:
             return 0
 
         streak = 0
-        today = date.today()
-        check = today
+        check = date.today()
         if check not in days:
-            check = today - timedelta(days=1)
+            check -= timedelta(days=1)
         while check in days:
             streak += 1
             check -= timedelta(days=1)

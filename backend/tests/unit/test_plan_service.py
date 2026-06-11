@@ -96,20 +96,28 @@ class TestUpdateTask:
     async def test_update_task_not_found(self, service):
         service.task_repo.get_by_id = AsyncMock(return_value=None)
         with pytest.raises(AppException) as exc_info:
-            await service.update_task(999, 5, 3)
+            await service.update_task(999, 1, 5, 3)
         assert exc_info.value.code == 404
+
+    @pytest.mark.asyncio
+    async def test_update_task_wrong_plan(self, service):
+        task = MagicMock(plan_id=2, new_count=10, review_count=5, status=TaskStatus.pending)
+        service.task_repo.get_by_id = AsyncMock(return_value=task)
+        with pytest.raises(AppException) as exc_info:
+            await service.update_task(1, 1, 10, 5)
+        assert exc_info.value.code == 400
 
     @pytest.mark.asyncio
     async def test_update_task_to_completed(self, service, mock_session):
         task = MagicMock(
-            new_count=10, review_count=5,
+            plan_id=1, new_count=10, review_count=5,
             completed_new=0, completed_review=0,
             status=TaskStatus.pending,
         )
         service.task_repo.get_by_id = AsyncMock(return_value=task)
         mock_session.commit = AsyncMock()
 
-        result = await service.update_task(1, 10, 5)
+        result = await service.update_task(1, 1, 10, 5)
         assert result["code"] == 200
         assert task.completed_new == 10
         assert task.completed_review == 5
@@ -118,14 +126,14 @@ class TestUpdateTask:
     @pytest.mark.asyncio
     async def test_update_task_to_in_progress(self, service, mock_session):
         task = MagicMock(
-            new_count=10, review_count=5,
+            plan_id=1, new_count=10, review_count=5,
             completed_new=0, completed_review=0,
             status=TaskStatus.pending,
         )
         service.task_repo.get_by_id = AsyncMock(return_value=task)
         mock_session.commit = AsyncMock()
 
-        result = await service.update_task(1, 5, 2)
+        result = await service.update_task(1, 1, 5, 2)
         assert task.status == TaskStatus.in_progress
 
 

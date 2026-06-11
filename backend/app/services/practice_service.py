@@ -1,5 +1,5 @@
 import random
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -26,7 +26,7 @@ class PracticeService:
         self, member_id: int, mode: PracticeMode,
         unit_ids: list[int], count: int = 10,
     ) -> dict:
-        questions = await self._build_questions(unit_ids, count)
+        questions = await self._build_questions(member_id, unit_ids, count)
         if not questions:
             raise AppException(400, "没有可练习的单词")
 
@@ -101,7 +101,7 @@ class PracticeService:
         if ps.ended_at:
             raise AppException(400, "Session already ended")
 
-        ps.ended_at = datetime.now()
+        ps.ended_at = datetime.now(timezone.utc)
         await self.session.commit()
         await self.session.refresh(ps)
 
@@ -139,7 +139,7 @@ class PracticeService:
             ],
         })
 
-    async def _build_questions(self, unit_ids: list[int], count: int) -> list[dict]:
+    async def _build_questions(self, member_id: int, unit_ids: list[int], count: int) -> list[dict]:
         stmt = (
             select(Word, WordTag.tag)
             .outerjoin(WordTag, WordTag.word_id == Word.id)
@@ -154,7 +154,7 @@ class PracticeService:
                 word_tags[word.id][1].append(tag)
 
         stmt_m = select(MasteryRecord).where(
-            MasteryRecord.member_id == 1,
+            MasteryRecord.member_id == member_id,
             MasteryRecord.word_id.in_(word_tags.keys()),
         )
         result_m = await self.session.execute(stmt_m)

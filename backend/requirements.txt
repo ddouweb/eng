@@ -12,13 +12,19 @@ alembic>=1.13.0
 pydantic-settings>=2.1.0
 python-dotenv>=1.0.0
 
-# HTTP client (for AI providers)
+# HTTP client (for AI providers + TestClient)
 httpx>=0.27.0
+
+# TTS (optional)
+edge-tts>=6.1.0
+
+# Cache (optional)
+redis>=5.0.0
 
 # Test
 pytest>=8.0.0
 pytest-asyncio>=0.23.0
-httpx  # also used for TestClient
+pytest-cov>=4.0.0
 
 # Lint
 ruff>=0.2.0

@@ -69,7 +69,7 @@ trend = client.get_stats_trend(days=days_option)
 if trend["code"] == 200 and trend["data"]["daily"]:
     trend_data = trend["data"]["daily"]
     trend_df = pd.DataFrame(trend_data)
-    trend_df["accuracy"] = (trend_df["correct"] / trend_df["total"] * 100).round(1)
+    trend_df["accuracy"] = (trend_df["correct"] / trend_df["total"].replace(0, 1) * 100).round(1)
 
     col_chart1, col_chart2 = st.columns(2)
     with col_chart1:
