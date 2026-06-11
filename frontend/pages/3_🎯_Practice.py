@@ -18,8 +18,8 @@ unit_options = {f"{u['title']} (ID:{u['id']})": u["id"] for u in units}
 selected_keys = st.multiselect("选择 Unit", list(unit_options.keys()))
 selected_ids = [unit_options[k] for k in selected_keys]
 
-mode = st.selectbox("练习模式", ["flashcard", "spelling", "choice"],
-                    format_func=lambda x: {"flashcard": "🃏 单词卡", "spelling": "✏️ 拼写", "choice": "🔘 选择题"}[x])
+mode = st.selectbox("练习模式", ["flashcard", "spelling", "choice", "dictation"],
+                    format_func=lambda x: {"flashcard": "🃏 单词卡", "spelling": "✏️ 拼写", "choice": "🔘 选择题", "dictation": "🎧 听写"}[x])
 count = st.slider("题目数量", 5, 30, 10)
 
 # ── 练习状态管理 ─────────────────────────────────────
@@ -103,6 +103,30 @@ if questions and idx < len(questions):
             st.session_state.practice_results.append(correct)
             st.session_state.practice_idx += 1
             st.rerun()
+
+    elif mode == "dictation":
+        tts_url = client.get_tts_url(q["english"], "en")
+        st.audio(tts_url, format="audio/mpeg")
+        st.caption("🎧 听音频，拼写对应的英文单词")
+        answer = st.text_input("输入英文", key=f"dict_{q['word_id']}_{idx}")
+        col_ok, col_skip = st.columns(2)
+        with col_ok:
+            if st.button("✅ 提交", key=f"dict_ok_{idx}", use_container_width=True):
+                correct = answer.strip().lower() == q["english"].lower()
+                if correct:
+                    st.success("✅ 正确！")
+                else:
+                    st.error(f"❌ 错误，正确答案: **{q['english']}**")
+                client.submit_answer(session_id, q["word_id"], correct, answer)
+                st.session_state.practice_results.append(correct)
+                st.session_state.practice_idx += 1
+                st.rerun()
+        with col_skip:
+            if st.button("⏭ 跳过", key=f"dict_skip_{idx}", use_container_width=True):
+                client.submit_answer(session_id, q["word_id"], False, "")
+                st.session_state.practice_results.append(False)
+                st.session_state.practice_idx += 1
+                st.rerun()
 
 # ── 练习结束 ─────────────────────────────────────────
 elif questions and idx >= len(questions) and session_id:
