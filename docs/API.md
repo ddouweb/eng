@@ -620,6 +620,79 @@ Query 参数：`days=30`（1-365）
 
 ---
 
+## AI API
+
+### POST /api/v1/ai/dialogue — 生成场景对话
+
+```json
+// Request
+{
+  "unit_ids": [1, 2],
+  "scenario": "购物"
+}
+
+// Response
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "scenario": "在超市购物",
+    "lines": [
+      {"role": "teacher", "english": "Good morning! Can I help you?", "chinese": "早上好！需要帮忙吗？"},
+      {"role": "student", "english": "Yes, I want to buy some apples.", "chinese": "是的，我想买些苹果。"}
+    ]
+  }
+}
+```
+
+### POST /api/v1/ai/exercise — 生成 AI 练习题
+
+```json
+// Request
+{
+  "unit_ids": [1],
+  "mode": "choice"
+}
+
+// Response
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "mode": "choice",
+    "items": [
+      {
+        "question": "「你好」的英文是？",
+        "options": ["hello", "goodbye", "sorry", "thanks"],
+        "answer": "hello",
+        "explanation": "hello 是最常用的打招呼用语"
+      }
+    ]
+  }
+}
+```
+
+`mode` 可选值：`choice`（选择题）、`fill`（填空题）。
+
+---
+
+## TTS API
+
+### GET /api/v1/tts/generate — 文本转语音
+
+Query 参数：`text`（必填，最长 500 字符）、`lang=en|zh`
+
+直接返回 MP3 音频流：
+
+```
+GET /api/v1/tts/generate?text=hello&lang=en
+Content-Type: audio/mpeg
+```
+
+使用 edge-tts（免费），无需 API key。
+
+---
+
 ## Health API
 
 ### GET /api/v1/health — 健康检查

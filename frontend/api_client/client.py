@@ -149,3 +149,23 @@ def get_stats_unit(unit_id: int) -> dict:
 
 def get_stats_trend(days: int = 30) -> dict:
     return _handle(requests.get(_url("/stats/trend"), params={"days": days}))
+
+
+# ── AI ──────────────────────────────────────────────────
+
+def generate_dialogue(unit_ids: list[int], scenario: str = "日常对话") -> dict:
+    return _handle(requests.post(_url("/ai/dialogue"), json={
+        "unit_ids": unit_ids, "scenario": scenario,
+    }))
+
+
+def generate_exercise(unit_ids: list[int], mode: str = "choice") -> dict:
+    return _handle(requests.post(_url("/ai/exercise"), json={
+        "unit_ids": unit_ids, "mode": mode,
+    }))
+
+
+# ── TTS ─────────────────────────────────────────────────
+
+def get_tts_url(text: str, lang: str = "en") -> str:
+    return f"{API_BASE}/tts/generate?text={text}&lang={lang}"
