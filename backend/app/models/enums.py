@@ -25,7 +25,14 @@ class PracticeMode(str, enum.Enum):
     flashcard = "flashcard"
     spelling = "spelling"
     choice = "choice"
+    cn2en_choice = "cn2en_choice"
+    en2cn_write = "en2cn_write"
     dictation = "dictation"
+    matching = "matching"
+    timed_challenge = "timed_challenge"
+    scramble = "scramble"
+    memory_flash = "memory_flash"
+    flip_match = "flip_match"
     dialogue = "dialogue"
 
 

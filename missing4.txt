@@ -1,0 +1,6 @@
+U4 NO57: cline |1下降|57 revolution|革命|90 explain|解释|2谢绝|58 fail|失败|91 involve|涉及到|25 describe|描述|59 fail to|未能做没做|92 low|低|2
+U4 NO58: ain|解释|2谢绝|58 fail|失败|91 involve|涉及到|25 describe|描述|59 fail to|未能做没做|92 low|低|26 financial|金融的|60 fashion |1时尚|93 
+U5 NO65: |36 hot|热的|65 top|顶端|04 body|身体|37 justice |1正义|66 union|联盟|05 condition|条件|2大法官|67 war|战争|06 dam|大坝|38 news|新闻|68
+U5 NO66: stice |1正义|66 union|联盟|05 condition|条件|2大法官|67 war|战争|06 dam|大坝|38 news|新闻|68 whose|谁的|07 difference|不同|39 newspap
+U12 NO69: tive|有吸引力的|69 enter|1 进入|
+U12 NO70: omass|生物总量|70 enter|2 输入|02 requirement|要求|38 blame|责怪|71 equally|均等的|03 retail|零售|39 blueprint|蓝图|72 error|错误|04 

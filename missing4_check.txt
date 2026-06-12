@@ -1,0 +1,7 @@
+(222, 3, 'share', 'n.股份', 'word', NOW(), NOW()),
+(742, 9, 'shareholder', '股东', 'word', NOW(), NOW()),
+(313, 4, 'potential', '2潜在的', 'word', NOW(), NOW()),
+(518, 6, 'bear/stand/end', '忍受', 'word', NOW(), NOW()),
+(847, 10, 'center', '中心', 'word', NOW(), NOW()),
+(1094, 12, 'enter', '2 输入', 'word', NOW(), NOW()),
+(1674, 18, 'entertain', '娱乐', 'word', NOW(), NOW()),

@@ -1,0 +1,81 @@
+=== Trace Entry: state (NO 9) - Page 1 (Unit 1) ===
+Expected meanings: 1 国家 / 2 州 / 3 状态 / 4 说
+====================================================================================================
+
+--- Traced spans for entry "state" (NO 09) ---
+
+Role                   |      x0      y0      x1      y1 | Loc          text
+--------------------------------------------------------------------------------------------------------------
+NO number              |    59.9   343.1    73.8   358.3 | B14 L00 S00  09
+space                  |    73.8   345.9    83.0   357.6 | B14 L00 S01   
+English word           |    83.0   345.9   107.6   357.6 | B14 L00 S02  state
+meaning 1 num          |   147.5   319.1   156.7   330.8 | B15 L00 S00  1 
+meaning 1 cn           |   156.8   318.4   180.3   330.1 | B15 L00 S01  国家
+meaning 2 num          |   147.5   337.0   156.7   348.7 | B15 L06 S00  2 
+meaning 2 cn           |   156.8   336.3   168.5   348.0 | B15 L06 S01  州
+meaning 3 num          |   147.5   354.7   156.7   366.5 | B15 L12 S00  3 
+meaning 3 cn           |   156.8   354.0   180.3   365.8 | B15 L12 S01  状态
+meaning 4 num          |   147.5   372.3   156.7   384.1 | B15 L16 S00  4 
+meaning 4 cn           |   156.8   371.6   168.5   383.4 | B15 L16 S01  说
+
+
+--- Context: all spans in y-range 315-390 (state entry vertical span) ---
+Shows interleaving with other columns entries
+
+Loc                    |      x0      y0      x1      y1 | text
+--------------------------------------------------------------------------------------------------------------
+COL1   B14 L00 S00      |    59.9   343.1    73.8   358.3 | 09
+COL1   B14 L00 S01      |    73.8   345.9    83.0   357.6 |  
+COL1   B14 L00 S02      |    83.0   345.9   107.6   357.6 | state
+COL1   B15 L00 S00      |   147.5   319.1   156.7   330.8 | 1 
+COL1   B15 L00 S01      |   156.8   318.4   180.3   330.1 | 国家
+COL2   B15 L01 S00      |   214.8   319.1   227.7   330.8 | 33
+COL2   B15 L02 S00      |   237.3   319.1   264.8   330.8 | likely
+COL2   B15 L03 S00      |   320.1   319.2   378.9   331.0 | 很有可能的
+COL3   B15 L04 S00      |   406.9   319.1   419.8   330.8 | 60
+COL3   B15 L04 S01      |   419.8   319.1   425.6   330.8 |  
+COL3   B15 L04 S02      |   425.6   319.1   467.8   330.8 | increase
+COL3   B15 L05 S00      |   498.6   319.2   522.2   331.0 | 增加
+COL1   B15 L06 S00      |   147.5   337.0   156.7   348.7 | 2 
+COL1   B15 L06 S01      |   156.8   336.3   168.5   348.0 | 州
+COL2   B15 L07 S00      |   214.8   345.9   227.7   357.6 | 34
+COL2   B15 L08 S00      |   237.3   345.9   257.2   357.6 | find
+COL2   B15 L09 S00      |   320.1   337.0   329.2   348.7 | 1 
+COL2   B15 L09 S01      |   329.2   336.3   352.7   348.0 | 找到
+COL3   B15 L10 S00      |   406.9   337.0   419.8   348.7 | 61
+COL3   B15 L10 S01      |   419.8   337.0   425.6   348.7 |  
+COL3   B15 L10 S02      |   425.6   337.0   461.8   348.7 | market
+COL3   B15 L11 S00      |   498.6   337.0   522.2   348.8 | 市场
+COL1   B15 L12 S00      |   147.5   354.7   156.7   366.5 | 3 
+COL1   B15 L12 S01      |   156.8   354.0   180.3   365.8 | 状态
+COL2   B15 L13 S00      |   320.1   354.7   329.2   366.5 | 2 
+COL2   B15 L13 S01      |   329.2   354.0   352.7   365.8 | 发现
+COL3   B15 L14 S00      |   406.9   354.7   419.8   366.5 | 62
+COL3   B15 L14 S01      |   419.8   354.7   425.6   366.5 |  
+COL3   B15 L14 S02      |   425.6   354.7   441.2   366.5 | yet
+COL3   B15 L15 S00      |   498.6   354.7   522.2   366.5 | 不过
+COL1   B15 L16 S00      |   147.5   372.3   156.7   384.1 | 4 
+COL1   B15 L16 S01      |   156.8   371.6   168.5   383.4 | 说
+COL2   B17 L00 S00      |   320.1   372.3   329.2   384.1 | 1 
+COL2   B17 L00 S01      |   329.2   371.6   352.7   383.4 | 仅仅
+COL3   B17 L01 S00      |   406.9   372.3   419.8   384.1 | 63
+COL3   B17 L01 S01      |   419.8   372.3   425.6   384.1 |  
+COL3   B17 L01 S02      |   425.6   372.3   443.8   384.1 | any
+COL3   B17 L02 S00      |   498.6   372.4   522.2   384.1 | 任何
+
+
+--- Key observations for parser design ---
+1. The NO number (09) and English word (state) are on the SAME visual row (y~345-358)
+2. Meaning 1 appears at y~318-330, which is ABOVE the NO+EN row (y~345)
+   This means the first meaning can appear BEFORE the entry header
+3. Meanings are at x0~147.5 (meaning number) and x0~156.8 (Chinese text)
+   These are in the CN/meaning column of column 1
+4. Between meanings, other columns entries appear on interleaved rows:
+   - Col2 NO=33 (likely) at y~319, Col2 NO=34 (find) at y~346
+   - Col3 NO=60 (increase) at y~319, Col3 NO=61 (market) at y~337
+   - Col3 NO=62 (yet) at y~355
+5. Meaning number and Chinese text are SEPARATE spans on page 1
+   (unlike page 18 where they are merged into one span)
+6. The meaning number span ends with a space (e.g. "1 " not "1")
+7. Vertical spacing between meanings: ~17.7 points
+8. Total entry height: ~66 points (318 to 384) for a 4-meaning entry

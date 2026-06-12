@@ -1,0 +1,262 @@
+=== get_text(text) ===
+ 考研英语无忧班学员专用高频词汇练习Unit1
+成都新东方国内考试部
+ 学生姓名：                        日期：                                              总词数：           错误数：     
+NO 单词
+释义
+NO 单词
+释义
+NO 单词
+释义
+01 would
+会
+26
+means
+方式；方法
+52 learn
+1 学习
+02 world
+世界
+27
+need
+需要
+2 了解
+03 if
+1 如果
+28
+seem
+似乎
+53 scientific
+科学的
+2 是否
+29
+over/under
+在...之上／
+之下；过了；
+54 test
+测试
+04 human
+人类
+30
+between
+两者之间
+55 example
+例子
+05 paragraph
+段落
+31
+business
+1 商业
+56 large
+大
+06 such
+如此的
+2 商家
+57 law
+法律；规则
+07 should
+应该
+3 事
+58 pass 
+1 通过
+08 social
+1 社会的
+32
+like
+1 喜欢
+2 传递
+2 社交的
+2 像
+59 too
+也
+09 state
+1 国家
+33
+likely
+很有可能的
+60 increase
+增加
+2 州
+34
+find
+1 找到
+61 market
+市场
+3 状态
+2 发现
+62 yet
+不过
+4 说
+35
+just
+1 仅仅
+63 any
+任何
+10 work
+1 工作
+2 就
+64 early
+早
+2 作品
+3 公平的
+65 part
+部分
+3 起作用
+36
+last
+1 最后
+66 reason 
+1 理性
+11 time
+1 时间
+2 持续
+2 原因
+2 次数
+37
+-less
+没有
+3 推理
+3 倍数
+38
+less
+较少的
+67 century
+世纪
+12 company 
+1 公司
+39
+result
+结果
+68 family
+家族
+2 陪伴
+40
+result in/lead to导致
+69 before
+在...之前
+13 author
+ 作者
+41
+few
+几乎没有
+70 country
+国家
+14 become
+变成
+42
+a few
+一些
+71 high
+高
+15 even
+甚至
+43
+follow
+跟随
+72 might
+可能
+16 way
+1 道路
+44
+live
+1 活／居住
+73 often
+经常
+2 方式
+2 直播的
+74 scientist
+科学家
+17 science
+科学
+45
+own
+adj. 自己的
+75 culture
+文化
+18 research
+研究
+v. 拥有
+76 economic
+经济的
+19 search
+搜索
+46
+however
+然而；但是
+77 federal
+联邦
+20 into
+进入
+47
+show
+展现
+78 keep
+1 保持
+21 life 
+1 生活
+48
+child
+孩子
+2 留下
+2 生命
+49
+see
+1  看见
+79 price
+价格
+22 according to 根据
+2 明白
+80 cost
+1成本
+23 because
+因为
+50
+study
+1 学习
+2花费
+24 also
+也，还
+2 研究
+3代价
+25 mean
+意味着
+51
+education
+教育
+
+
+=== get_text(blocks) ===
+Block y0=27.0 y1=50.4: ' 考研英语无忧班学员专用高频词汇练习Unit1\n'
+Block y0=65.6 y1=83.8: '成都新东方国内考试部\n'
+Block y0=88.4 y1=103.6: ' 学生姓名：                        日期：                                              总词数：           错误数：     \n'
+Block y0=106.9 y1=122.1: 'NO 单词\n释义\nNO 单词\n释义\nNO 单词\n释义\n'
+Block y0=126.2 y1=149.6: '01 would\n会\n26\nmeans\n方式；方法\n52 learn\n1 学习\n'
+Block y0=144.0 y1=159.2: '02 world\n世界\n27\nneed\n需要\n2 了解\n'
+Block y0=177.0 y1=192.1: '03 if\n'
+Block y0=163.7 y1=176.3: '1 如果\n28\nseem\n似乎\n53 scientific\n科学的\n'
+Block y0=180.6 y1=206.8: '2 是否\n29\nover/under\n在...之上／\n之下；过了；\n54 test\n测试\n'
+Block y0=209.9 y1=242.8: '04 human\n人类\n30\nbetween\n两者之间\n55 example\n例子\n05 paragraph\n段落\n'
+Block y0=248.2 y1=259.9: '31\nbusiness\n'
+Block y0=229.6 y1=286.5: '1 商业\n56 large\n大\n06 such\n如此的\n2 商家\n57 law\n法律；规则\n07 should\n应该\n3 事\n58 pass \n1 通过\n'
+Block y0=282.8 y1=305.0: '08 social\n1 社会的\n32\nlike\n1 喜欢\n2 传递\n'
+Block y0=300.6 y1=313.2: '2 社交的\n2 像\n59 too\n也\n'
+Block y0=343.1 y1=358.3: '09 state\n'
+Block y0=318.4 y1=384.1: '1 国家\n33\nlikely\n很有可能的\n60 increase\n增加\n2 州\n34\nfind\n1 找到\n61 market\n市场\n3 状态\n2 发现\n62 yet\n不过\n4 说\n'
+Block y0=390.1 y1=401.9: '35\njust\n'
+Block y0=371.6 y1=384.1: '1 仅仅\n63 any\n任何\n'
+Block y0=405.2 y1=420.4: '10 work\n'
+Block y0=389.4 y1=446.4: '1 工作\n2 就\n64 early\n早\n2 作品\n3 公平的\n65 part\n部分\n3 起作用\n36\nlast\n1 最后\n'
+Block y0=443.5 y1=455.3: '66 reason \n'
+Block y0=425.1 y1=437.5: '1 理性\n'
+Block y0=458.5 y1=473.7: '11 time\n'
+Block y0=442.7 y1=455.1: '1 时间\n2 持续\n2 原因\n'
+Block y0=460.4 y1=473.0: '2 次数\n37\n-less\n没有\n3 推理\n'
+Block y0=478.2 y1=490.8: '3 倍数\n38\nless\n较少的\n67 century\n世纪\n'
+Block y0=496.0 y1=580.2: '12 company \n1 公司\n39\nresult\n结果\n68 family\n家族\n2 陪伴\n40\nresult in/lead to导致\n69 before\n在...之前\n13 author\n 作者\n41\nfew\n几乎没有\n70 country\n国家\n14 become\n变成\n42\na few\n一些\n71 high\n高\n15 even\n甚至\n43\nfollow\n跟随\n72 might\n可能\n'
+Block y0=584.9 y1=695.1: '16 way\n1 道路\n44\nlive\n1 活／居住\n73 often\n经常\n2 方式\n2 直播的\n74 scientist\n科学家\n17 science\n科学\n45\nown\nadj. 自己的\n75 culture\n文化\n18 research\n研究\nv. 拥有\n76 economic\n经济的\n19 search\n搜索\n46\nhowever\n然而；但是\n77 federal\n联邦\n20 into\n进入\n47\nshow\n展现\n78 keep\n1 保持\n'
+Block y0=691.5 y1=740.1: '21 life \n1 生活\n48\nchild\n孩子\n2 留下\n2 生命\n49\nsee\n1  看见\n79 price\n价格\n22 according to 根据\n2 明白\n'
+Block y0=745.3 y1=757.1: '80 cost\n'
+Block y0=726.9 y1=739.3: '1成本\n'
+Block y0=742.7 y1=766.1: '23 because\n因为\n50\nstudy\n1 学习\n2花费\n'
+Block y0=760.4 y1=775.6: '24 also\n也，还\n2 研究\n3代价\n'
+Block y0=778.2 y1=793.4: '25 mean\n意味着\n51\neducation\n教育\n'

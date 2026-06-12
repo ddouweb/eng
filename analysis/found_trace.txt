@@ -1,0 +1,58 @@
+=== Trace Entry: found - Page 18 (Unit 18) ===
+Expected meanings: 1 建立 / 2 找到 / 3 发现
+====================================================================================================
+
+--- Traced spans for entry "found" (NO 86) ---
+
+Role                   |      x0      y0      x1      y1 | text
+----------------------------------------------------------------------------------------------------
+NO number              |   375.7   614.2   384.1   625.5 | 86
+English word           |   393.7   613.1   416.8   626.3 | found
+meaning 1 (merged)     |   467.3   600.2   488.3   608.6 | 1建立
+meaning 2 (merged)     |   467.3   616.2   488.3   624.6 | 2找到
+meaning 3 (merged)     |   467.3   632.4   488.3   640.8 | 3发现
+
+
+--- Key observations ---
+* On page 18, the meaning number and Chinese text are MERGED into a single span
+  (e.g. "1建立" is one span, not separate "1 " and "建立" spans)
+* This differs from page 1 where meaning number and Chinese are separate spans
+* NO number (86) at x0=375.7, column 3 NO area
+* English word (found) at x0=393.7, column 3 EN area
+* Meanings at x0=467.3, column 3 CN area
+* Meaning 1 starts at y=600.2, which is BEFORE the EN word at y=613.1
+  (the first meaning appears on the row above the NO+EN row)
+* Meanings span vertically from y=600.2 to y=640.8 (40.6 points)
+* Each meaning row is ~16 points tall, spaced ~16 points apart
+
+
+--- Context: all spans near found entry (y=595 to y=645) ---
+  B   L   S |      x0      y0      x1      y1 | text
+------------------------------------------------------------------------------------------------------------------------
+ 43   0   0 |    58.7   598.0    67.1   609.3 | 26
+ 43   1   0 |    76.1   597.0   128.4   610.3 | consequently
+ 43   2   0 |   142.0   600.2   158.8   608.6 | 所以
+ 43   3   0 |   211.6   598.0   220.0   609.3 | 54
+ 43   4   0 |   229.6   597.0   275.2   610.3 | disorganize
+ 43   5   0 |   301.9   600.2   318.7   608.6 | 混乱
+ 44   0   0 |   375.7   614.2   384.1   625.5 | 86
+ 44   1   0 |   393.7   613.1   416.8   626.3 | found
+ 45   0   0 |   467.3   600.2   488.3   608.6 | 1建立
+ 46   0   0 |    58.7   614.1    67.1   625.4 | 27
+ 46   1   0 |    76.1   613.1   126.1   626.3 | considerable
+ 46   2   0 |   142.0   616.2   167.2   624.6 | 相当的
+ 46   3   0 |   211.6   614.1   220.0   625.4 | 55
+ 46   4   0 |   229.6   613.1   286.2   626.3 | dissatisfaction
+ 46   5   0 |   301.9   616.2   327.1   624.6 | 不满足
+ 46   6   0 |   467.3   616.2   488.3   624.6 | 2找到
+ 47   0   0 |    58.7   630.2    67.1   641.5 | 28
+ 47   1   0 |    76.1   629.2   129.4   642.4 | consideration
+ 47   2   0 |   142.0   632.4   158.8   640.8 | 考虑
+ 47   3   0 |   211.6   630.2   220.0   641.5 | 56
+ 47   4   0 |   229.6   629.2   258.1   642.4 | diverse
+ 47   5   0 |   301.9   632.4   327.1   640.8 | 多样的
+ 47   6   0 |   467.3   632.4   488.3   640.8 | 3发现
+
+* Note: Between the found meanings (y=600-640), entries from column 1 (NO 27-28)
+  and column 2 (NO 55-56) are interleaved on their own visual rows.
+* This confirms the multi-meaning interleaving pattern across all 3 columns.

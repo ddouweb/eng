@@ -1,0 +1,12 @@
+Unit 1 NO 22: en='according to 根据' cn='2 明白' issue=cn_in_en
+Unit 2 NO 34: en='government政府' cn='2 变得 2协会；社团' issue=cn_in_en
+Unit 2 NO 73: en='rather than 而不是' cn='3 大的' issue=cn_in_en
+Unit 3 NO 12: en='technology 技术' cn='2论文' issue=cn_in_en
+Unit 3 NO 16: en='community 1 社区' cn='n.程序' issue=cn_in_en
+Unit 3 NO 65: en='development发展' cn='2发布' issue=cn_in_en
+Unit 3 NO 73: en='a geart deal o大量' cn='2认为' issue=cn_in_en
+Unit 5 NO 56: en='opportunity     机会' cn='2订 2可得到的' issue=cn_in_en
+Unit 13 NO 31: en='revenue/income收入' cn='3地址' issue=cn_in_en
+Unit 14 NO 8: en='discrimination 歧视' cn='v. 主办' issue=cn_in_en
+Unit 14 NO 52: en='mom/mother 妈' cn='2种族 2到底' issue=cn_in_en
+Unit 15 NO 90: en='constitutional 宪法的' cn='3正装' issue=cn_in_en

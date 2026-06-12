@@ -1,0 +1,3 @@
+OK: U1 NO9 'state' = '国家 1 州 2 状态 3 说 4'
+OK: U1 NO8 'social' = '社会的 1 社交的 2'
+OK: U18 NO86 'found' = '1 建立 2 找到 3 发现'

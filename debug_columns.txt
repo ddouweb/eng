@@ -1,0 +1,11 @@
+
+=== Page 15 (Unit 15) — COLUMN DETECTION FAILED ===
+  CJK content spans: 8
+  x0=126.4 y0=742.1 text='宝贵的'
+  x0=126.4 y0=759.2 text='不同'
+  x0=126.4 y0=776.2 text='来访者'
+  x0=313.0 y0=742.1 text='生物学'
+  x0=313.0 y0=759.2 text='瞎的'
+  x0=313.0 y0=776.2 text='n. 老板'
+  x0=499.6 y0=742.1 text='2 约会'
+  x0=499.6 y0=759.2 text='默认'

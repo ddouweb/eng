@@ -6,6 +6,16 @@ import requests
 API_BASE = os.environ.get("API_BASE_URL", "http://localhost:8000/api/v1")
 PUBLIC_API_BASE = os.environ.get("PUBLIC_API_URL", API_BASE)
 _TIMEOUT = 30
+_token: str | None = None
+
+
+def set_token(token: str | None):
+    global _token
+    _token = token
+
+
+def get_token() -> str | None:
+    return _token
 
 
 def _url(path: str) -> str:
@@ -14,6 +24,10 @@ def _url(path: str) -> str:
 
 def _request(method: str, url: str, **kwargs) -> requests.Response:
     kwargs.setdefault("timeout", _TIMEOUT)
+    headers = kwargs.pop("headers", {})
+    if _token and "Authorization" not in headers:
+        headers["Authorization"] = f"Bearer {_token}"
+    kwargs["headers"] = headers
     try:
         return requests.request(method, url, **kwargs)
     except requests.ConnectionError:
@@ -229,3 +243,13 @@ def parse_words(
 
 def get_tts_url(text: str, lang: str = "en") -> str:
     return f"{PUBLIC_API_BASE}/tts/generate?text={quote(text)}&lang={lang}"
+
+
+# ── Auth ─────────────────────────────────────────────────
+
+def login(username: str, password: str) -> dict:
+    resp = _request("POST", _url("/auth/login"), json={"username": username, "password": password})
+    data = _handle(resp)
+    if data["code"] == 200:
+        set_token(data["data"]["token"])
+    return data

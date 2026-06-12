@@ -1,0 +1,81 @@
+=== Column Position Analysis ===
+Pages: 1, 7, 8, 18
+Page size: 595.2 x 841.8 (all pages)
+==================================================================================================================================
+
+IMPORTANT LAYOUT NOTES:
+* Each page has 3 columns, each with NO + 单词(EN) + 释义(CN) sub-columns
+* Col1 CN/释义 appears BETWEEN col1 EN and col2 NO
+* Col2 CN appears between col2 EN and col3 NO
+* Col3 CN appears after col3 EN
+* On page 1, col3 header is "NO 单词" merged into one span
+* On page 18, some header characters are split into individual spans
+* For multi-meaning entries, meanings span multiple visual rows,
+  interleaved with entries from other columns
+
+==================================================================================================================================
+
+--- Page 1 (Unit 1) ---
+
+Header-determined column positions:
+  col1: NO_x0=57.3 | EN_x0=83.0 | CN_x0=147.5
+  col2: NO_x0=211.6 | EN_x0=237.3 | CN_x0=320.1
+  col3: NO_x0=403.7 | EN_x0=423.7 | CN_x0=498.6
+
+Content verification (avg x0 from content spans):
+  col1: NO_avg_x0=59.9 (n=25) | EN_avg_x0=83.0 (n=25) | CN_avg_x0=152.6 (n=37)
+  col2: NO_avg_x0=214.8 (n=26) | EN_avg_x0=237.3 (n=26) | CN_avg_x0=325.3 (n=38)
+  col3: NO_avg_x0=406.9 (n=29) | EN_avg_x0=425.6 (n=29) | CN_avg_x0=501.5 (n=36)
+
+SUMMARY: Page 1: col1_NO=59.9 col1_EN=83.0 col1_CN=152.6 | col2_NO=214.8 col2_EN=237.3 col2_CN=325.3 | col3_NO=406.9 col3_EN=425.6 col3_CN=501.5
+
+==================================================================================================================================
+
+--- Page 7 (Unit 7) ---
+
+Header-determined column positions:
+  col1: NO_x0=55.1 | EN_x0=68.5 | CN_x0=138.9
+  col2: NO_x0=212.5 | EN_x0=225.6 | CN_x0=294.4
+  col3: NO_x0=370.2 | EN_x0=385.9 | CN_x0=454.5
+
+Content verification (avg x0 from content spans):
+  col1: NO_avg_x0=54.8 (n=39) | EN_avg_x0=68.5 (n=39) | CN_avg_x0=139.0 (n=41)
+  col2: NO_avg_x0=212.4 (n=31) | EN_avg_x0=225.6 (n=32) | CN_avg_x0=294.5 (n=41)
+  col3: NO_avg_x0=369.5 (n=31) | EN_avg_x0=385.9 (n=32) | CN_avg_x0=454.7 (n=40)
+
+SUMMARY: Page 7: col1_NO=54.8 col1_EN=68.5 col1_CN=139.0 | col2_NO=212.4 col2_EN=225.6 col2_CN=294.5 | col3_NO=369.5 col3_EN=385.9 col3_CN=454.7
+
+==================================================================================================================================
+
+--- Page 8 (Unit 8) ---
+
+Header-determined column positions:
+  col1: NO_x0=52.0 | EN_x0=72.0 | CN_x0=131.2
+  col2: NO_x0=198.0 | EN_x0=217.6 | CN_x0=276.7
+  col3: NO_x0=347.9 | EN_x0=365.5 | CN_x0=423.5
+
+Content verification (avg x0 from content spans):
+  col1: NO_avg_x0=52.0 (n=30) | EN_avg_x0=72.0 (n=30) | CN_avg_x0=134.6 (n=39)
+  col2: NO_avg_x0=198.0 (n=30) | EN_avg_x0=217.6 (n=30) | CN_avg_x0=279.3 (n=39)
+  col3: NO_avg_x0=349.7 (n=26) | EN_avg_x0=365.5 (n=26) | CN_avg_x0=425.2 (n=33)
+
+SUMMARY: Page 8: col1_NO=52.0 col1_EN=72.0 col1_CN=134.6 | col2_NO=198.0 col2_EN=217.6 col2_CN=279.3 | col3_NO=349.7 col3_EN=365.5 col3_CN=425.2
+
+==================================================================================================================================
+
+--- Page 18 (Unit 18) ---
+
+Header-determined column positions:
+  col1: NO_x0=56.9 | EN_x0=76.5 | CN_x0=142.0
+  col2: NO_x0=209.8 | EN_x0=230.1 | CN_x0=301.9
+  col3: NO_x0=373.9 | EN_x0=394.2 | CN_x0=467.3
+
+Content verification (avg x0 from content spans):
+  col1: NO_avg_x0=58.8 (n=30) | EN_avg_x0=76.1 (n=30) | CN_avg_x0=142.7 (n=34)
+  col2: NO_avg_x0=211.6 (n=26) | EN_avg_x0=229.6 (n=27) | CN_avg_x0=301.9 (n=34)
+  col3: NO_avg_x0=375.7 (n=29) | EN_avg_x0=393.7 (n=29) | CN_avg_x0=467.3 (n=32)
+
+SUMMARY: Page 18: col1_NO=58.8 col1_EN=76.1 col1_CN=142.7 | col2_NO=211.6 col2_EN=229.6 col2_CN=301.9 | col3_NO=375.7 col3_EN=393.7 col3_CN=467.3
+
+==================================================================================================================================
+
