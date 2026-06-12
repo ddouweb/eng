@@ -4,8 +4,10 @@ from api_client import client
 
 st.header("📊 学习统计")
 
+member_id = st.session_state.get("member_id", 1)
+
 # ── 全局概览 ─────────────────────────────────────────
-overview = client.get_stats_overview()
+overview = client.get_stats_overview(member_id)
 if overview["code"] != 200:
     st.error(overview["message"])
     st.stop()
@@ -44,7 +46,7 @@ st.subheader("按 Unit 统计")
 units_resp = client.list_units(page_size=100)
 if units_resp["code"] == 200:
     for u in units_resp["data"]["items"]:
-        stats = client.get_stats_unit(u["id"])
+        stats = client.get_stats_unit(u["id"], member_id)
         if stats["code"] != 200:
             continue
         s = stats["data"]
@@ -65,7 +67,7 @@ if units_resp["code"] == 200:
 # ── 练习趋势 ─────────────────────────────────────────
 st.subheader("练习趋势")
 days_option = st.selectbox("时间范围", [7, 14, 30], format_func=lambda d: f"最近 {d} 天", key="trend_days")
-trend = client.get_stats_trend(days=days_option)
+trend = client.get_stats_trend(days=days_option, member_id=member_id)
 if trend["code"] == 200 and trend["data"]["daily"]:
     trend_data = trend["data"]["daily"]
     trend_df = pd.DataFrame(trend_data)

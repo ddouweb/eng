@@ -1,5 +1,6 @@
 import streamlit as st
 from api_client import client
+from components.ai_helpers import ai_kwargs, require_ai_key
 
 st.header("🤖 AI 助手")
 
@@ -30,12 +31,13 @@ with tab_dialogue:
     ], key="dlg_scenario")
 
     if st.button("生成对话", disabled=not sel_ids_d, key="dlg_gen"):
-        with st.spinner("AI 正在生成对话..."):
-            resp = client.generate_dialogue(sel_ids_d, scenario)
-        if resp["code"] == 200:
-            st.session_state.dialogue_result = resp["data"]
-        else:
-            st.error(resp["message"])
+        if require_ai_key():
+            with st.spinner("AI 正在生成对话..."):
+                resp = client.generate_dialogue(sel_ids_d, scenario, **ai_kwargs())
+            if resp["code"] == 200:
+                st.session_state.dialogue_result = resp["data"]
+            else:
+                st.error(resp["message"])
 
     if "dialogue_result" in st.session_state:
         data = st.session_state.dialogue_result
@@ -62,14 +64,15 @@ with tab_exercise:
                            key="ex_mode")
 
     if st.button("生成练习", disabled=not sel_ids_e, key="ex_gen"):
-        with st.spinner("AI 正在生成练习题..."):
-            resp = client.generate_exercise(sel_ids_e, ex_mode)
-        if resp["code"] == 200:
-            st.session_state.exercise_result = resp["data"]
-            st.session_state.exercise_answers = {}
-            st.session_state.exercise_submitted = False
-        else:
-            st.error(resp["message"])
+        if require_ai_key():
+            with st.spinner("AI 正在生成练习题..."):
+                resp = client.generate_exercise(sel_ids_e, ex_mode, **ai_kwargs())
+            if resp["code"] == 200:
+                st.session_state.exercise_result = resp["data"]
+                st.session_state.exercise_answers = {}
+                st.session_state.exercise_submitted = False
+            else:
+                st.error(resp["message"])
 
     if "exercise_result" in st.session_state and not st.session_state.get("exercise_submitted"):
         items = st.session_state.exercise_result["items"]

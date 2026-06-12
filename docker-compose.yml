@@ -1,22 +1,19 @@
-version: "3.8"
-
 services:
-  mysql:
-    image: mysql:8.0
-    container_name: english_coach_mysql
+  db:
+    image: mariadb:10.11
+    container_name: english_coach_db
     restart: unless-stopped
     ports:
       - "3306:3306"
     environment:
-      MYSQL_ROOT_PASSWORD: root123
-      MYSQL_DATABASE: english_coach
-      MYSQL_CHARSET: utf8mb4
-      MYSQL_COLLATION: utf8mb4_unicode_ci
+      MARIADB_ROOT_PASSWORD: root123
+      MARIADB_DATABASE: english_coach
+      MARIADB_CHARACTER_SET: utf8mb4
+      MARIADB_COLLATION: utf8mb4_unicode_ci
     volumes:
-      - mysql_data:/var/lib/mysql
-    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+      - db_data:/var/lib/mysql
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -33,5 +30,40 @@ services:
       timeout: 5s
       retries: 5
 
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: english_coach_backend
+    restart: unless-stopped
+    # ⚠️ 生产环境建议在反向代理层（如 Nginx/Caddy）启用 HTTPS，
+    # 否则前端传入的 AI API Key 将以明文通过网络传输
+    ports:
+      - "8000:8000"
+    volumes:
+      - backend_uploads:/app/uploads
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      - DATABASE_URL=mysql+aiomysql://root:root123@db:3306/english_coach?charset=utf8mb4
+      - REDIS_URL=redis://redis:6379/0
+      - CORS_ORIGINS=http://localhost:8501,http://frontend:8501
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: english_coach_frontend
+    restart: unless-stopped
+    ports:
+      - "8501:8501"
+    environment:
+      - API_BASE_URL=http://backend:8000/api/v1
+      - PUBLIC_API_URL=http://localhost:8000/api/v1
+    depends_on:
+      - backend
+
 volumes:
-  mysql_data:
+  db_data:
+  backend_uploads:

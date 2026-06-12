@@ -1,4 +1,4 @@
-from sqlalchemy import BIGINT, String
+from sqlalchemy import Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TimestampMixin
@@ -7,7 +7,7 @@ from app.models.base import Base, TimestampMixin
 class Member(TimestampMixin, Base):
     __tablename__ = "member"
 
-    id: Mapped[int] = mapped_column(BIGINT, primary_key=True, autoincrement=True)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(String(50), nullable=False)
     avatar: Mapped[str | None] = mapped_column(String(255), nullable=True)
 

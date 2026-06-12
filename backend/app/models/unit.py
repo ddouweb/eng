@@ -1,4 +1,4 @@
-from sqlalchemy import BIGINT, Integer, String
+from sqlalchemy import Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TimestampMixin
@@ -7,7 +7,7 @@ from app.models.base import Base, TimestampMixin
 class Unit(TimestampMixin, Base):
     __tablename__ = "unit"
 
-    id: Mapped[int] = mapped_column(BIGINT, primary_key=True, autoincrement=True)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     title: Mapped[str] = mapped_column(String(100), nullable=False)
     sequence: Mapped[int] = mapped_column(Integer, nullable=False, unique=True, default=0)
     image_url: Mapped[str | None] = mapped_column(String(500), nullable=True)

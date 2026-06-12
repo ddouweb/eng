@@ -9,6 +9,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.api.router import api_router
 from app.config import settings
+from app.middleware.sensitive import SensitiveDataMiddleware
 from app.schemas.exceptions import AppException, app_exception_handler
 
 UPLOAD_DIR = Path("uploads")
@@ -36,6 +37,7 @@ app = FastAPI(
 
 app.add_exception_handler(AppException, app_exception_handler)
 
+app.add_middleware(SensitiveDataMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[o.strip() for o in settings.CORS_ORIGINS.split(",")],

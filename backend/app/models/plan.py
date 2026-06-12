@@ -1,6 +1,6 @@
 from datetime import date, datetime
 
-from sqlalchemy import BIGINT, Date, Enum, ForeignKey, Integer, UniqueConstraint
+from sqlalchemy import Integer, Date, Enum, ForeignKey, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TimestampMixin
@@ -10,9 +10,9 @@ from app.models.enums import PlanStatus, TaskStatus
 class LearningPlan(TimestampMixin, Base):
     __tablename__ = "learning_plan"
 
-    id: Mapped[int] = mapped_column(BIGINT, primary_key=True, autoincrement=True)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     member_id: Mapped[int] = mapped_column(
-        BIGINT, ForeignKey("member.id", ondelete="CASCADE"), nullable=False
+        Integer, ForeignKey("member.id", ondelete="CASCADE"), nullable=False
     )
     name: Mapped[str] = mapped_column(nullable=False)
     daily_goal: Mapped[int] = mapped_column(Integer, nullable=False, default=30)
@@ -33,10 +33,10 @@ class PlanUnit(Base):
     __tablename__ = "plan_units"
 
     plan_id: Mapped[int] = mapped_column(
-        BIGINT, ForeignKey("learning_plan.id", ondelete="CASCADE"), primary_key=True
+        Integer, ForeignKey("learning_plan.id", ondelete="CASCADE"), primary_key=True
     )
     unit_id: Mapped[int] = mapped_column(
-        BIGINT, ForeignKey("unit.id", ondelete="CASCADE"), primary_key=True
+        Integer, ForeignKey("unit.id", ondelete="CASCADE"), primary_key=True
     )
 
     plan: Mapped["LearningPlan"] = relationship(back_populates="plan_units")
@@ -45,9 +45,9 @@ class PlanUnit(Base):
 class DailyTask(TimestampMixin, Base):
     __tablename__ = "daily_task"
 
-    id: Mapped[int] = mapped_column(BIGINT, primary_key=True, autoincrement=True)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     plan_id: Mapped[int] = mapped_column(
-        BIGINT, ForeignKey("learning_plan.id", ondelete="CASCADE"), nullable=False
+        Integer, ForeignKey("learning_plan.id", ondelete="CASCADE"), nullable=False
     )
     task_date: Mapped[date] = mapped_column(Date, nullable=False)
     new_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)

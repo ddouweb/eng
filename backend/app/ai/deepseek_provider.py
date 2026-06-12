@@ -3,9 +3,10 @@ import logging
 
 import httpx
 
-from app.ai.base import OCRResult, DialogueResult, ExerciseResult
+from app.ai.base import OCRResult, DialogueResult, ExerciseResult, ParseNLResult
 from app.ai.base_provider import (
     BaseAIProvider, SYSTEM_PROMPT_OCR, SYSTEM_PROMPT_DIALOGUE, SYSTEM_PROMPT_EXERCISE,
+    SYSTEM_PROMPT_PARSE_NL,
 )
 
 logger = logging.getLogger(__name__)
@@ -65,3 +66,10 @@ class DeepSeekProvider(BaseAIProvider):
             {"role": "user", "content": f"单词：{', '.join(words)}\n练习类型：{mode}"},
         ], max_tokens=2048)
         return self._parse_exercise(text)
+
+    async def parse_natural_language(self, text: str) -> ParseNLResult:
+        result = await self._chat([
+            {"role": "system", "content": SYSTEM_PROMPT_PARSE_NL},
+            {"role": "user", "content": text},
+        ], max_tokens=4096)
+        return self._parse_nl(result)

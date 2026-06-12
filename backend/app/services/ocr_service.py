@@ -1,4 +1,5 @@
-import logging
+from __future__ import annotations
+
 import uuid
 from pathlib import Path
 
@@ -9,8 +10,6 @@ from app.ai.factory import get_ai_provider
 from app.schemas.common import error, success
 from app.schemas.exceptions import AppException
 from app.services.word_service import WordService
-
-logger = logging.getLogger(__name__)
 
 UPLOAD_DIR = Path("uploads")
 UPLOAD_DIR.mkdir(exist_ok=True)
@@ -26,7 +25,8 @@ class OCRService:
         self.word_service = WordService(session)
 
     async def upload_and_parse(
-        self, unit_id: int, image_bytes: bytes, filename: str
+        self, unit_id: int, image_bytes: bytes, filename: str,
+        provider: "AIProvider | None" = None,
     ) -> dict:
         from app.repositories.unit_repo import UnitRepo
         unit_repo = UnitRepo(self.session)
@@ -48,11 +48,10 @@ class OCRService:
 
         image_url = f"/uploads/{saved_name}"
 
+        p = provider or get_ai_provider()
         try:
-            provider = get_ai_provider()
-            ocr_result: OCRResult = await provider.parse_image(image_bytes, filename)
+            ocr_result: OCRResult = await p.parse_image(image_bytes, filename)
         except Exception as e:
-            logger.error("OCR failed for unit %s: %s", unit_id, e)
             return error(code=500, message=f"OCR failed: {e}")
 
         draft_words = [

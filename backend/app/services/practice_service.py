@@ -78,8 +78,6 @@ class PracticeService:
         if is_correct:
             ps.correct_count += 1
 
-        await self.session.commit()
-
         mastery = await self._update_mastery(ps.member_id, word_id, is_correct)
         await self.session.commit()
 

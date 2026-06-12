@@ -1,5 +1,6 @@
 import streamlit as st
 from api_client import client
+from components.ai_helpers import ai_kwargs, require_ai_key
 
 st.header("📚 单元管理")
 
@@ -54,14 +55,17 @@ unit_id = unit_options[selected]
 
 uploaded = st.file_uploader("选择图片", type=["jpg", "jpeg", "png", "webp"], key="upload_img")
 if uploaded and st.button("上传并解析"):
-    with st.spinner("AI 正在解析图片..."):
-        resp = client.upload_image(unit_id, uploaded.read(), uploaded.name)
-    if resp["code"] == 200:
-        drafts = resp["data"]["draft_words"]
-        st.session_state[f"ocr_draft_{unit_id}"] = drafts
-        st.success(f"解析完成，识别到 {len(drafts)} 个单词")
-    else:
-        st.error(resp["message"])
+    if require_ai_key():
+        with st.spinner("AI 正在解析图片..."):
+            resp = client.upload_image(
+                unit_id, uploaded.read(), uploaded.name, **ai_kwargs(),
+            )
+        if resp["code"] == 200:
+            drafts = resp["data"]["draft_words"]
+            st.session_state[f"ocr_draft_{unit_id}"] = drafts
+            st.success(f"解析完成，识别到 {len(drafts)} 个单词")
+        else:
+            st.error(resp["message"])
 
 # ── OCR 草稿确认 ─────────────────────────────────────
 draft_key = f"ocr_draft_{unit_id}"

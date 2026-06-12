@@ -58,9 +58,10 @@ class StatsRepo:
 
     async def get_recent_practice_daily(self, member_id: int, days: int = 30) -> list[dict]:
         since_dt = datetime.combine(date.today() - timedelta(days=days), time.min)
+        day_col = func.date(PracticeSession.started_at).label("day")
         stmt = (
             select(
-                func.date(PracticeSession.started_at).label("day"),
+                day_col,
                 func.sum(PracticeSession.total_count).label("total"),
                 func.sum(PracticeSession.correct_count).label("correct"),
             )
@@ -68,25 +69,33 @@ class StatsRepo:
                 PracticeSession.member_id == member_id,
                 PracticeSession.started_at >= since_dt,
             )
-            .group_by(text("day"))
-            .order_by(text("day"))
+            .group_by(func.date(PracticeSession.started_at))
+            .order_by(func.date(PracticeSession.started_at))
         )
         result = await self.session.execute(stmt)
-        return [
-            {"date": str(row[0]), "total": int(row[1]), "correct": int(row[2])}
-            for row in result.all()
-        ]
+        rows = []
+        for row in result.all():
+            d = row[0]
+            if isinstance(d, str):
+                d = date.fromisoformat(d)
+            rows.append({"date": str(d), "total": int(row[1]), "correct": int(row[2])})
+        return rows
 
     async def get_streak(self, member_id: int) -> int:
         stmt = (
             select(func.date(PracticeSession.started_at).label("day"))
             .where(PracticeSession.member_id == member_id)
-            .group_by(text("day"))
-            .order_by(text("day DESC"))
+            .group_by(func.date(PracticeSession.started_at))
+            .order_by(func.date(PracticeSession.started_at).desc())
             .limit(400)
         )
         result = await self.session.execute(stmt)
-        days = {row[0] for row in result.all()}
+        days = set()
+        for row in result.all():
+            d = row[0]
+            if isinstance(d, str):
+                d = date.fromisoformat(d)
+            days.add(d)
         if not days:
             return 0
 

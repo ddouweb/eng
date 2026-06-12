@@ -14,7 +14,7 @@ class StatsService:
         practice = await self.repo.get_practice_summary(member_id)
         streak = await self.repo.get_streak(member_id)
 
-        mastered = dist["familiar"] + dist["permanent"]
+        mastered = min(dist["familiar"] + dist["permanent"], total_words)
         total_answered = practice["total_questions"]
         total_correct = practice["total_correct"]
         accuracy = round(total_correct / total_answered * 100, 1) if total_answered > 0 else 0.0

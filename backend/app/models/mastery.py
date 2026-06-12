@@ -1,4 +1,4 @@
-from sqlalchemy import BIGINT, Enum, ForeignKey, Integer
+from sqlalchemy import Enum, ForeignKey, Integer
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TimestampMixin
@@ -8,12 +8,12 @@ from app.models.enums import MasteryLevel
 class MasteryRecord(TimestampMixin, Base):
     __tablename__ = "mastery_record"
 
-    id: Mapped[int] = mapped_column(BIGINT, primary_key=True, autoincrement=True)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     member_id: Mapped[int] = mapped_column(
-        BIGINT, ForeignKey("member.id", ondelete="CASCADE"), nullable=False
+        Integer, ForeignKey("member.id", ondelete="CASCADE"), nullable=False
     )
     word_id: Mapped[int] = mapped_column(
-        BIGINT, ForeignKey("word.id", ondelete="CASCADE"), nullable=False
+        Integer, ForeignKey("word.id", ondelete="CASCADE"), nullable=False
     )
     level: Mapped[MasteryLevel] = mapped_column(
         Enum(MasteryLevel), nullable=False, default=MasteryLevel.unlearned

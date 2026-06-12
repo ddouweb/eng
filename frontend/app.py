@@ -28,3 +28,30 @@ new_id = MEMBERS[member_names.index(selected)]["id"]
 if new_id != st.session_state.member_id:
     st.session_state.member_id = new_id
     st.rerun()
+
+# ── AI 设置 ────────────────────────────────────────────
+st.sidebar.markdown("### 🤖 AI 设置")
+
+if "ai_provider" not in st.session_state:
+    st.session_state.ai_provider = "glm"
+if "ai_api_key" not in st.session_state:
+    st.session_state.ai_api_key = ""
+
+provider = st.sidebar.selectbox(
+    "AI 模型", ["glm", "claude", "deepseek"],
+    index=["glm", "claude", "deepseek"].index(st.session_state.ai_provider),
+)
+if provider != st.session_state.ai_provider:
+    st.session_state.ai_provider = provider
+
+api_key = st.sidebar.text_input(
+    "API Key", value=st.session_state.ai_api_key,
+    type="password", placeholder="sk-...",
+)
+if api_key != st.session_state.ai_api_key:
+    st.session_state.ai_api_key = api_key
+
+if st.session_state.ai_api_key:
+    st.sidebar.caption(f"✅ 已配置 {st.session_state.ai_provider}")
+else:
+    st.sidebar.caption("⚠️ 未配置 API Key，AI 功能不可用")

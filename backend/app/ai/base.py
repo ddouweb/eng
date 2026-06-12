@@ -42,7 +42,21 @@ class ExerciseResult:
     items: list[ExerciseItem] = field(default_factory=list)
 
 
+@dataclass
+class ParseNLWordItem:
+    english: str
+    chinese: str
+    word_type: str = "word"
+
+
+@dataclass
+class ParseNLResult:
+    words: list[ParseNLWordItem] = field(default_factory=list)
+    raw_text: str = ""
+
+
 class AIProvider(Protocol):
     async def parse_image(self, image_bytes: bytes, filename: str = "") -> OCRResult: ...
     async def generate_dialogue(self, words: list[str], scenario: str) -> DialogueResult: ...
     async def generate_exercise(self, words: list[str], mode: str) -> ExerciseResult: ...
+    async def parse_natural_language(self, text: str) -> ParseNLResult: ...

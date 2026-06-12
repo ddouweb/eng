@@ -4,6 +4,7 @@ from urllib.parse import quote
 import requests
 
 API_BASE = os.environ.get("API_BASE_URL", "http://localhost:8000/api/v1")
+PUBLIC_API_BASE = os.environ.get("PUBLIC_API_URL", API_BASE)
 _TIMEOUT = 30
 
 
@@ -96,8 +97,15 @@ def remove_tag(word_id: int, tag: str) -> dict:
 
 # ── OCR ────────────────────────────────────────────────
 
-def upload_image(unit_id: int, file_bytes: bytes, filename: str) -> dict:
-    return _handle(_request("POST", _url(f"/units/{unit_id}/upload-image"), files={"file": (filename, file_bytes)}))
+def upload_image(
+    unit_id: int, file_bytes: bytes, filename: str,
+    ai_provider: str | None = None, ai_api_key: str | None = None,
+) -> dict:
+    data = _ai_extra(ai_provider, ai_api_key) or None
+    return _handle(_request(
+        "POST", _url(f"/units/{unit_id}/upload-image"),
+        files={"file": (filename, file_bytes)}, data=data,
+    ))
 
 
 def get_ocr_result(unit_id: int) -> dict:
@@ -166,33 +174,58 @@ def resume_plan(plan_id: int) -> dict:
 
 # ── Stats ──────────────────────────────────────────────
 
-def get_stats_overview() -> dict:
-    return _handle(_request("GET", _url("/stats/overview")))
+def get_stats_overview(member_id: int = 1) -> dict:
+    return _handle(_request("GET", _url("/stats/overview"), params={"member_id": member_id}))
 
 
-def get_stats_unit(unit_id: int) -> dict:
-    return _handle(_request("GET", _url(f"/stats/units/{unit_id}")))
+def get_stats_unit(unit_id: int, member_id: int = 1) -> dict:
+    return _handle(_request("GET", _url(f"/stats/units/{unit_id}"), params={"member_id": member_id}))
 
 
-def get_stats_trend(days: int = 30) -> dict:
-    return _handle(_request("GET", _url("/stats/trend"), params={"days": days}))
+def get_stats_trend(days: int = 30, member_id: int = 1) -> dict:
+    return _handle(_request("GET", _url("/stats/trend"), params={"days": days, "member_id": member_id}))
+
+
+def get_leaderboard() -> dict:
+    return _handle(_request("GET", _url("/leaderboard")))
 
 
 # ── AI ──────────────────────────────────────────────────
 
-def generate_dialogue(unit_ids: list[int], scenario: str = "日常对话") -> dict:
-    return _handle(_request("POST", _url("/ai/dialogue"), json={
-        "unit_ids": unit_ids, "scenario": scenario,
-    }))
+def _ai_extra(ai_provider: str | None = None, ai_api_key: str | None = None) -> dict:
+    extra = {}
+    if ai_provider:
+        extra["ai_provider"] = ai_provider
+    if ai_api_key:
+        extra["ai_api_key"] = ai_api_key
+    return extra
 
 
-def generate_exercise(unit_ids: list[int], mode: str = "choice") -> dict:
-    return _handle(_request("POST", _url("/ai/exercise"), json={
-        "unit_ids": unit_ids, "mode": mode,
-    }))
+def generate_dialogue(
+    unit_ids: list[int], scenario: str = "日常对话",
+    ai_provider: str | None = None, ai_api_key: str | None = None,
+) -> dict:
+    body: dict = {"unit_ids": unit_ids, "scenario": scenario, **_ai_extra(ai_provider, ai_api_key)}
+    return _handle(_request("POST", _url("/ai/dialogue"), json=body))
+
+
+def generate_exercise(
+    unit_ids: list[int], mode: str = "choice",
+    ai_provider: str | None = None, ai_api_key: str | None = None,
+) -> dict:
+    body: dict = {"unit_ids": unit_ids, "mode": mode, **_ai_extra(ai_provider, ai_api_key)}
+    return _handle(_request("POST", _url("/ai/exercise"), json=body))
+
+
+def parse_words(
+    text: str,
+    ai_provider: str | None = None, ai_api_key: str | None = None,
+) -> dict:
+    body: dict = {"text": text, **_ai_extra(ai_provider, ai_api_key)}
+    return _handle(_request("POST", _url("/ai/parse-words"), json=body))
 
 
 # ── TTS ─────────────────────────────────────────────────
 
 def get_tts_url(text: str, lang: str = "en") -> str:
-    return f"{API_BASE}/tts/generate?text={quote(text)}&lang={lang}"
+    return f"{PUBLIC_API_BASE}/tts/generate?text={quote(text)}&lang={lang}"

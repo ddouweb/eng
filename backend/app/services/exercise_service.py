@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -11,13 +13,15 @@ class ExerciseService:
     def __init__(self, session: AsyncSession):
         self.session = session
 
-    async def generate_dialogue(self, unit_ids: list[int], scenario: str) -> dict:
+    async def generate_dialogue(
+        self, unit_ids: list[int], scenario: str, provider: "AIProvider | None" = None,
+    ) -> dict:
         words = await self._get_words(unit_ids)
         if not words:
             raise AppException(400, "没有可用的单词")
 
-        provider = get_ai_provider()
-        result = await provider.generate_dialogue(words, scenario)
+        p = provider or get_ai_provider()
+        result = await p.generate_dialogue(words, scenario)
 
         return success(data={
             "scenario": result.scenario,
@@ -27,13 +31,15 @@ class ExerciseService:
             ],
         })
 
-    async def generate_exercise(self, unit_ids: list[int], mode: str) -> dict:
+    async def generate_exercise(
+        self, unit_ids: list[int], mode: str, provider: "AIProvider | None" = None,
+    ) -> dict:
         words = await self._get_words(unit_ids)
         if not words:
             raise AppException(400, "没有可用的单词")
 
-        provider = get_ai_provider()
-        result = await provider.generate_exercise(words, mode)
+        p = provider or get_ai_provider()
+        result = await p.generate_exercise(words, mode)
 
         return success(data={
             "mode": result.mode,

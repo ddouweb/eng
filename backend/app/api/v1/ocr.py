@@ -1,6 +1,7 @@
-from fastapi import APIRouter, Depends, File, UploadFile
+from fastapi import APIRouter, Depends, File, Form, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.ai.factory import create_ai_provider, safe_close_provider
 from app.database import get_db
 from app.schemas.ocr import OCRConfirmRequest
 from app.services.ocr_service import OCRService
@@ -10,7 +11,11 @@ router = APIRouter(prefix="/units", tags=["ocr"])
 
 @router.post("/{unit_id}/upload-image")
 async def upload_image(
-    unit_id: int, file: UploadFile = File(...), db: AsyncSession = Depends(get_db)
+    unit_id: int,
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+    ai_provider: str | None = Form(None),
+    ai_api_key: str | None = Form(None),
 ):
     """上传教材图片并 OCR 解析。
 
@@ -18,9 +23,17 @@ async def upload_image(
         curl -X POST http://localhost:8000/api/v1/units/1/upload-image \\
              -F "file=@textbook_page.jpg"
     """
+    provider = None
+    if ai_provider and ai_api_key:
+        provider = create_ai_provider(ai_provider, ai_api_key)
+
     image_bytes = await file.read()
     svc = OCRService(db)
-    return await svc.upload_and_parse(unit_id, image_bytes, file.filename or "image.png")
+    try:
+        return await svc.upload_and_parse(unit_id, image_bytes, file.filename or "image.png", provider)
+    finally:
+        if provider:
+            await safe_close_provider(provider)
 
 
 @router.get("/{unit_id}/ocr-result")

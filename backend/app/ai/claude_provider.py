@@ -3,9 +3,10 @@ import logging
 
 import httpx
 
-from app.ai.base import OCRResult, DialogueResult, ExerciseResult
+from app.ai.base import OCRResult, DialogueResult, ExerciseResult, ParseNLResult
 from app.ai.base_provider import (
     BaseAIProvider, SYSTEM_PROMPT_OCR, SYSTEM_PROMPT_DIALOGUE, SYSTEM_PROMPT_EXERCISE,
+    SYSTEM_PROMPT_PARSE_NL,
 )
 
 logger = logging.getLogger(__name__)
@@ -71,3 +72,11 @@ class ClaudeProvider(BaseAIProvider):
             "messages": [{"role": "user", "content": f"单词：{', '.join(words)}\n练习类型：{mode}"}],
         })
         return self._parse_exercise(data["content"][0]["text"])
+
+    async def parse_natural_language(self, text: str) -> ParseNLResult:
+        data = await self._call_api({
+            "model": self.model, "max_tokens": 4096,
+            "system": SYSTEM_PROMPT_PARSE_NL,
+            "messages": [{"role": "user", "content": text}],
+        })
+        return self._parse_nl(data["content"][0]["text"])
