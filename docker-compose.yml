@@ -1,6 +1,6 @@
 services:
   db:
-    image: mariadb:10.11
+    image: docker.jsdelivr.fyi/library/mariadb:10.6.14
     container_name: english_coach_db
     restart: unless-stopped
     ports:
