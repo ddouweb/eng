@@ -18,6 +18,8 @@ class WordService:
         words = [Word(unit_id=unit_id, **d) for d in words_data]
         words = await self.repo.batch_create(words)
         await self.session.commit()
+        for w in words:
+            await self.session.refresh(w)
         return success(data={
             "created_count": len(words),
             "words": [self._to_dict(w) for w in words],
@@ -44,6 +46,7 @@ class WordService:
             raise AppException(404, "Word not found")
         word = await self.repo.update(word, data)
         await self.session.commit()
+        await self.session.refresh(word)
         return success(data=self._to_dict(word))
 
     async def delete_word(self, word_id: int) -> dict:

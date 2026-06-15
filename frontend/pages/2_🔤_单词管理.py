@@ -1,7 +1,7 @@
+import pandas as pd
 import streamlit as st
 from api_client import client
 from components.ai_helpers import ai_kwargs, require_ai_key
-from components.mastery_badge import MASTERY_COLORS
 
 st.header("🔤 单词管理")
 
@@ -95,7 +95,7 @@ with st.expander("🤖 AI 智能添加单词"):
                     del st.session_state[nl_draft_key]
                     st.rerun()
 
-# ── 单词列表 ─────────────────────────────────────────
+# ── 单词列表（统一编辑表格）─────────────────────────
 resp = client.list_words(unit_id, page_size=200)
 if resp["code"] != 200:
     st.error(resp["message"])
@@ -106,40 +106,50 @@ if not words:
     st.info("这个 Unit 还没有单词。")
     st.stop()
 
-st.caption(f"共 {resp['data']['total']} 个单词")
-
-TAG_OPTIONS = {
-    "⭐ 收藏": "favorite",
-    "🔥 高频": "high_freq",
-    "📚 考试重点": "exam_focus",
-    "❌ 不再练习": "excluded",
-    "✅ 已记忆": "memorized",
+STATUS_LABEL = {
+    "unlearned": "🔴 未学习",
+    "learning": "🟠 学习中",
+    "familiar": "🔵 熟悉",
+    "permanent": "🟢 永久",
 }
 
+# 构建 DataFrame：仅编辑文字，状态只读展示
+rows = []
 for w in words:
-    col1, col2, col3, col4, col5 = st.columns([3, 3, 2, 2, 1])
-    with col1:
-        st.markdown(f"**{w['english']}**")
-    with col2:
-        st.markdown(w["chinese"])
-    with col3:
-        mastery = w.get("mastery")
-        level = mastery["level"] if mastery else "unlearned"
-        color, label = MASTERY_COLORS.get(level, ("gray", level))
-        st.badge(label, color=color)
-    with col4:
-        current_tags = w.get("tags", [])
-        tag_emojis = " ".join(k.split()[0] for k, v in TAG_OPTIONS.items() if v in current_tags)
-        with st.popover(tag_emojis or "🏷️"):
-            selected_labels = [k for k, v in TAG_OPTIONS.items() if v in current_tags]
-            new_tags = st.multiselect(
-                "标签", list(TAG_OPTIONS.keys()),
-                default=selected_labels, key=f"tags_{w['id']}",
-            )
-            if set(new_tags) != set(selected_labels):
-                tag_values = [TAG_OPTIONS[t] for t in new_tags]
-                client.set_tags(w["id"], tag_values)
-    with col5:
-        if st.button("🗑️", key=f"del_w_{w['id']}"):
-            client.delete_word(w["id"])
-            st.rerun()
+    level = (w.get("mastery") or {}).get("level", "unlearned")
+    rows.append({
+        "ID": w["id"],
+        "英文": w["english"],
+        "中文": w["chinese"],
+        "状态": STATUS_LABEL.get(level, level),
+    })
+df = pd.DataFrame(rows)
+
+st.caption(f"共 {len(words)} 个单词 · 双击编辑英文/中文 · 状态由练习自动更新 · 点击保存生效")
+
+edited = st.data_editor(
+    df,
+    column_config={
+        "ID": st.column_config.NumberColumn(disabled=True, width="small"),
+        "英文": st.column_config.TextColumn(width="medium"),
+        "中文": st.column_config.TextColumn(width="medium"),
+        "状态": st.column_config.TextColumn(disabled=True, width="small"),
+    },
+    hide_index=True,
+    use_container_width=True,
+    num_rows="fixed",
+    key=f"editor_{unit_id}",
+)
+
+if st.button("💾 保存所有修改", type="primary"):
+    changed = 0
+    for orig, row in zip(words, edited.itertuples()):
+        if orig["english"] != row.英文 or orig["chinese"] != row.中文:
+            r = client.update_word(orig["id"], english=row.英文, chinese=row.中文)
+            if r["code"] == 200:
+                changed += 1
+    if changed:
+        st.success(f"已更新 {changed} 个单词")
+        st.rerun()
+    else:
+        st.info("没有检测到修改")

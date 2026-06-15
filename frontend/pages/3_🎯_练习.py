@@ -19,6 +19,15 @@ MODES = {
     "flip_match": "🔍 翻牌寻配",
 }
 
+TAG_OPTIONS = ["favorite", "high_freq", "exam_focus", "excluded", "memorized"]
+TAG_EMOJI = {
+    "favorite": "⭐收藏",
+    "high_freq": "🔥高频",
+    "exam_focus": "📚考试",
+    "excluded": "❌排除",
+    "memorized": "✅已记",
+}
+
 
 def _bg_submit(session_id, word_id, is_correct, user_answer=None):
     threading.Thread(
@@ -88,10 +97,11 @@ if not in_practice and not practice_done:
     selected_names = st.pills("📚 选择 Unit", unit_names, selection_mode="multi")
     selected_ids = [unit_id_map[n] for n in (selected_names or [])]
 
-    # 题目数量 — 预设按钮
-    count_opts = [5, 10, 15, 20, 30]
-    count = st.pills("📝 题目数量", count_opts, default=10,
-                     format_func=lambda x: f"{x} 题") or 10
+    # 题目数量 — 预设按钮（"全部" 表示所有可练习单词）
+    count_opts = [50, 80, 100, 200, "全部"]
+    count_choice = st.pills("📝 题目数量", count_opts, default=50,
+                            format_func=lambda x: "全部" if x == "全部" else f"{x} 题") or 50
+    count = 2000 if count_choice == "全部" else count_choice
 
     st.divider()
     st.markdown("**👇 选择模式，点击即开始**")
@@ -474,19 +484,36 @@ elif practice_done:
     col2.metric("正确数", correct)
     col3.metric("正确率", f"{accuracy}%")
 
-    st.subheader("📝 答题回顾")
+    st.subheader("📝 答题回顾 · 可标记单词")
+    st.caption("点击标签药丸即可切换：⭐收藏 🔥高频 📚考试 ❌排除 ✅已记")
     for i, q in enumerate(p["questions"]):
         is_correct = p["results"][i] if i < len(p["results"]) else False
-        if is_correct:
-            st.markdown(f"✅ **{q['english']}** — {q['chinese']}")
-        else:
+        with st.container(border=True):
             col_w, col_btn = st.columns([5, 1])
             with col_w:
-                st.markdown(f"❌ **{q['english']}** — {q['chinese']}")
+                icon = "✅" if is_correct else "❌"
+                st.markdown(f"{icon} **{q['english']}** — {q['chinese']}")
             with col_btn:
-                if st.button("改标", key=f"fix_{i}"):
+                if not is_correct and st.button("改标", key=f"fix_{i}"):
                     _bg_submit(sid, q["word_id"], True)
-                    p["results"][i] = True; st.rerun()
+                    p["results"][i] = True
+                    st.rerun()
+
+            current_tags = list(q.get("tags", []))
+            selected = st.pills(
+                "标签",
+                TAG_OPTIONS,
+                selection_mode="multi",
+                default=[t for t in current_tags if t in TAG_OPTIONS],
+                format_func=lambda t: TAG_EMOJI.get(t, t),
+                key=f"tags_pills_{q['word_id']}_{i}",
+            )
+            new_tags = list(selected or [])
+            if new_tags != current_tags:
+                client.set_tags(q["word_id"], new_tags)
+                q["tags"] = new_tags
+                st.toast(f"已更新 {q['english']} 的标签")
+                st.rerun()
 
     st.subheader("📊 单元进度")
     level_emoji = {"unlearned": "🔴", "learning": "🟠", "familiar": "🔵", "permanent": "🟢"}
@@ -511,7 +538,7 @@ elif practice_done:
 
     if st.button("🔄 再来一次"):
         for key in list(st.session_state.keys()):
-            if any(key.startswith(pfx) for pfx in ("mg", "fm", "mf", "tc", "fc_", "scr_", "mf_opts_")):
+            if any(key.startswith(pfx) for pfx in ("mg", "fm", "mf", "tc", "fc_", "scr_", "mf_opts_", "tags_pills_")):
                 del st.session_state[key]
         st.session_state.prac = {
             "questions": [], "idx": 0, "session_id": None,

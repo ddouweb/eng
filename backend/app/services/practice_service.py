@@ -170,6 +170,8 @@ class PracticeService:
                     "chinese": word.chinese,
                     "type": word.type.value,
                     "weight": w,
+                    "tags": [t.value for t in tags],
+                    "mastery_level": level.value,
                 })
 
         return weighted_sample(candidates, count)
