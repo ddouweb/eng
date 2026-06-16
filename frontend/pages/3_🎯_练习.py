@@ -3,7 +3,13 @@ import threading
 import time
 
 import streamlit as st
-from streamlit_autorefresh import st_autorefresh
+
+try:
+    from streamlit_autorefresh import st_autorefresh
+    _HAS_AUTOREFRESH = True
+except ImportError:
+    _HAS_AUTOREFRESH = False
+
 from api_client import client
 
 MODES = {
@@ -37,6 +43,18 @@ def _bg_submit(session_id, word_id, is_correct, user_answer=None):
         kwargs={"user_answer": user_answer},
         daemon=True,
     ).start()
+
+
+def _restart_practice():
+    """清空本轮所有 UI 状态，回到配置页。"""
+    for key in list(st.session_state.keys()):
+        if any(key.startswith(pfx) for pfx in ("mg", "fm", "mf", "tc", "fc_", "scr_", "mf_opts_", "tags_pills_")):
+            del st.session_state[key]
+    st.session_state.prac = {
+        "questions": [], "idx": 0, "session_id": None,
+        "results": [], "mode": None, "unit_ids": [], "finished": False,
+    }
+    st.rerun()
 
 
 def _gen_en_options(q, all_questions, n=4):
@@ -106,12 +124,22 @@ if not in_practice and not practice_done:
                             format_func=lambda x: "全部" if x == "全部" else f"{x} 题") or 50
     count = 2000 if count_choice == "全部" else count_choice
 
-    # 单词卡自动下一题延时
-    fc_delay = st.number_input(
-        "🃏 单词卡：答后自动下一题延时（秒）",
-        min_value=0.5, max_value=10.0, value=3.0, step=0.5,
-        help="点「认识/不认识」后自动展示释义，并在此延时后切换下一题；也可手动点「下一题」立即切换",
+    # 单词卡自动/手动模式
+    fc_auto_next = st.checkbox(
+        "🃏 单词卡：答后自动下一题",
+        value=False,
+        disabled=not _HAS_AUTOREFRESH,
+        help=(
+            "勾选：点「认识/不认识」即终态，自动展示释义并在延时后切换下一题（依赖 streamlit-autorefresh）。"
+            "不勾选：答后可反复修正标记，点「下一题」才提交最终答案"
+        ) + ("" if _HAS_AUTOREFRESH else "（未安装 streamlit-autorefresh，仅支持手动模式）"),
     )
+    fc_delay = 3.0
+    if fc_auto_next:
+        fc_delay = st.number_input(
+            "自动下一题延时（秒）",
+            min_value=0.5, max_value=10.0, value=3.0, step=0.5,
+        )
 
     st.divider()
     st.markdown("**👇 选择模式，点击即开始**")
@@ -139,6 +167,7 @@ if not in_practice and not practice_done:
                             "idx": 0, "results": [], "mode": key,
                             "unit_ids": selected_ids, "finished": False,
                             "fc_delay": fc_delay,
+                            "fc_auto_next": fc_auto_next,
                         })
                         st.rerun()
                     else:
@@ -165,9 +194,12 @@ if in_practice:
         if "fc_show" not in st.session_state:
             st.session_state.fc_show = False
 
-        delay = p.get("fc_delay", 1.0)
+        delay = p.get("fc_delay", 3.0)
+        # 仅当用户勾选自动模式且 streamlit-autorefresh 已装才走自动路径
+        auto_next = bool(p.get("fc_auto_next", True)) and _HAS_AUTOREFRESH
         answered = st.session_state.get("fc_answered", False)
         answer_time = st.session_state.get("fc_answer_time")
+        pending = st.session_state.get("fc_pending_answer")  # True/False/None
 
         st.markdown(f"### {q['english']}")
 
@@ -184,22 +216,28 @@ if in_practice:
             col_ok, col_fail = st.columns(2)
             with col_ok:
                 if st.button("✅ 认识", use_container_width=True, key=f"fc_ok_{p['idx']}"):
-                    _bg_submit(sid, q["word_id"], True)
-                    p["results"].append(True)
+                    if auto_next:
+                        _bg_submit(sid, q["word_id"], True)
+                        p["results"].append(True)
+                        st.session_state.fc_answer_time = time.time()
+                    else:
+                        st.session_state.fc_pending_answer = True
                     st.session_state.fc_answered = True
-                    st.session_state.fc_answer_time = time.time()
                     st.session_state.fc_show = True
                     st.rerun()
             with col_fail:
                 if st.button("❌ 不认识", use_container_width=True, key=f"fc_fail_{p['idx']}"):
-                    _bg_submit(sid, q["word_id"], False, q["english"])
-                    p["results"].append(False)
+                    if auto_next:
+                        _bg_submit(sid, q["word_id"], False, q["english"])
+                        p["results"].append(False)
+                        st.session_state.fc_answer_time = time.time()
+                    else:
+                        st.session_state.fc_pending_answer = False
                     st.session_state.fc_answered = True
-                    st.session_state.fc_answer_time = time.time()
                     st.session_state.fc_show = True
                     st.rerun()
-        else:
-            # ── 阶段 2：已答，等待自动下一题 ──────────────
+        elif auto_next:
+            # ── 阶段 2A：已答 · 自动模式 — 倒计时下一题 ──
             # 用 streamlit-autorefresh 在剩余时间后触发一次 rerun。
             # 与 button 触发的 rerun 一样，都是 streamlit 标准 rerun，
             # session_state 完全保留，不会出现 fragment 干扰 button 状态的问题。
@@ -209,6 +247,7 @@ if in_practice:
                 p["idx"] += 1
                 st.session_state.fc_answered = False
                 st.session_state.fc_answer_time = None
+                st.session_state.fc_pending_answer = None
                 st.session_state.fc_show = False
                 st.rerun()
             else:
@@ -226,8 +265,51 @@ if in_practice:
                         p["idx"] += 1
                         st.session_state.fc_answered = False
                         st.session_state.fc_answer_time = None
+                        st.session_state.fc_pending_answer = None
                         st.session_state.fc_show = False
                         st.rerun()
+        else:
+            # ── 阶段 2B：已答 · 手动模式 — 可重标 + 下一题 ─
+            st.info(f"**{q['chinese']}**")
+            col_ok, col_fail = st.columns(2)
+            with col_ok:
+                label_ok = "✅ 已标记：认识" if pending is True else "✅ 认识"
+                if st.button(
+                    label_ok,
+                    use_container_width=True,
+                    key=f"fc_ok_{p['idx']}",
+                    type="primary" if pending is True else "secondary",
+                ):
+                    st.session_state.fc_pending_answer = True
+                    st.rerun()
+            with col_fail:
+                label_fail = "❌ 已标记：不认识" if pending is False else "❌ 不认识"
+                if st.button(
+                    label_fail,
+                    use_container_width=True,
+                    key=f"fc_fail_{p['idx']}",
+                    type="primary" if pending is False else "secondary",
+                ):
+                    st.session_state.fc_pending_answer = False
+                    st.rerun()
+            if st.button(
+                "➡️ 下一题",
+                use_container_width=True,
+                key=f"fc_next_{p['idx']}",
+                disabled=(pending is None),
+            ):
+                # 提交最终答案（仅在下一题时提交一次）
+                is_correct = pending is True
+                _bg_submit(
+                    sid, q["word_id"], is_correct,
+                    None if is_correct else q["english"],
+                )
+                p["results"].append(is_correct)
+                p["idx"] += 1
+                st.session_state.fc_answered = False
+                st.session_state.fc_pending_answer = None
+                st.session_state.fc_show = False
+                st.rerun()
 
     # ═══ 英→中 选择 ════════════════════════════════════
     elif p["mode"] == "choice":
@@ -544,6 +626,9 @@ elif practice_done:
     col2.metric("正确数", correct)
     col3.metric("正确率", f"{accuracy}%")
 
+    if st.button("🔄 再来一次", use_container_width=True, type="primary"):
+        _restart_practice()
+
     st.subheader("📝 答题回顾 · 可标记单词")
     st.caption("点击标签药丸即可切换：⭐收藏 🔥高频 📚考试 ❌排除 ✅已记")
     for i, q in enumerate(p["questions"]):
@@ -602,11 +687,4 @@ elif practice_done:
                 st.progress(rate, text=dist_str)
 
     if st.button("🔄 再来一次"):
-        for key in list(st.session_state.keys()):
-            if any(key.startswith(pfx) for pfx in ("mg", "fm", "mf", "tc", "fc_", "scr_", "mf_opts_", "tags_pills_")):
-                del st.session_state[key]
-        st.session_state.prac = {
-            "questions": [], "idx": 0, "session_id": None,
-            "results": [], "mode": None, "unit_ids": [], "finished": False,
-        }
-        st.rerun()
+        _restart_practice()
