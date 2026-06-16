@@ -1,0 +1,63 @@
+# 生产部署版：使用外部已存在的数据库实例，不启动 db 容器
+# 用法：
+#   docker-compose -f docker-compose.prod.yml up -d --build
+#
+# 部署前请先在本机/目标机的 .env 文件里填好外部数据库连接信息。
+# 此文件会从 .env 读取变量（DB_HOST/DB_PORT/DB_USER/DB_PASSWORD/DB_NAME 等）。
+
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: english_coach_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: english_coach_backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      - backend_uploads:/app/uploads
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      # 外部数据库连接（从 .env 读，避免硬编码）
+      - DATABASE_URL=mysql+aiomysql://${DB_USER:-root}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT:-3306}/${DB_NAME:-english_coach}?charset=utf8mb4
+      - REDIS_URL=redis://redis:6379/0
+      - CORS_ORIGINS=http://localhost:8501,http://frontend:8501
+      # 登录 & JWT（从 .env 读）
+      - AUTH_USERNAME=${AUTH_USERNAME:-admin}
+      - AUTH_PASSWORD=${AUTH_PASSWORD:-admin123}
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY}
+      - JWT_EXPIRE_MINUTES=${JWT_EXPIRE_MINUTES:-1440}
+      # AI 配置
+      - AI_PROVIDER=${AI_PROVIDER:-glm}
+      - AI_API_KEY=${AI_API_KEY}
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: english_coach_frontend
+    restart: unless-stopped
+    ports:
+      - "8501:8501"
+    environment:
+      - API_BASE_URL=http://backend:8000/api/v1
+      - PUBLIC_API_URL=http://${PUBLIC_HOST:-localhost}:8000/api/v1
+    depends_on:
+      - backend
+
+volumes:
+  backend_uploads:
