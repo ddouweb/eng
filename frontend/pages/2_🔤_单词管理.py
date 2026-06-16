@@ -1,7 +1,6 @@
 import pandas as pd
 import streamlit as st
 from api_client import client
-from components.ai_helpers import ai_kwargs, require_ai_key
 
 st.header("🔤 单词管理")
 
@@ -48,15 +47,14 @@ with st.expander("🤖 AI 智能添加单词"):
         key="nl_input_text",
     )
     if st.button("AI 解析", disabled=not nl_text.strip()):
-        if require_ai_key():
-            with st.spinner("AI 正在解析文本..."):
-                resp = client.parse_words(nl_text.strip(), **ai_kwargs())
-            if resp["code"] == 200:
-                drafts = resp["data"]["draft_words"]
-                st.session_state[f"nl_draft_{unit_id}"] = drafts
-                st.success(f"解析完成，识别到 {len(drafts)} 个词条")
-            else:
-                st.error(resp["message"])
+        with st.spinner("AI 正在解析文本..."):
+            resp = client.parse_words(nl_text.strip())
+        if resp["code"] == 200:
+            drafts = resp["data"]["draft_words"]
+            st.session_state[f"nl_draft_{unit_id}"] = drafts
+            st.success(f"解析完成，识别到 {len(drafts)} 个词条")
+        else:
+            st.error(resp["message"])
 
     nl_draft_key = f"nl_draft_{unit_id}"
     if nl_draft_key in st.session_state:

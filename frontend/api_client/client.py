@@ -111,14 +111,10 @@ def remove_tag(word_id: int, tag: str) -> dict:
 
 # ── OCR ────────────────────────────────────────────────
 
-def upload_image(
-    unit_id: int, file_bytes: bytes, filename: str,
-    ai_provider: str | None = None, ai_api_key: str | None = None,
-) -> dict:
-    data = _ai_extra(ai_provider, ai_api_key) or None
+def upload_image(unit_id: int, file_bytes: bytes, filename: str) -> dict:
     return _handle(_request(
         "POST", _url(f"/units/{unit_id}/upload-image"),
-        files={"file": (filename, file_bytes)}, data=data,
+        files={"file": (filename, file_bytes)},
     ))
 
 
@@ -206,36 +202,18 @@ def get_leaderboard() -> dict:
 
 # ── AI ──────────────────────────────────────────────────
 
-def _ai_extra(ai_provider: str | None = None, ai_api_key: str | None = None) -> dict:
-    extra = {}
-    if ai_provider:
-        extra["ai_provider"] = ai_provider
-    if ai_api_key:
-        extra["ai_api_key"] = ai_api_key
-    return extra
-
-
-def generate_dialogue(
-    unit_ids: list[int], scenario: str = "日常对话",
-    ai_provider: str | None = None, ai_api_key: str | None = None,
-) -> dict:
-    body: dict = {"unit_ids": unit_ids, "scenario": scenario, **_ai_extra(ai_provider, ai_api_key)}
+def generate_dialogue(unit_ids: list[int], scenario: str = "日常对话") -> dict:
+    body: dict = {"unit_ids": unit_ids, "scenario": scenario}
     return _handle(_request("POST", _url("/ai/dialogue"), json=body))
 
 
-def generate_exercise(
-    unit_ids: list[int], mode: str = "choice",
-    ai_provider: str | None = None, ai_api_key: str | None = None,
-) -> dict:
-    body: dict = {"unit_ids": unit_ids, "mode": mode, **_ai_extra(ai_provider, ai_api_key)}
+def generate_exercise(unit_ids: list[int], mode: str = "choice") -> dict:
+    body: dict = {"unit_ids": unit_ids, "mode": mode}
     return _handle(_request("POST", _url("/ai/exercise"), json=body))
 
 
-def parse_words(
-    text: str,
-    ai_provider: str | None = None, ai_api_key: str | None = None,
-) -> dict:
-    body: dict = {"text": text, **_ai_extra(ai_provider, ai_api_key)}
+def parse_words(text: str) -> dict:
+    body: dict = {"text": text}
     return _handle(_request("POST", _url("/ai/parse-words"), json=body))
 
 
