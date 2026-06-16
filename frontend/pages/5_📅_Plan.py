@@ -40,6 +40,8 @@ with st.expander("➕ 创建新计划", expanded=False):
 tab_all, tab_active, tab_paused = st.tabs(["全部", "进行中", "已暂停"])
 
 for tab, status_filter in [(tab_all, None), (tab_active, "active"), (tab_paused, "paused")]:
+    # st.tabs 内部三个 tab 的 widget 都会渲染，key 必须加 tab 前缀避免冲突
+    kp = status_filter or "all"
     with tab:
         resp = client.list_plans(status=status_filter)
         if resp["code"] != 200:
@@ -62,14 +64,14 @@ for tab, status_filter in [(tab_all, None), (tab_active, "active"), (tab_paused,
                     st.caption(f"创建于: {p['created_at'][:10] if p.get('created_at') else '-'}")
                 with col3:
                     if p["status"] == "active":
-                        if st.button("⏸ 暂停", key=f"pause_{p['id']}"):
+                        if st.button("⏸ 暂停", key=f"pause_{kp}_{p['id']}"):
                             r = client.pause_plan(p["id"])
                             if r["code"] == 200:
                                 st.rerun()
                             else:
                                 st.error(r["message"])
                     elif p["status"] == "paused":
-                        if st.button("▶ 继续", key=f"resume_{p['id']}"):
+                        if st.button("▶ 继续", key=f"resume_{kp}_{p['id']}"):
                             r = client.resume_plan(p["id"])
                             if r["code"] == 200:
                                 st.rerun()
@@ -77,7 +79,7 @@ for tab, status_filter in [(tab_all, None), (tab_active, "active"), (tab_paused,
                                 st.error(r["message"])
 
                 # 展开查看每日任务
-                with st.expander("查看每日任务", key=f"tasks_{p['id']}"):
+                with st.expander("查看每日任务", key=f"tasks_{kp}_{p['id']}"):
                     detail = client.get_plan(p["id"])
                     if detail["code"] != 200:
                         st.error(detail["message"])
@@ -110,18 +112,18 @@ for tab, status_filter in [(tab_all, None), (tab_active, "active"), (tab_paused,
                                 )
 
                             if task_status != "completed":
-                                with st.expander("更新进度", key=f"upd_{t['id']}"):
+                                with st.expander("更新进度", key=f"upd_{kp}_{t['id']}"):
                                     cn = st.number_input(
                                         "已完成新词", min_value=0,
                                         max_value=t["new_count"], value=t["completed_new"],
-                                        key=f"cn_{t['id']}",
+                                        key=f"cn_{kp}_{t['id']}",
                                     )
                                     cr = st.number_input(
                                         "已完成复习", min_value=0,
                                         max_value=t["review_count"], value=t["completed_review"],
-                                        key=f"cr_{t['id']}",
+                                        key=f"cr_{kp}_{t['id']}",
                                     )
-                                    if st.button("保存", key=f"save_{t['id']}"):
+                                    if st.button("保存", key=f"save_{kp}_{t['id']}"):
                                         r = client.update_task(p["id"], t["id"], cn, cr)
                                         if r["code"] == 200:
                                             st.success("已更新")
