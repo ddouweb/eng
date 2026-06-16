@@ -3,6 +3,7 @@ import threading
 import time
 
 import streamlit as st
+from streamlit_autorefresh import st_autorefresh
 from api_client import client
 
 MODES = {
@@ -82,7 +83,9 @@ practice_done = bool(p["questions"]) and p["idx"] >= len(p["questions"])
 
 # ── 配置区 ─────────────────────────────────────────────
 if not in_practice and not practice_done:
-    if "_prac_units" not in st.session_state:
+    if "_prac_units" not in st.session_state or (
+        not st.session_state["_prac_units"] and client.get_token()
+    ):
         resp = client.list_units(page_size=100)
         st.session_state["_prac_units"] = resp["data"]["items"] if resp["code"] == 200 else []
 
@@ -98,10 +101,17 @@ if not in_practice and not practice_done:
     selected_ids = [unit_id_map[n] for n in (selected_names or [])]
 
     # 题目数量 — 预设按钮（"全部" 表示所有可练习单词）
-    count_opts = [50, 80, 100, 200, "全部"]
+    count_opts = [10, 20, 30, 50, 80, 100, 150, 200, "全部"]
     count_choice = st.pills("📝 题目数量", count_opts, default=50,
                             format_func=lambda x: "全部" if x == "全部" else f"{x} 题") or 50
     count = 2000 if count_choice == "全部" else count_choice
+
+    # 单词卡自动下一题延时
+    fc_delay = st.number_input(
+        "🃏 单词卡：答后自动下一题延时（秒）",
+        min_value=0.5, max_value=10.0, value=3.0, step=0.5,
+        help="点「认识/不认识」后自动展示释义，并在此延时后切换下一题；也可手动点「下一题」立即切换",
+    )
 
     st.divider()
     st.markdown("**👇 选择模式，点击即开始**")
@@ -128,6 +138,7 @@ if not in_practice and not practice_done:
                             "session_id": resp["data"]["session_id"],
                             "idx": 0, "results": [], "mode": key,
                             "unit_ids": selected_ids, "finished": False,
+                            "fc_delay": fc_delay,
                         })
                         st.rerun()
                     else:
@@ -153,22 +164,70 @@ if in_practice:
         st.progress(p["idx"] / total, text=f"第 {p['idx'] + 1} / {total} 题")
         if "fc_show" not in st.session_state:
             st.session_state.fc_show = False
+
+        delay = p.get("fc_delay", 1.0)
+        answered = st.session_state.get("fc_answered", False)
+        answer_time = st.session_state.get("fc_answer_time")
+
         st.markdown(f"### {q['english']}")
-        if st.button("显示答案" if not st.session_state.fc_show else "隐藏答案"):
-            st.session_state.fc_show = not st.session_state.fc_show
-        if st.session_state.fc_show:
+
+        if not answered:
+            # ── 阶段 1：未答 ───────────────────────────────
+            if st.button(
+                "显示答案" if not st.session_state.fc_show else "隐藏答案",
+                key=f"fc_toggle_{p['idx']}",
+            ):
+                st.session_state.fc_show = not st.session_state.fc_show
+                st.rerun()
+            if st.session_state.fc_show:
+                st.info(f"**{q['chinese']}**")
+            col_ok, col_fail = st.columns(2)
+            with col_ok:
+                if st.button("✅ 认识", use_container_width=True, key=f"fc_ok_{p['idx']}"):
+                    _bg_submit(sid, q["word_id"], True)
+                    p["results"].append(True)
+                    st.session_state.fc_answered = True
+                    st.session_state.fc_answer_time = time.time()
+                    st.session_state.fc_show = True
+                    st.rerun()
+            with col_fail:
+                if st.button("❌ 不认识", use_container_width=True, key=f"fc_fail_{p['idx']}"):
+                    _bg_submit(sid, q["word_id"], False, q["english"])
+                    p["results"].append(False)
+                    st.session_state.fc_answered = True
+                    st.session_state.fc_answer_time = time.time()
+                    st.session_state.fc_show = True
+                    st.rerun()
+        else:
+            # ── 阶段 2：已答，等待自动下一题 ──────────────
+            # 用 streamlit-autorefresh 在剩余时间后触发一次 rerun。
+            # 与 button 触发的 rerun 一样，都是 streamlit 标准 rerun，
+            # session_state 完全保留，不会出现 fragment 干扰 button 状态的问题。
+            elapsed = time.time() - answer_time
             st.info(f"**{q['chinese']}**")
-        col_ok, col_fail = st.columns(2)
-        with col_ok:
-            if st.button("✅ 认识", use_container_width=True):
-                _bg_submit(sid, q["word_id"], True)
-                p["results"].append(True); p["idx"] += 1
-                st.session_state.fc_show = False; st.rerun()
-        with col_fail:
-            if st.button("❌ 不认识", use_container_width=True):
-                _bg_submit(sid, q["word_id"], False, q["english"])
-                p["results"].append(False); p["idx"] += 1
-                st.session_state.fc_show = False; st.rerun()
+            if elapsed >= delay:
+                p["idx"] += 1
+                st.session_state.fc_answered = False
+                st.session_state.fc_answer_time = None
+                st.session_state.fc_show = False
+                st.rerun()
+            else:
+                remaining = delay - elapsed
+                # 调度一次自动 rerun：interval 比剩余多 100ms 防止过早触发
+                st_autorefresh(
+                    interval=int(remaining * 1000) + 100,
+                    key=f"fc_ar_{p['idx']}_{int(answer_time * 1000)}",
+                )
+                col_info, col_next = st.columns([3, 2])
+                with col_info:
+                    st.caption(f"⏱️ {remaining:.1f}s 后自动下一题")
+                with col_next:
+                    if st.button("➡️ 下一题", use_container_width=True, key=f"fc_next_{p['idx']}"):
+                        p["idx"] += 1
+                        st.session_state.fc_answered = False
+                        st.session_state.fc_answer_time = None
+                        st.session_state.fc_show = False
+                        st.rerun()
 
     # ═══ 英→中 选择 ════════════════════════════════════
     elif p["mode"] == "choice":
@@ -468,11 +527,12 @@ if in_practice:
 
 # ── 练习结束 ───────────────────────────────────────────
 elif practice_done:
-    if not p["finished"]:
+    first_finish = not p["finished"]
+    if first_finish:
         threading.Thread(target=client.finish_practice, args=(p["session_id"],), daemon=True).start()
         p["finished"] = True
+        st.balloons()
 
-    st.balloons()
     st.subheader("🎉 练习完成！")
     sid = p["session_id"]
     member_id = st.session_state.get("member_id", 1)
@@ -517,24 +577,29 @@ elif practice_done:
 
     st.subheader("📊 单元进度")
     level_emoji = {"unlearned": "🔴", "learning": "🟠", "familiar": "🔵", "permanent": "🟢"}
-    level_name = {"unlearned": "未学习", "learning": "学习中", "familiar": "熟悉", "permanent": "永久"}
-    if "_prac_units" not in st.session_state:
+    if "_prac_units" not in st.session_state or (
+        not st.session_state["_prac_units"] and client.get_token()
+    ):
         resp = client.list_units(page_size=100)
         st.session_state["_prac_units"] = resp["data"]["items"] if resp["code"] == 200 else []
     unit_map = {u["id"]: u["title"] for u in st.session_state["_prac_units"]}
-    for uid in p["unit_ids"]:
-        stats = client.get_stats_unit(uid, member_id)
-        if stats["code"] != 200:
-            continue
-        s = stats["data"]
-        with st.container(border=True):
-            st.markdown(f"**{unit_map.get(uid, f'Unit {uid}')}**")
-            rate = s["mastered_count"] / s["total_words"] if s["total_words"] > 0 else 0
-            st.progress(rate, text=f"掌握率 {s['mastery_rate']}%")
-            dist = s["mastery_distribution"]
-            cols = st.columns(4)
-            for j, (lv, em) in enumerate(level_emoji.items()):
-                cols[j].caption(f"{em} {level_name[lv]} {dist[lv]}")
+
+    UNIT_COLS = 3
+    unit_ids = p["unit_ids"]
+    for row_start in range(0, len(unit_ids), UNIT_COLS):
+        cols = st.columns(UNIT_COLS)
+        for i, uid in enumerate(unit_ids[row_start:row_start + UNIT_COLS]):
+            with cols[i]:
+                stats = client.get_stats_unit(uid, member_id)
+                if stats["code"] != 200:
+                    st.caption(f"{unit_map.get(uid, f'Unit {uid}')} · 加载失败")
+                    continue
+                s = stats["data"]
+                rate = s["mastered_count"] / s["total_words"] if s["total_words"] > 0 else 0
+                dist = s["mastery_distribution"]
+                dist_str = "  ".join(f"{level_emoji[lv]} {dist[lv]}" for lv in level_emoji)
+                st.caption(f"**{unit_map.get(uid, f'Unit {uid}')}** · 掌握率 {s['mastery_rate']}%")
+                st.progress(rate, text=dist_str)
 
     if st.button("🔄 再来一次"):
         for key in list(st.session_state.keys()):

@@ -58,6 +58,8 @@ if not st.session_state.token:
                     new_token = client.get_token()
                     st.session_state.token = new_token
                     _set_auth_cookie(new_token)
+                    # 清除可能由未登录态访问页面留下的脏缓存
+                    st.session_state.pop("_prac_units", None)
                     st.success("登录成功！")
                     st.rerun()
                 else:
@@ -93,5 +95,6 @@ st.sidebar.markdown("---")
 if st.sidebar.button("🚪 退出登录"):
     client.set_token(None)
     st.session_state.token = None
+    st.session_state.pop("_prac_units", None)
     _clear_auth_cookie()
     st.rerun()
