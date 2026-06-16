@@ -56,10 +56,13 @@ class PlanService:
         plan = await self.plan_repo.get_with_units(plan_id)
         if not plan:
             raise AppException(404, "Plan not found")
+        unit_ids_stmt = select(PlanUnit.unit_id).where(PlanUnit.plan_id == plan.id)
+        unit_ids = [r[0] for r in (await self.session.execute(unit_ids_stmt)).all()]
         tasks = await self.task_repo.get_by_plan_range(
             plan.id, date.today(), plan.deadline or date.today() + timedelta(days=30)
         )
         d = self._plan_to_dict(plan)
+        d["unit_ids"] = unit_ids
         d["tasks"] = [self._task_to_dict(t) for t in tasks]
         return success(data=d)
 

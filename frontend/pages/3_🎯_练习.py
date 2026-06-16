@@ -1,6 +1,7 @@
 import random
 import threading
 import time
+from datetime import date
 
 import streamlit as st
 
@@ -54,6 +55,8 @@ def _restart_practice():
         "questions": [], "idx": 0, "session_id": None,
         "results": [], "mode": None, "unit_ids": [], "finished": False,
     }
+    # 重新拉一次今日计划快照，反映刚刚的练习进度
+    st.session_state.pop("_today_plan_snapshot", None)
     st.rerun()
 
 
@@ -111,6 +114,93 @@ if not in_practice and not practice_done:
     if not units:
         st.info("还没有 Unit，请先添加单词。")
         st.stop()
+
+    # ── 今日计划快捷入口 ───────────────────────────────
+    member_id = st.session_state.get("member_id", 1)
+    if "_today_plan_snapshot" not in st.session_state and client.get_token():
+        snapshot = []
+        plans_resp = client.list_plans(status="active")
+        if plans_resp["code"] == 200:
+            today_str = str(date.today())
+            for plan in plans_resp["data"]:
+                det = client.get_plan(plan["id"])
+                if det["code"] != 200:
+                    continue
+                tasks = det["data"].get("tasks", []) or []
+                today_task = next((t for t in tasks if t["task_date"] == today_str), None)
+                snapshot.append({
+                    "plan_id": plan["id"],
+                    "plan_name": plan["name"],
+                    "unit_ids": det["data"].get("unit_ids", []),
+                    "task": today_task,
+                })
+        st.session_state["_today_plan_snapshot"] = snapshot
+
+    today_snapshot = st.session_state.get("_today_plan_snapshot", [])
+    if today_snapshot:
+        with st.container(border=True):
+            st.markdown("### 📅 今日计划")
+            st.caption(f"共 {len(today_snapshot)} 个进行中的计划 · 数据每小时不自动刷新，刷新页面可重读")
+
+            total_new_remaining = 0
+            total_review_remaining = 0
+            agg_unit_ids: set[int] = set()
+            all_completed = True
+            for item in today_snapshot:
+                t = item["task"]
+                agg_unit_ids.update(item["unit_ids"])
+                if not t:
+                    continue
+                if t["status"] != "completed":
+                    all_completed = False
+                total_new_remaining += max(t["new_count"] - t["completed_new"], 0)
+                total_review_remaining += max(t["review_count"] - t["completed_review"], 0)
+            total_remaining = total_new_remaining + total_review_remaining
+
+            col_stat, col_act = st.columns([3, 2])
+            with col_stat:
+                m1, m2 = st.columns(2)
+                m1.metric("剩余新词", total_new_remaining)
+                m2.metric("剩余复习", total_review_remaining)
+            with col_act:
+                today_mode = st.selectbox(
+                    "练习模式",
+                    list(MODES.keys()),
+                    index=0,
+                    format_func=lambda m: MODES[m],
+                    key="today_mode_sel",
+                )
+                if all_completed:
+                    st.success("🎉 今日任务已完成", icon="🎉")
+                elif st.button(
+                    f"🚀 开始今日练习（{total_remaining} 题）",
+                    use_container_width=True,
+                    type="primary",
+                    disabled=(total_remaining == 0 or not agg_unit_ids),
+                ):
+                    resp = client.start_practice(
+                        member_id=member_id,
+                        mode=today_mode,
+                        unit_ids=list(agg_unit_ids),
+                        count=max(total_remaining, 5),
+                    )
+                    if resp["code"] == 200:
+                        questions = resp["data"]["questions"]
+                        if today_mode == "cn2en_choice":
+                            for q in questions:
+                                q["en_options"] = _gen_en_options(q, questions)
+                        p.update({
+                            "questions": questions,
+                            "session_id": resp["data"]["session_id"],
+                            "idx": 0, "results": [], "mode": today_mode,
+                            "unit_ids": list(agg_unit_ids), "finished": False,
+                            "fc_delay": 3.0, "fc_auto_next": False,
+                        })
+                        st.rerun()
+                    else:
+                        st.error(resp["message"])
+
+        st.divider()
 
     # Unit 选择 — 点击药丸切换
     unit_names = [u["title"] for u in units]

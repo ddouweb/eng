@@ -1,11 +1,12 @@
 import random
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.enums import MasteryLevel, PracticeMode, TagType
+from app.models.enums import MasteryLevel, PlanStatus, PracticeMode, TagType, TaskStatus
 from app.models.mastery import MasteryRecord
+from app.models.plan import DailyTask, LearningPlan, PlanUnit
 from app.models.practice import PracticeRecord, PracticeSession
 from app.models.word import Word, WordTag
 from app.repositories.mastery_repo import MasteryRepo
@@ -67,6 +68,12 @@ class PracticeService:
         if not word:
             raise AppException(404, "Word not found")
 
+        # 在插入 PracticeRecord 之前先判定：
+        #   - is_first_today: 该词今天是否还没有任何练习记录（避免同一天重复回流）
+        #   - is_new_word:    该词在今天之前从未被练过 → 新词；否则复习词
+        today = date.today()
+        is_first_today, is_new_word = await self._classify_attempt(ps.member_id, word_id, today)
+
         record = PracticeRecord(
             session_id=session_id,
             word_id=word_id,
@@ -79,6 +86,11 @@ class PracticeService:
             ps.correct_count += 1
 
         mastery = await self._update_mastery(ps.member_id, word_id, is_correct)
+
+        # 答对 + 今天首次 → 回流到对应 active plan 的今日任务
+        if is_correct and is_first_today:
+            await self._tick_daily_task(ps.member_id, word.unit_id, today, is_new_word)
+
         await self.session.commit()
 
         return success(data={
@@ -221,3 +233,65 @@ class PracticeService:
         elif record.level == MasteryLevel.permanent and record.wrong_count >= 2:
             record.level = MasteryLevel.familiar
         return record
+
+    async def _classify_attempt(
+        self, member_id: int, word_id: int, today: date,
+    ) -> tuple[bool, bool]:
+        """返回 (is_first_today, is_new_word)。
+
+        is_first_today: 该词今天还没有任何 PracticeRecord（在本次提交之前）。
+        is_new_word:   该词在今天之前从未被练过。
+        """
+        base = (
+            select(func.count())
+            .select_from(PracticeRecord)
+            .join(PracticeSession, PracticeSession.id == PracticeRecord.session_id)
+            .where(
+                PracticeRecord.word_id == word_id,
+                PracticeSession.member_id == member_id,
+            )
+        )
+        today_cnt = (await self.session.execute(
+            base.where(func.DATE(PracticeRecord.created_at) == today)
+        )).scalar_one()
+        prior_cnt = (await self.session.execute(
+            base.where(func.DATE(PracticeRecord.created_at) < today)
+        )).scalar_one()
+        return today_cnt == 0, prior_cnt == 0
+
+    async def _tick_daily_task(
+        self, member_id: int, unit_id: int, today: date, is_new_word: bool,
+    ) -> None:
+        """找到包含该 unit 的 active plan 对应今日的 daily_task，给对应槽位 +1。
+
+        - 新词 → completed_new+1（不超过 new_count）
+        - 复习词 → completed_review+1（不超过 review_count）
+        - 两个槽位都到顶 → status 置 completed
+        - 没有匹配的 plan/task → 静默返回
+        """
+        stmt = (
+            select(DailyTask)
+            .join(LearningPlan, LearningPlan.id == DailyTask.plan_id)
+            .join(PlanUnit, PlanUnit.plan_id == LearningPlan.id)
+            .where(
+                LearningPlan.member_id == member_id,
+                LearningPlan.status == PlanStatus.active,
+                PlanUnit.unit_id == unit_id,
+                DailyTask.task_date == today,
+                DailyTask.status != TaskStatus.completed,
+            )
+            .limit(1)
+        )
+        task = (await self.session.execute(stmt)).scalar_one_or_none()
+        if task is None:
+            return
+
+        if is_new_word:
+            if task.completed_new < task.new_count:
+                task.completed_new += 1
+        else:
+            if task.completed_review < task.review_count:
+                task.completed_review += 1
+
+        if task.completed_new >= task.new_count and task.completed_review >= task.review_count:
+            task.status = TaskStatus.completed
