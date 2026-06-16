@@ -1,4 +1,4 @@
-FROM python:3.11-slim
+FROM docker.jsdelivr.fyi/library/python:3.11-slim
 
 WORKDIR /app
 
