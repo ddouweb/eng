@@ -11,8 +11,8 @@ class NLParseService:
     def __init__(self, session: AsyncSession):
         self.session = session
 
-    async def parse_words(self, text: str, provider: "AIProvider | None" = None) -> dict:
-        p = provider or get_ai_provider()
+    async def parse_words(self, text: str) -> dict:
+        p = get_ai_provider()
         try:
             result = await p.parse_natural_language(text)
         except Exception as e:

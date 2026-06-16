@@ -26,7 +26,6 @@ class OCRService:
 
     async def upload_and_parse(
         self, unit_id: int, image_bytes: bytes, filename: str,
-        provider: "AIProvider | None" = None,
     ) -> dict:
         from app.repositories.unit_repo import UnitRepo
         unit_repo = UnitRepo(self.session)
@@ -48,7 +47,7 @@ class OCRService:
 
         image_url = f"/uploads/{saved_name}"
 
-        p = provider or get_ai_provider()
+        p = get_ai_provider()
         try:
             ocr_result: OCRResult = await p.parse_image(image_bytes, filename)
         except Exception as e:
