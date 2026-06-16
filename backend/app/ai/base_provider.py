@@ -3,27 +3,10 @@ import logging
 
 from app.ai.base import (
     DialogueLine, DialogueResult, ExerciseItem, ExerciseResult,
-    OCRResult, OCRWordItem, ParseNLResult, ParseNLWordItem,
+    ParseNLResult, ParseNLWordItem,
 )
 
 logger = logging.getLogger(__name__)
-
-SYSTEM_PROMPT_OCR = """你是一个英语教材 OCR 解析助手。用户会上传一张教材页面图片。
-请识别图片中的所有英文单词、句子及其对应的中文释义。
-
-返回严格 JSON 格式：
-{
-  "words": [
-    {"english": "hello", "chinese": "你好", "type": "word"},
-    {"english": "How are you?", "chinese": "你好吗？", "type": "sentence"}
-  ]
-}
-
-规则：
-- type 只能是 "word" 或 "sentence"
-- 英文短语（2-4个词）也算 "word"
-- 完整句子（有主谓结构）算 "sentence"
-- 只返回 JSON，不要其他内容"""
 
 SYSTEM_PROMPT_DIALOGUE = """你是一个英语教学助手，擅长创建贴近生活的英语场景对话。
 
@@ -102,16 +85,6 @@ class BaseAIProvider:
             logger.warning("JSON parse failed: %s | raw: %.200s", e, text)
             return None
 
-    def _parse_ocr(self, text: str) -> OCRResult:
-        data = self._extract_json(text)
-        if not data:
-            return OCRResult(words=[], raw_text=text)
-        words = [
-            OCRWordItem(english=item["english"], chinese=item["chinese"], word_type=item.get("type", "word"))
-            for item in data.get("words", [])
-        ]
-        return OCRResult(words=words, raw_text=text)
-
     def _parse_dialogue(self, text: str) -> DialogueResult:
         data = self._extract_json(text)
         if not data:
@@ -147,9 +120,3 @@ class BaseAIProvider:
             for item in data.get("words", [])
         ]
         return ParseNLResult(words=words, raw_text=text)
-
-    @staticmethod
-    def _guess_media_type(filename: str) -> str:
-        ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else "png"
-        return {"jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png",
-                "gif": "image/gif", "webp": "image/webp"}.get(ext, "image/png")

@@ -77,7 +77,7 @@ family-english-coach/
 │   │   │   ├── practice_service.py
 │   │   │   ├── plan_service.py
 │   │   │   ├── stats_service.py
-│   │   │   └── ocr_service.py
+│   │   │   ├── nl_parse_service.py
 │   │   │
 │   │   ├── repositories/           # 数据访问层
 │   │   │   ├── __init__.py
@@ -162,9 +162,9 @@ family-english-coach/
 from typing import Protocol
 
 class AIProvider(Protocol):
-    async def parse_image(self, image_bytes: bytes) -> OCRResult: ...
     async def generate_dialogue(self, words: list[str], scenario: str) -> DialogueResult: ...
     async def generate_exercise(self, words: list[str], mode: str) -> ExerciseResult: ...
+    async def parse_natural_language(self, text: str) -> ParseNLResult: ...
     async def generate_audio(self, text: str) -> bytes: ...
 
 # ai/factory.py
@@ -216,7 +216,7 @@ mastery_multiplier = unlearned 1.5, learning 1.3, familiar 1.0, permanent 0.1
 | ORM | SQLAlchemy 2.0 (async) | 声明式模型 + async session |
 | 数据库迁移 | Alembic | 版本化管理 schema 变更 |
 | 数据校验 | Pydantic v2 | 请求/响应模型 |
-| OCR (MVP) | AI Provider | 调用 AI 解析图片 |
+| AI 解析 | AI Provider | 文本词条解析、对话/练习生成 |
 | 前端 | Streamlit | 快速原型，适合内部工具 |
 | 数据库 | MySQL 8.0 | InnoDB，utf8mb4 |
 | 容器化 | Docker Compose | 本地开发环境 |

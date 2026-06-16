@@ -72,8 +72,8 @@ def get_unit(unit_id: int) -> dict:
     return _handle(_request("GET", _url(f"/units/{unit_id}")))
 
 
-def create_unit(title: str, sequence: int, image_url: str | None = None) -> dict:
-    return _handle(_request("POST", _url("/units"), json={"title": title, "sequence": sequence, "image_url": image_url}))
+def create_unit(title: str, sequence: int) -> dict:
+    return _handle(_request("POST", _url("/units"), json={"title": title, "sequence": sequence}))
 
 
 def delete_unit(unit_id: int) -> dict:
@@ -107,23 +107,6 @@ def set_tags(word_id: int, tags: list[str]) -> dict:
 
 def remove_tag(word_id: int, tag: str) -> dict:
     return _handle(_request("DELETE", _url(f"/words/{word_id}/tags/{tag}")))
-
-
-# ── OCR ────────────────────────────────────────────────
-
-def upload_image(unit_id: int, file_bytes: bytes, filename: str) -> dict:
-    return _handle(_request(
-        "POST", _url(f"/units/{unit_id}/upload-image"),
-        files={"file": (filename, file_bytes)},
-    ))
-
-
-def get_ocr_result(unit_id: int) -> dict:
-    return _handle(_request("GET", _url(f"/units/{unit_id}/ocr-result")))
-
-
-def confirm_ocr(unit_id: int, words: list[dict]) -> dict:
-    return _handle(_request("POST", _url(f"/units/{unit_id}/confirm-ocr"), json={"words": words}))
 
 
 # ── Practice ───────────────────────────────────────────

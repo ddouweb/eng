@@ -23,7 +23,7 @@ async def test_create_unit_success(service, mock_session):
     service.repo.get_by_sequence = AsyncMock(return_value=None)
     service.repo.create = AsyncMock()
     service.repo.create.return_value = MagicMock(
-        id=1, title="Unit 1", sequence=1, image_url=None,
+        id=1, title="Unit 1", sequence=1,
         created_at=None, updated_at=None,
     )
     result = await service.create_unit({"title": "Unit 1", "sequence": 1})
@@ -59,7 +59,7 @@ async def test_delete_unit_success(service, mock_session):
 
 @pytest.mark.asyncio
 async def test_update_unit_success(service, mock_session):
-    unit = MagicMock(id=1, title="Unit 1", sequence=1, image_url=None,
+    unit = MagicMock(id=1, title="Unit 1", sequence=1,
                      created_at=None, updated_at=None)
     service.repo.get_by_id = AsyncMock(return_value=unit)
     service.repo.get_by_sequence = AsyncMock(return_value=None)

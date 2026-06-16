@@ -5,18 +5,18 @@ from app.ai.base import AIProvider
 _provider: AIProvider | None = None
 
 
-def _create(provider_name: str, api_key: str) -> AIProvider:
+def _create(provider_name: str, api_key: str, model: str = "") -> AIProvider:
     if provider_name == "claude":
         from app.ai.claude_provider import ClaudeProvider
         return ClaudeProvider(api_key=api_key)
     elif provider_name == "deepseek":
         from app.ai.deepseek_provider import DeepSeekProvider
-        return DeepSeekProvider(api_key=api_key)
+        return DeepSeekProvider(api_key=api_key, model=model or "deepseek-chat")
     elif provider_name == "glm":
         from app.ai.deepseek_provider import DeepSeekProvider
         return DeepSeekProvider(
             api_key=api_key,
-            model="glm-4-flash",
+            model=model or "glm-4-flash",
             base_url="https://open.bigmodel.cn/api/paas/v4",
         )
     raise ValueError(f"Unknown AI provider: {provider_name}")
@@ -27,7 +27,7 @@ def get_ai_provider() -> AIProvider:
     if _provider is not None:
         return _provider
     from app.config import settings
-    _provider = _create(settings.AI_PROVIDER, settings.AI_API_KEY)
+    _provider = _create(settings.AI_PROVIDER, settings.AI_API_KEY, settings.AI_MODEL)
     return _provider
 
 

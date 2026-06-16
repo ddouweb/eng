@@ -20,25 +20,25 @@ TRUNCATE TABLE member;
 INSERT INTO member (id, name, avatar, created_at, updated_at) VALUES
   (1, '默认用户', NULL, NOW(), NOW());
 
-INSERT INTO unit (id, title, sequence, image_url, created_at, updated_at) VALUES
-  (1, 'Unit 1', 1, NULL, NOW(), NOW()),
-  (2, 'Unit 2', 2, NULL, NOW(), NOW()),
-  (3, 'Unit 3', 3, NULL, NOW(), NOW()),
-  (4, 'Unit 4', 4, NULL, NOW(), NOW()),
-  (5, 'Unit 5', 5, NULL, NOW(), NOW()),
-  (6, 'Unit 6', 6, NULL, NOW(), NOW()),
-  (7, 'Unit 7', 7, NULL, NOW(), NOW()),
-  (8, 'Unit 8', 8, NULL, NOW(), NOW()),
-  (9, 'Unit 9', 9, NULL, NOW(), NOW()),
-  (10, 'Unit 10', 10, NULL, NOW(), NOW()),
-  (11, 'Unit 11', 11, NULL, NOW(), NOW()),
-  (12, 'Unit 12', 12, NULL, NOW(), NOW()),
-  (13, 'Unit 13', 13, NULL, NOW(), NOW()),
-  (14, 'Unit 14', 14, NULL, NOW(), NOW()),
-  (15, 'Unit 15', 15, NULL, NOW(), NOW()),
-  (16, 'Unit 16', 16, NULL, NOW(), NOW()),
-  (17, 'Unit 17', 17, NULL, NOW(), NOW()),
-  (18, 'Unit 18', 18, NULL, NOW(), NOW());
+INSERT INTO unit (id, title, sequence, created_at, updated_at) VALUES
+  (1, 'Unit 1', 1, NOW(), NOW()),
+  (2, 'Unit 2', 2, NOW(), NOW()),
+  (3, 'Unit 3', 3, NOW(), NOW()),
+  (4, 'Unit 4', 4, NOW(), NOW()),
+  (5, 'Unit 5', 5, NOW(), NOW()),
+  (6, 'Unit 6', 6, NOW(), NOW()),
+  (7, 'Unit 7', 7, NOW(), NOW()),
+  (8, 'Unit 8', 8, NOW(), NOW()),
+  (9, 'Unit 9', 9, NOW(), NOW()),
+  (10, 'Unit 10', 10, NOW(), NOW()),
+  (11, 'Unit 11', 11, NOW(), NOW()),
+  (12, 'Unit 12', 12, NOW(), NOW()),
+  (13, 'Unit 13', 13, NOW(), NOW()),
+  (14, 'Unit 14', 14, NOW(), NOW()),
+  (15, 'Unit 15', 15, NOW(), NOW()),
+  (16, 'Unit 16', 16, NOW(), NOW()),
+  (17, 'Unit 17', 17, NOW(), NOW()),
+  (18, 'Unit 18', 18, NOW(), NOW());
 
 INSERT INTO word (id, unit_id, english, chinese, type, created_at, updated_at) VALUES
   (1, 1, 'would', '会', 'word', NOW(), NOW()),

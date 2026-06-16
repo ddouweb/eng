@@ -56,7 +56,6 @@ class UnitService:
             "id": unit.id,
             "title": unit.title,
             "sequence": unit.sequence,
-            "image_url": unit.image_url,
             "created_at": unit.created_at.isoformat() if unit.created_at else None,
             "updated_at": unit.updated_at.isoformat() if unit.updated_at else None,
         }

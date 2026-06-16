@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**Family English Coach (家庭英语学习系统)** — helps family members learn English from textbook images. Users upload photos of textbook pages (each page = one unit), the system OCRs them into word/sentence banks, then drives practice via flashcards, spelling, dictation, and AI-generated scenario dialogues. Includes learning plans, daily goals, and mastery tracking.
+**Family English Coach (家庭英语学习系统)** — helps family members learn English. Users create Units and add words manually or via AI-powered natural-language parsing (paste any text, the system extracts word/sentence entries), then drives practice via flashcards, spelling, dictation, and AI-generated scenario dialogues. Includes learning plans, daily goals, and mastery tracking.
 
 ## Tech Stack
 
@@ -28,7 +28,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 The first deliverable is the closed loop:
 
 ```
-Image upload → OCR parse → Word bank generation → Flashcard practice → Mastery status record
+Word bank generation (manual entry / AI text parse) → Flashcard practice → Mastery status record
 ```
 
 Advanced features (AI scenario dialogues, pronunciation scoring, Redis caching) are implemented only after the MVP is stable.
@@ -119,7 +119,7 @@ alembic upgrade head
 cd backend
 pytest                          # all tests
 pytest tests/unit/test_word.py  # single test file
-pytest -k "test_parse_ocr"      # by test name pattern
+pytest -k "test_create_unit"     # by test name pattern
 
 # Lint
 ruff check . --fix
@@ -153,9 +153,9 @@ All AI calls go through a common interface in `backend/app/ai/`:
 
 ```python
 class AIProvider(Protocol):
-    async def parse_image(self, image_bytes: bytes) -> OCRResult: ...
     async def generate_dialogue(self, words: list[str], scenario: str) -> DialogueResult: ...
     async def generate_exercise(self, words: list[str], mode: str) -> ExerciseResult: ...
+    async def parse_natural_language(self, text: str) -> ParseNLResult: ...
 ```
 
 Concrete implementations (Claude, Minimax, Zhipu, DeepSeek) are registered via `ai/factory.py`. Switching providers requires only changing `.env`.

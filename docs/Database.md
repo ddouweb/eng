@@ -9,8 +9,8 @@
 │ id  (PK) │       │ id  (PK) │◄──────│ id  (PK) │
 │ name     │       │ title    │       │ unit_id  │──►┐
 │ avatar   │       │ sequence │       │ english  │   │
-│ created  │       │ image_url│       │ chinese  │   │
-└────┬─────┘       │ created  │       │ type     │   │
+│ created  │       │ created  │       │ chinese  │   │
+└────┬─────┘       │ updated  │       │ type     │   │
      │             └──────────┘       │ created  │   │
      │                                └────┬─────┘   │
      │                                     │         │
@@ -147,14 +147,13 @@ CREATE TABLE `unit` (
   `id`         BIGINT AUTO_INCREMENT PRIMARY KEY,
   `title`      VARCHAR(100) NOT NULL,
   `sequence`   INT          NOT NULL DEFAULT 0 COMMENT '排序序号，对应 Unit 1, 2, ...',
-  `image_url`  VARCHAR(500) DEFAULT NULL COMMENT '教材图片存储路径',
   `created_at` DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   UNIQUE KEY `uk_sequence` (`sequence`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 ```
 
-**说明：** 一个 Unit 对应一张教材图片。`sequence` 保证唯一排序。`image_url` 存储上传图片的本地路径或 URL。
+**说明：** `sequence` 保证唯一排序；一个 Unit 对应一组关联的单词。
 
 ---
 

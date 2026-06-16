@@ -10,7 +10,6 @@ class Unit(TimestampMixin, Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     title: Mapped[str] = mapped_column(String(100), nullable=False)
     sequence: Mapped[int] = mapped_column(Integer, nullable=False, unique=True, default=0)
-    image_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
 
     words: Mapped[list["Word"]] = relationship(back_populates="unit", cascade="all, delete-orphan", order_by="Word.id")  # noqa: F821
 

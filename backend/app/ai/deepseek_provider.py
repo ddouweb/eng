@@ -1,11 +1,10 @@
-import base64
 import logging
 
 import httpx
 
-from app.ai.base import OCRResult, DialogueResult, ExerciseResult, ParseNLResult
+from app.ai.base import DialogueResult, ExerciseResult, ParseNLResult
 from app.ai.base_provider import (
-    BaseAIProvider, SYSTEM_PROMPT_OCR, SYSTEM_PROMPT_DIALOGUE, SYSTEM_PROMPT_EXERCISE,
+    BaseAIProvider, SYSTEM_PROMPT_DIALOGUE, SYSTEM_PROMPT_EXERCISE,
     SYSTEM_PROMPT_PARSE_NL,
 )
 
@@ -40,18 +39,6 @@ class DeepSeekProvider(BaseAIProvider):
         )
         resp.raise_for_status()
         return resp.json()["choices"][0]["message"]["content"]
-
-    async def parse_image(self, image_bytes: bytes, filename: str = "") -> OCRResult:
-        mime = self._guess_media_type(filename)
-        b64 = base64.b64encode(image_bytes).decode()
-        text = await self._chat([
-            {"role": "system", "content": SYSTEM_PROMPT_OCR},
-            {"role": "user", "content": [
-                {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{b64}"}},
-                {"type": "text", "text": "请解析这张教材图片中的英文单词和句子。"},
-            ]},
-        ])
-        return self._parse_ocr(text)
 
     async def generate_dialogue(self, words: list[str], scenario: str) -> DialogueResult:
         text = await self._chat([
