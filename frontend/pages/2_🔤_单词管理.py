@@ -15,6 +15,13 @@ st.markdown(
     div[data-testid="stDataFrame"] [data-testid="stDataFrameResizable"] {
         height: 100% !important;
     }
+    /* 禁用列头点击排序：默认即按序号升序（行顺序）显示，切换单元也自动升序，无需手动点 */
+    div[data-testid="stDataFrame"] [role="columnheader"],
+    div[data-testid="stDataFrame"] th,
+    div[data-testid="stDataFrame"] [data-testid*="column-header"] {
+        pointer-events: none !important;
+        cursor: default !important;
+    }
     </style>
     """,
     unsafe_allow_html=True,
@@ -76,7 +83,6 @@ rows = []
 for w in words:
     level = (w.get("mastery") or {}).get("level", "unlearned")
     rows.append({
-        "ID": w["id"],
         "序号": w.get("seq"),
         "英文": w["english"],
         "中文": w["chinese"],
@@ -89,7 +95,6 @@ df["序号"] = pd.to_numeric(df["序号"], errors="coerce").astype("Int64")
 edited = st.data_editor(
     df,
     column_config={
-        "ID": st.column_config.NumberColumn(disabled=True, width="small"),
         "序号": st.column_config.NumberColumn(width="small", step=1),
         "英文": st.column_config.TextColumn(width="large"),
         "中文": st.column_config.TextColumn(width="large"),
