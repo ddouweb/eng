@@ -2,18 +2,28 @@ import pandas as pd
 import streamlit as st
 from api_client import client
 
-# 隐藏整条顶部 header（含右上角三个点主菜单）让内容顶格；表格撑满视口剩余高度
+# 隐藏整条顶部 header（含右上角三个点主菜单）让内容顶格；
+# 内容区顶到视口左右边缘让表格横向真正占满（wide 布局默认有 max-width + 左右 padding 会把表格收窄、
+# 还可能因收窄后宽度 < 列宽之和而出现横向滚动条）；
+# 表格撑满视口剩余高度
 st.markdown(
     """
     <style>
     header[data-testid="stHeader"] { display: none !important; }
-    .block-container, section[data-testid="stMain"] { padding-top: 0.5rem !important; }
+    .block-container, section[data-testid="stMain"] {
+        padding-top: 0.5rem !important;
+        padding-left: 1rem !important;
+        padding-right: 1rem !important;
+        max-width: 100% !important;
+    }
     div[data-testid="stDataFrame"] {
         height: calc(100vh - 180px) !important;
         min-height: 420px;
+        width: 100% !important;
     }
     div[data-testid="stDataFrame"] [data-testid="stDataFrameResizable"] {
         height: 100% !important;
+        width: 100% !important;
     }
     /* 禁用列头点击排序：默认即按序号升序（行顺序）显示，切换单元也自动升序，无需手动点 */
     div[data-testid="stDataFrame"] [role="columnheader"],
