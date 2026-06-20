@@ -74,7 +74,12 @@ STATUS_LABEL = {
 # 按 seq 数字升序兜底排序（None 排末尾）；words 与 df 必须同序，保存时才能按行对齐
 def _seq_key(w):
     s = w.get("seq")
-    return (s is None, s if s is not None else 0)
+    if s is None:
+        return (True, 0)
+    try:
+        return (False, int(s))   # 显式转 int，避免字符串字典序（1,10,11 而非 1,2,...10）
+    except (TypeError, ValueError):
+        return (True, 0)
 
 
 words = sorted(words, key=_seq_key)
