@@ -2,9 +2,24 @@ import pandas as pd
 import streamlit as st
 from api_client import client
 
-st.header("🔤 单词管理")
+# 压缩页面顶部留白；让单词表格撑满视口剩余高度（顶部控件 + 保存按钮之外的空间）
+st.markdown(
+    """
+    <style>
+    .block-container, section[data-testid="stMain"] { padding-top: 1rem !important; }
+    div[data-testid="stDataFrame"] {
+        height: calc(100vh - 260px) !important;
+        min-height: 420px;
+    }
+    div[data-testid="stDataFrame"] [data-testid="stDataFrameResizable"] {
+        height: 100% !important;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
 
-# ── 选择 Unit ────────────────────────────────────────
+# ── 选择 Unit（顶格；标签与下拉框同一行）──────────────
 resp = client.list_units(page_size=100)
 if resp["code"] != 200:
     st.error(f"加载失败: {resp['message']}")
@@ -16,11 +31,22 @@ if not units:
     st.stop()
 
 unit_options = {f"{u['title']} (ID:{u['id']})": u["id"] for u in units}
-selected = st.selectbox("选择 Unit", list(unit_options.keys()))
+_label_col, _select_col = st.columns([1, 5])
+with _label_col:
+    st.markdown(
+        '<div style="font-size:16px; font-weight:600; padding-top:8px;">选择 Unit</div>',
+        unsafe_allow_html=True,
+    )
+with _select_col:
+    selected = st.selectbox(
+        "选择 Unit",
+        list(unit_options.keys()),
+        label_visibility="collapsed",
+    )
 unit_id = unit_options[selected]
 
-# ── 手动添加单词 ─────────────────────────────────────
-with st.expander("➕ 手动添加单词"):
+# ── 手动添加单词（默认折叠）──────────────────────────
+with st.expander("➕ 手动添加单词", expanded=False):
     words_text = st.text_area("每行一个：英文,中文", placeholder="hello,你好\ngood morning,早上好")
     if st.button("批量添加"):
         lines = [l.strip() for l in words_text.strip().split("\n") if l.strip()]
@@ -37,8 +63,8 @@ with st.expander("➕ 手动添加单词"):
             else:
                 st.error(resp["message"])
 
-# ── AI 智能添加单词 ──────────────────────────────────
-with st.expander("🤖 AI 智能添加单词"):
+# ── AI 智能添加单词（默认折叠）────────────────────────
+with st.expander("🤖 AI 智能添加单词", expanded=False):
     st.caption("粘贴课文、单词列表或任意文本，AI 自动提取英语词条")
     nl_text = st.text_area(
         "输入文本",
@@ -93,7 +119,7 @@ with st.expander("🤖 AI 智能添加单词"):
                     del st.session_state[nl_draft_key]
                     st.rerun()
 
-# ── 单词列表（统一编辑表格）─────────────────────────
+# ── 单词列表（统一编辑表格；按序号升序）─────────────────
 resp = client.list_words(unit_id, page_size=200)
 if resp["code"] != 200:
     st.error(resp["message"])
@@ -111,7 +137,7 @@ STATUS_LABEL = {
     "permanent": "🟢 永久",
 }
 
-# 构建 DataFrame：仅编辑文字，状态只读展示
+# rows 按 words 顺序构建；words 已由后端按 seq 升序返回（1,2,3...，无序号的排末尾）
 rows = []
 for w in words:
     level = (w.get("mastery") or {}).get("level", "unlearned")
@@ -124,20 +150,24 @@ for w in words:
     })
 df = pd.DataFrame(rows)
 
-st.caption(f"共 {len(words)} 个单词 · 双击编辑序号/英文/中文 · 状态由练习自动更新 · 点击保存生效")
+st.caption(
+    f"共 {len(words)} 个单词 · 默认按序号升序 · 双击编辑序号/英文/中文 · "
+    f"状态由练习自动更新 · 点击保存生效"
+)
 
 edited = st.data_editor(
     df,
     column_config={
         "ID": st.column_config.NumberColumn(disabled=True, width="small"),
         "序号": st.column_config.NumberColumn(width="small", step=1),
-        "英文": st.column_config.TextColumn(width="medium"),
-        "中文": st.column_config.TextColumn(width="medium"),
+        "英文": st.column_config.TextColumn(width="large"),
+        "中文": st.column_config.TextColumn(width="large"),
         "状态": st.column_config.TextColumn(disabled=True, width="small"),
     },
     hide_index=True,
     use_container_width=True,
     num_rows="fixed",
+    height=600,
     key=f"editor_{unit_id}",
 )
 
