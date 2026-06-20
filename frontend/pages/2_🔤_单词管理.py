@@ -1,3 +1,5 @@
+import re
+
 import pandas as pd
 import streamlit as st
 from api_client import client
@@ -36,6 +38,20 @@ st.markdown(
     """,
     unsafe_allow_html=True,
 )
+
+# ── 移动端探测：窄屏（手机）只显示「英文·中文」两列，避免列宽溢出看不到中文 ──
+# Glide 表格是 canvas 渲染、列宽只能 small/medium/large 固定档位，CSS 改不动，
+# 故按设备切换列配置。User-Agent 经 st.context.headers 读取（Streamlit≥1.37；
+# 版本不支持则 try 兜底为桌面布局，不报错）。
+def _is_mobile() -> bool:
+    try:
+        ua = st.context.headers.get("User-Agent", "")
+    except Exception:
+        return False
+    return bool(re.search(r"Mobile|Android|iPhone|iPad|iPod", ua, re.I))
+
+
+is_mobile = _is_mobile()
 
 # ── 选择 Unit（顶格；标签与下拉框同一行）──────────────
 resp = client.list_units(page_size=100)
@@ -96,41 +112,59 @@ words = sorted(words, key=_seq_key)
 
 rows = []
 for w in words:
-    level = (w.get("mastery") or {}).get("level", "unlearned")
-    rows.append({
-        "序号": w.get("seq"),
-        "英文": w["english"],
-        "中文": w["chinese"],
-        "状态": STATUS_LABEL.get(level, level),
-    })
+    if is_mobile:
+        rows.append({"英文": w["english"], "中文": w["chinese"]})
+    else:
+        level = (w.get("mastery") or {}).get("level", "unlearned")
+        rows.append({
+            "序号": w.get("seq"),
+            "英文": w["english"],
+            "中文": w["chinese"],
+            "状态": STATUS_LABEL.get(level, level),
+        })
 df = pd.DataFrame(rows)
-# 「序号」强制为可空整数类型，避免被当成字符串排序（出现 1,10,11 而非 1,2,...10）
-df["序号"] = pd.to_numeric(df["序号"], errors="coerce").astype("Int64")
+if not is_mobile:
+    # 「序号」强制为可空整数类型，避免被当成字符串排序（出现 1,10,11 而非 1,2,...10）
+    df["序号"] = pd.to_numeric(df["序号"], errors="coerce").astype("Int64")
 
-edited = st.data_editor(
-    df,
-    column_config={
+if is_mobile:
+    _col_cfg = {
+        "英文": st.column_config.TextColumn(width="small"),
+        "中文": st.column_config.TextColumn(width="medium"),
+    }
+else:
+    _col_cfg = {
         "序号": st.column_config.NumberColumn(width="small", step=1),
         "英文": st.column_config.TextColumn(width="large"),
         "中文": st.column_config.TextColumn(width="large"),
         "状态": st.column_config.TextColumn(disabled=True, width="small"),
-    },
+    }
+
+edited = st.data_editor(
+    df,
+    column_config=_col_cfg,
     hide_index=True,
     use_container_width=True,
     num_rows="fixed",
     height=600,
-    key=f"editor_{unit_id}",
+    # 桌面/移动端列结构不同，key 区分以免切换时表格状态错乱
+    key=f"editor_{unit_id}_{'m' if is_mobile else 'd'}",
 )
 
 if st.button("💾 保存所有修改", type="primary"):
     changed = 0
     for orig, row in zip(words, edited.itertuples()):
-        seq_val = int(row.序号) if pd.notna(row.序号) else None
-        if (orig["english"] != row.英文 or orig["chinese"] != row.中文
-                or orig.get("seq") != seq_val):
-            r = client.update_word(
-                orig["id"], english=row.英文, chinese=row.中文, seq=seq_val
-            )
+        updates = {}
+        if orig["english"] != row.英文:
+            updates["english"] = row.英文
+        if orig["chinese"] != row.中文:
+            updates["chinese"] = row.中文
+        if not is_mobile:
+            seq_val = int(row.序号) if pd.notna(row.序号) else None
+            if orig.get("seq") != seq_val:
+                updates["seq"] = seq_val
+        if updates:
+            r = client.update_word(orig["id"], **updates)
             if r["code"] == 200:
                 changed += 1
     if changed:
