@@ -64,7 +64,14 @@ STATUS_LABEL = {
     "permanent": "🟢 永久",
 }
 
-# rows 按 words 顺序构建；words 已由后端按 seq 升序返回（1,2,3...，无序号的排末尾）
+# 按 seq 数字升序兜底排序（None 排末尾）；words 与 df 必须同序，保存时才能按行对齐
+def _seq_key(w):
+    s = w.get("seq")
+    return (s is None, s if s is not None else 0)
+
+
+words = sorted(words, key=_seq_key)
+
 rows = []
 for w in words:
     level = (w.get("mastery") or {}).get("level", "unlearned")
@@ -76,6 +83,8 @@ for w in words:
         "状态": STATUS_LABEL.get(level, level),
     })
 df = pd.DataFrame(rows)
+# 「序号」强制为可空整数类型，避免被当成字符串排序（出现 1,10,11 而非 1,2,...10）
+df["序号"] = pd.to_numeric(df["序号"], errors="coerce").astype("Int64")
 
 edited = st.data_editor(
     df,
