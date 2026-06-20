@@ -13,6 +13,7 @@ class Word(TimestampMixin, Base):
     english: Mapped[str] = mapped_column(String(500), nullable=False)
     chinese: Mapped[str] = mapped_column(String(500), nullable=False)
     type: Mapped[WordType] = mapped_column(Enum(WordType), nullable=False, default=WordType.word)
+    seq: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     unit: Mapped["Unit"] = relationship(back_populates="words")  # noqa: F821
     tags: Mapped[list["WordTag"]] = relationship(back_populates="word", cascade="all, delete-orphan")

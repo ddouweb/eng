@@ -7,6 +7,7 @@ class WordCreate(BaseModel):
     english: str = Field(..., max_length=500)
     chinese: str = Field(..., max_length=500)
     type: WordType = WordType.word
+    seq: int | None = None
 
 
 class WordBatchCreate(BaseModel):
@@ -17,6 +18,7 @@ class WordUpdate(BaseModel):
     english: str | None = Field(None, max_length=500)
     chinese: str | None = Field(None, max_length=500)
     type: WordType | None = None
+    seq: int | None = None
 
 
 class TagOperation(BaseModel):

@@ -19,7 +19,7 @@ class WordRepo(BaseRepo[Word]):
             select(Word)
             .where(Word.unit_id == unit_id)
             .options(selectinload(Word.tags), selectinload(Word.mastery_records))
-            .order_by(Word.id)
+            .order_by(Word.seq.is_(None), Word.seq, Word.id)
         )
         if word_type:
             stmt = stmt.where(Word.type == word_type)

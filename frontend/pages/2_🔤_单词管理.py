@@ -117,18 +117,20 @@ for w in words:
     level = (w.get("mastery") or {}).get("level", "unlearned")
     rows.append({
         "ID": w["id"],
+        "序号": w.get("seq"),
         "英文": w["english"],
         "中文": w["chinese"],
         "状态": STATUS_LABEL.get(level, level),
     })
 df = pd.DataFrame(rows)
 
-st.caption(f"共 {len(words)} 个单词 · 双击编辑英文/中文 · 状态由练习自动更新 · 点击保存生效")
+st.caption(f"共 {len(words)} 个单词 · 双击编辑序号/英文/中文 · 状态由练习自动更新 · 点击保存生效")
 
 edited = st.data_editor(
     df,
     column_config={
         "ID": st.column_config.NumberColumn(disabled=True, width="small"),
+        "序号": st.column_config.NumberColumn(width="small", step=1),
         "英文": st.column_config.TextColumn(width="medium"),
         "中文": st.column_config.TextColumn(width="medium"),
         "状态": st.column_config.TextColumn(disabled=True, width="small"),
@@ -142,8 +144,12 @@ edited = st.data_editor(
 if st.button("💾 保存所有修改", type="primary"):
     changed = 0
     for orig, row in zip(words, edited.itertuples()):
-        if orig["english"] != row.英文 or orig["chinese"] != row.中文:
-            r = client.update_word(orig["id"], english=row.英文, chinese=row.中文)
+        seq_val = int(row.序号) if pd.notna(row.序号) else None
+        if (orig["english"] != row.英文 or orig["chinese"] != row.中文
+                or orig.get("seq") != seq_val):
+            r = client.update_word(
+                orig["id"], english=row.英文, chinese=row.中文, seq=seq_val
+            )
             if r["code"] == 200:
                 changed += 1
     if changed:

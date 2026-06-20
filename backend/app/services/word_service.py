@@ -115,6 +115,7 @@ class WordService:
             "english": word.english,
             "chinese": word.chinese,
             "type": word.type.value,
+            "seq": word.seq,
             "created_at": word.created_at.isoformat() if word.created_at else None,
             "updated_at": word.updated_at.isoformat() if word.updated_at else None,
         }
