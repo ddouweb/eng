@@ -28,7 +28,7 @@ async def batch_create_words(
 async def list_words_by_unit(
     unit_id: int,
     page: int = Query(1, ge=1),
-    page_size: int = Query(50, ge=1, le=200),
+    page_size: int = Query(50, ge=1, le=5000),
     type: WordType | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ):
