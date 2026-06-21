@@ -48,3 +48,8 @@ alembic/versions/__pycache__/
 # Docker
 mysql_data/
 db_data/
+
+# Large binary data assets (do not commit; over GitHub 100MB limit)
+backend/data/*.zip
+backend/data/*.7z
+backend/data/*.tar.gz
