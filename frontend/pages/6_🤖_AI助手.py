@@ -3,7 +3,7 @@ from api_client import client
 
 st.header("🤖 AI 助手")
 
-resp = client.list_units(page_size=100)
+resp = client.list_all_units()
 if resp["code"] != 200:
     st.error(resp["message"])
     st.stop()

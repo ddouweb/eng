@@ -43,7 +43,7 @@ st.bar_chart(dist_df, x="level", y="count", use_container_width=True)
 
 # ── 按 Unit 统计 ─────────────────────────────────────
 st.subheader("按 Unit 统计")
-units_resp = client.list_units(page_size=100)
+units_resp = client.list_all_units()
 if units_resp["code"] == 200:
     for u in units_resp["data"]["items"]:
         stats = client.get_stats_unit(u["id"], member_id)

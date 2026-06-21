@@ -68,6 +68,40 @@ def list_units(page: int = 1, page_size: int = 20) -> dict:
     return _handle(_request("GET", _url("/units"), params={"page": page, "page_size": page_size}))
 
 
+def list_all_units(page_size: int = 100) -> dict:
+    """加载全部 Unit（自动分页拼接）。
+
+    list_units 受后端 page_size 上限(le=100)约束，单次最多返回 100 条；
+    单元管理 / Unit 选择等场景需要看到全部单元，因此在此循环分页直到取完。
+    返回结构与 list_units 一致（data.items 含全部单元），调用点可无缝替换。
+    """
+    all_items: list = []
+    page = 1
+    total = 0
+    while True:
+        resp = list_units(page=page, page_size=page_size)
+        if resp["code"] != 200:
+            return resp  # 透传错误响应，交由调用方提示
+        data = resp["data"]
+        items = data.get("items", [])
+        total = data.get("total", 0)
+        all_items.extend(items)
+        # 末页不满 或 累计已达总数 即停止；items 为空同样在此终止，避免死循环
+        if len(items) < page_size or len(all_items) >= total:
+            break
+        page += 1
+    return {
+        "code": 200,
+        "message": "OK",
+        "data": {
+            "items": all_items,
+            "total": total or len(all_items),
+            "page": 1,
+            "page_size": len(all_items),
+        },
+    }
+
+
 def get_unit(unit_id: int) -> dict:
     return _handle(_request("GET", _url(f"/units/{unit_id}")))
 

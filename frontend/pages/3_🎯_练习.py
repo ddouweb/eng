@@ -107,7 +107,7 @@ if not in_practice and not practice_done:
     if "_prac_units" not in st.session_state or (
         not st.session_state["_prac_units"] and client.get_token()
     ):
-        resp = client.list_units(page_size=100)
+        resp = client.list_all_units()
         st.session_state["_prac_units"] = resp["data"]["items"] if resp["code"] == 200 else []
 
     units = st.session_state["_prac_units"]
@@ -755,7 +755,7 @@ elif practice_done:
     if "_prac_units" not in st.session_state or (
         not st.session_state["_prac_units"] and client.get_token()
     ):
-        resp = client.list_units(page_size=100)
+        resp = client.list_all_units()
         st.session_state["_prac_units"] = resp["data"]["items"] if resp["code"] == 200 else []
     unit_map = {u["id"]: u["title"] for u in st.session_state["_prac_units"]}
 

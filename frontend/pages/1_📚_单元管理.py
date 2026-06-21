@@ -19,7 +19,7 @@ with st.expander("➕ 创建新 Unit"):
                 st.error(resp["message"])
 
 # ── Unit 列表 ────────────────────────────────────────
-resp = client.list_units()
+resp = client.list_all_units()
 if resp["code"] != 200:
     st.error(f"加载失败: {resp['message']}")
     st.stop()

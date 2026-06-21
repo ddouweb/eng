@@ -54,7 +54,7 @@ def _is_mobile() -> bool:
 is_mobile = _is_mobile()
 
 # ── 选择 Unit（顶格；标签与下拉框同一行）──────────────
-resp = client.list_units(page_size=100)
+resp = client.list_all_units()
 if resp["code"] != 200:
     st.error(f"加载失败: {resp['message']}")
     st.stop()

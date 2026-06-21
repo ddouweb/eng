@@ -6,7 +6,7 @@ st.header("📅 学习计划")
 
 # ── 创建计划 ────────────────────────────────────────────
 with st.expander("➕ 创建新计划", expanded=False):
-    resp = client.list_units(page_size=100)
+    resp = client.list_all_units()
     if resp["code"] != 200:
         st.error(resp["message"])
         st.stop()
