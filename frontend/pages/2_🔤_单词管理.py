@@ -80,15 +80,26 @@ with _select_col:
 unit_id = unit_options[selected]
 
 # ── 单词列表（统一编辑表格；按序号升序，撑满页面）─────────
-resp = client.list_words(unit_id, page_size=200)
+# 先取 total 再一次取全部，避免被分页截断而显示不全
+# （后端 page_size 上限 5000，覆盖当前最大 Unit 2797 词；万一超限会在下方提示）
+probe = client.list_words(unit_id, page=1, page_size=1)
+if probe["code"] != 200:
+    st.error(probe["message"])
+    st.stop()
+total = probe["data"]["total"]
+
+if total == 0:
+    st.info("这个 Unit 还没有单词。")
+    st.stop()
+
+resp = client.list_words(unit_id, page=1, page_size=total)
 if resp["code"] != 200:
     st.error(resp["message"])
     st.stop()
 
 words = resp["data"]["items"]
-if not words:
-    st.info("这个 Unit 还没有单词。")
-    st.stop()
+if len(words) < total:
+    st.warning(f"本 Unit 共 {total} 词，但单次最多加载 {len(words)} 词，未全部显示。")
 
 STATUS_LABEL = {
     "unlearned": "🔴 未学习",

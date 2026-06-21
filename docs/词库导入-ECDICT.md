@@ -14,7 +14,7 @@ GitHub 仓库：https://github.com/skywind3000/ECDICT
    - ⚠️ **不要下 `ecdict-stardict-*.zip`** —— 那是 StarDict 词典软件的二进制格式（`.dict`/`.idx`/`.ifo`），不是数据表，本脚本读不了。要数据表必须下 **sqlite** 版。
 3. 解压后把 `stardict.db` 放到任意路径，例如 `backend/data/stardict.db`
 
-## 2. 运行导入
+## 2. 方式 A：直接连库导入（import_ecdict.py）
 
 ```bash
 cd backend
@@ -28,6 +28,24 @@ python scripts/import_ecdict.py --source ./data/stardict.db
 
 > 数据库连接读 `backend/.env` 的 `DATABASE_URL`（默认 `root:root123` 是占位，需改成你的真实密码）。
 > 脚本同时支持 `.csv`（ECDICT stardict.csv）和 `.db`（SQLite），自动识别；当前 release 只直接提供 sqlite 版。
+
+## 2.1 方式 B：生成可复用 SQL 种子文件（ecdict_to_seed_sql.py）
+
+不连数据库，只读 ECDICT 生成一个幂等 `.sql` 文件，可入 MySQL、可提交进 git 反复使用（风格同 `seed_18_units.sql`）。
+
+```bash
+cd backend
+# 生成 backend/seed_kaoyan_english2.sql
+python scripts/ecdict_to_seed_sql.py --source ./data/stardict.db
+
+# 导入 MySQL（PowerShell 不支持 < 重定向，用下面任一方式）
+Get-Content seed_kaoyan_english2.sql -Raw | mysql -uroot -p<数据库名>
+# 或
+cmd /c "mysql -uroot -p<数据库名> < seed_kaoyan_english2.sql"
+```
+
+> 分组、标签规则与方式 A 完全一致（见第 3 节）。脚本只依赖 Python 标准库，不连库、不依赖 `app/SQLAlchemy`。
+> 幂等：SQL 开头 `DELETE FROM unit WHERE title LIKE '考研·%'`，word / word_tags 随外键级联删除，可安全重跑。
 
 ## 3. 导入规则
 
