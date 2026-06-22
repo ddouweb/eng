@@ -65,7 +65,7 @@ if not units:
     st.stop()
 
 unit_options = {f"{u['title']} (ID:{u['id']})": u["id"] for u in units}
-_label_col, _select_col = st.columns([1, 5])
+_label_col, _select_col, _btn_col = st.columns([1, 5, 1])
 with _label_col:
     st.markdown(
         '<div style="font-size:16px; font-weight:600; padding-top:8px;">选择 Unit</div>',
@@ -77,6 +77,8 @@ with _select_col:
         list(unit_options.keys()),
         label_visibility="collapsed",
     )
+with _btn_col:
+    save_clicked = st.button("💾 保存所有修改", type="primary", use_container_width=True)
 unit_id = unit_options[selected]
 
 # ── 单词列表（统一编辑表格；按序号升序，撑满页面）─────────
@@ -162,7 +164,7 @@ edited = st.data_editor(
     key=f"editor_{unit_id}_{'m' if is_mobile else 'd'}",
 )
 
-if st.button("💾 保存所有修改", type="primary"):
+if save_clicked:
     changed = 0
     for orig, row in zip(words, edited.itertuples()):
         updates = {}
@@ -183,21 +185,3 @@ if st.button("💾 保存所有修改", type="primary"):
         st.rerun()
     else:
         st.info("没有检测到修改")
-
-# ── 手动添加单词（放在最后，默认折叠）──────────────────
-with st.expander("➕ 手动添加单词", expanded=False):
-    words_text = st.text_area("每行一个：英文,中文", placeholder="hello,你好\ngood morning,早上好")
-    if st.button("批量添加"):
-        lines = [l.strip() for l in words_text.strip().split("\n") if l.strip()]
-        new_words = []
-        for line in lines:
-            parts = line.split(",", 1)
-            if len(parts) == 2:
-                new_words.append({"english": parts[0].strip(), "chinese": parts[1].strip(), "type": "word"})
-        if new_words:
-            resp = client.batch_create_words(unit_id, new_words)
-            if resp["code"] == 200:
-                st.success(f"添加 {resp['data']['created_count']} 个单词")
-                st.rerun()
-            else:
-                st.error(resp["message"])
