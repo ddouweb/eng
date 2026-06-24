@@ -407,13 +407,43 @@ if in_practice:
         st.progress(p["idx"] / total, text=f"第 {p['idx'] + 1} / {total} 题")
         st.markdown(f"### {q['english']}")
         options = q.get("options", [q["chinese"]])
-        answer = st.radio("选择正确的中文释义：", options, key=f"ch_{q['word_id']}")
-        if st.button("确认", key=f"ch_sub_{q['word_id']}"):
-            correct = answer == q["chinese"]
-            if correct: st.success("✅ 正确！")
-            else: st.error(f"❌ 正确答案: **{q['chinese']}**")
-            _bg_submit(sid, q["word_id"], correct, answer)
-            p["results"].append(correct); p["idx"] += 1; st.rerun()
+        answers = p.setdefault("answers", {})
+        cur = answers.get(p["idx"])
+        answered = cur is not None
+        answer = st.radio(
+            "选择正确的中文释义：", options,
+            key=f"ch_{q['word_id']}",
+            disabled=answered,
+        )
+        if not answered:
+            if st.button("确认", key=f"ch_sub_{q['word_id']}", type="primary"):
+                correct = answer == q["chinese"]
+                if correct:
+                    st.success("✅ 正确！")
+                else:
+                    st.error(f"❌ 正确答案: **{q['chinese']}**")
+                _bg_submit(sid, q["word_id"], correct, answer)
+                p["results"].append(correct)
+                answers[p["idx"]] = {"answer": answer, "correct": correct}
+                st.rerun()
+        else:
+            if cur["correct"]:
+                st.success("✅ 正确！")
+            else:
+                st.error(f"❌ 你的答案: {cur['answer']}　|　正确答案: **{q['chinese']}**")
+            col_prev, col_next = st.columns([1, 1])
+            with col_prev:
+                if st.button("⬅️ 上一题", use_container_width=True,
+                             disabled=(p["idx"] == 0),
+                             key=f"ch_prev_{q['word_id']}"):
+                    p["idx"] -= 1
+                    st.rerun()
+            with col_next:
+                btn_label = "➡️ 下一题" if p["idx"] < total - 1 else "✅ 完成练习"
+                if st.button(btn_label, use_container_width=True, type="primary",
+                             key=f"ch_next_{q['word_id']}"):
+                    p["idx"] += 1
+                    st.rerun()
 
     # ═══ 中→英 选择 ════════════════════════════════════
     elif p["mode"] == "cn2en_choice":
@@ -421,13 +451,43 @@ if in_practice:
         st.progress(p["idx"] / total, text=f"第 {p['idx'] + 1} / {total} 题")
         st.markdown(f"### {q['chinese']}")
         options = q.get("en_options", [q["english"]])
-        answer = st.radio("选择正确的英文：", options, key=f"ce_{q['word_id']}")
-        if st.button("确认", key=f"ce_sub_{q['word_id']}"):
-            correct = answer == q["english"]
-            if correct: st.success("✅ 正确！")
-            else: st.error(f"❌ 正确答案: **{q['english']}**")
-            _bg_submit(sid, q["word_id"], correct, answer)
-            p["results"].append(correct); p["idx"] += 1; st.rerun()
+        answers = p.setdefault("answers", {})
+        cur = answers.get(p["idx"])
+        answered = cur is not None
+        answer = st.radio(
+            "选择正确的英文：", options,
+            key=f"ce_{q['word_id']}",
+            disabled=answered,
+        )
+        if not answered:
+            if st.button("确认", key=f"ce_sub_{q['word_id']}", type="primary"):
+                correct = answer == q["english"]
+                if correct:
+                    st.success("✅ 正确！")
+                else:
+                    st.error(f"❌ 正确答案: **{q['english']}**")
+                _bg_submit(sid, q["word_id"], correct, answer)
+                p["results"].append(correct)
+                answers[p["idx"]] = {"answer": answer, "correct": correct}
+                st.rerun()
+        else:
+            if cur["correct"]:
+                st.success("✅ 正确！")
+            else:
+                st.error(f"❌ 你的答案: {cur['answer']}　|　正确答案: **{q['english']}**")
+            col_prev, col_next = st.columns([1, 1])
+            with col_prev:
+                if st.button("⬅️ 上一题", use_container_width=True,
+                             disabled=(p["idx"] == 0),
+                             key=f"ce_prev_{q['word_id']}"):
+                    p["idx"] -= 1
+                    st.rerun()
+            with col_next:
+                btn_label = "➡️ 下一题" if p["idx"] < total - 1 else "✅ 完成练习"
+                if st.button(btn_label, use_container_width=True, type="primary",
+                             key=f"ce_next_{q['word_id']}"):
+                    p["idx"] += 1
+                    st.rerun()
 
     # ═══ 中→英 拼写 ════════════════════════════════════
     elif p["mode"] == "spelling":
