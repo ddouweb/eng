@@ -1,10 +1,10 @@
 import random
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.enums import MasteryLevel, PlanStatus, PracticeMode, TagType, TaskStatus
+from app.models.enums import MasteryLevel, PlanStatus, PracticeMode, TagType, TaskStatus, TaskType
 from app.models.mastery import MasteryRecord
 from app.models.plan import DailyTask, LearningPlan, PlanUnit
 from app.models.practice import PracticeRecord, PracticeSession
@@ -26,9 +26,16 @@ class PracticeService:
     async def start_practice(
         self, member_id: int, mode: PracticeMode,
         unit_ids: list[int], count: int = 10,
+        task_type: TaskType | None = None,
     ) -> dict:
-        questions = await self._build_questions(member_id, unit_ids, count)
+        questions = await self._build_questions(member_id, unit_ids, count, task_type=task_type)
         if not questions:
+            if task_type == TaskType.weekly_review:
+                raise AppException(400, "本周暂无可复习词")
+            elif task_type == TaskType.monthly_review:
+                raise AppException(400, "本月暂无可复习词")
+            elif task_type == TaskType.wrong_word_drill:
+                raise AppException(400, "暂无错题可刷")
             raise AppException(400, "没有可练习的单词")
 
         ps = PracticeSession(
@@ -149,11 +156,34 @@ class PracticeService:
             ],
         })
 
-    async def _build_questions(self, member_id: int, unit_ids: list[int], count: int) -> list[dict]:
+    async def _build_questions(
+        self, member_id: int, unit_ids: list[int], count: int,
+        task_type: TaskType | None = None,
+    ) -> list[dict]:
+        today = date.today()
+        word_filter = None
+        if task_type == TaskType.weekly_review:
+            monday = today - timedelta(days=today.weekday())
+            word_ids = await self.record_repo.get_word_ids_between(member_id, monday, today)
+            if not word_ids:
+                return []
+            word_filter = Word.id.in_(word_ids)
+        elif task_type == TaskType.monthly_review:
+            month_start = today.replace(day=1)
+            word_ids = await self.record_repo.get_word_ids_between(member_id, month_start, today)
+            if not word_ids:
+                return []
+            word_filter = Word.id.in_(word_ids)
+        elif task_type == TaskType.wrong_word_drill:
+            # 三轮错题刷：候选限定为 unit 内、有错题记录且未到 permanent 的词
+            word_filter = Word.unit_id.in_(unit_ids)
+        else:
+            word_filter = Word.unit_id.in_(unit_ids)
+
         stmt = (
             select(Word, WordTag.tag)
             .outerjoin(WordTag, WordTag.word_id == Word.id)
-            .where(Word.unit_id.in_(unit_ids))
+            .where(word_filter)
         )
         result = await self.session.execute(stmt)
         word_tags: dict[int, tuple[Word, list[TagType]]] = {}
@@ -170,11 +200,26 @@ class PracticeService:
         result_m = await self.session.execute(stmt_m)
         mastery_map: dict[int, MasteryRecord] = {r.word_id: r for r in result_m.scalars().all()}
 
+        # 三轮模式：在 mastery 维度做候选筛选
+        if task_type == TaskType.wrong_word_drill:
+            filtered = {
+                wid: wt for wid, wt in word_tags.items()
+                if (mastery_map.get(wid) is not None
+                    and mastery_map[wid].wrong_count > 0
+                    and mastery_map[wid].level != MasteryLevel.permanent)
+            }
+            if not filtered:
+                return []
+            word_tags = filtered
+
         candidates = []
         for wid, (word, tags) in word_tags.items():
             mastery = mastery_map.get(wid)
             level = mastery.level if mastery else MasteryLevel.unlearned
             w = compute_weight(level, tags)
+            # 三轮加权：错得越多权重越高（每个 wrong_count +0.5 倍）
+            if task_type == TaskType.wrong_word_drill and mastery:
+                w *= (1.0 + mastery.wrong_count * 0.5)
             if w > 0:
                 candidates.append({
                     "word_id": word.id,
@@ -264,9 +309,9 @@ class PracticeService:
     ) -> None:
         """找到包含该 unit 的 active plan 对应今日的 daily_task，给对应槽位 +1。
 
-        - 新词 → completed_new+1（不超过 new_count）
-        - 复习词 → completed_review+1（不超过 review_count）
-        - 两个槽位都到顶 → status 置 completed
+        - learn 类型：新词 → completed_new+1，复习词 → completed_review+1
+        - weekly_review / monthly_review 类型：所有答对都 → completed_review+1（new_count=0）
+        - 槽位到顶 → status 置 completed
         - 没有匹配的 plan/task → 静默返回
         """
         stmt = (
@@ -286,10 +331,14 @@ class PracticeService:
         if task is None:
             return
 
-        if is_new_word:
-            if task.completed_new < task.new_count:
+        if task.task_type == TaskType.learn:
+            slot = "new" if is_new_word else "review"
+            if slot == "new" and task.completed_new < task.new_count:
                 task.completed_new += 1
+            elif slot == "review" and task.completed_review < task.review_count:
+                task.completed_review += 1
         else:
+            # weekly_review / monthly_review：只填 review 槽
             if task.completed_review < task.review_count:
                 task.completed_review += 1
 

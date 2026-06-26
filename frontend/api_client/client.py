@@ -145,10 +145,16 @@ def remove_tag(word_id: int, tag: str) -> dict:
 
 # ── Practice ───────────────────────────────────────────
 
-def start_practice(member_id: int, mode: str, unit_ids: list[int], count: int = 10) -> dict:
-    return _handle(_request("POST", _url("/practice/start"), json={
+def start_practice(
+    member_id: int, mode: str, unit_ids: list[int],
+    count: int = 10, task_type: str | None = None,
+) -> dict:
+    body: dict = {
         "member_id": member_id, "mode": mode, "unit_ids": unit_ids, "count": count,
-    }))
+    }
+    if task_type:
+        body["task_type"] = task_type
+    return _handle(_request("POST", _url("/practice/start"), json=body))
 
 
 def submit_answer(session_id: int, word_id: int, is_correct: bool, user_answer: str | None = None) -> dict:
@@ -167,10 +173,24 @@ def get_practice_session(session_id: int) -> dict:
 
 # ── Plans ──────────────────────────────────────────────
 
-def create_plan(name: str, daily_goal: int, unit_ids: list[int], deadline: str | None = None) -> dict:
+def create_plan(
+    name: str, daily_goal: int, unit_ids: list[int],
+    deadline: str | None = None,
+    learn_weekdays: list[int] | None = None,
+    monthly_review_day: int | None = None,
+    start_date: str | None = None,
+    plan_type: str | None = None,
+) -> dict:
     body: dict = {"name": name, "daily_goal": daily_goal, "unit_ids": unit_ids}
     if deadline:
         body["deadline"] = deadline
+    body["learn_weekdays"] = learn_weekdays if learn_weekdays else [0, 1, 2, 3, 4]
+    if monthly_review_day is not None:
+        body["monthly_review_day"] = monthly_review_day
+    if start_date:
+        body["start_date"] = start_date
+    if plan_type:
+        body["plan_type"] = plan_type
     return _handle(_request("POST", _url("/plans"), json=body))
 
 

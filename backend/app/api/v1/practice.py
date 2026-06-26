@@ -23,6 +23,7 @@ async def start_practice(body: PracticeStart, db: AsyncSession = Depends(get_db)
         mode=body.mode,
         unit_ids=body.unit_ids,
         count=body.count,
+        task_type=body.task_type,
     )
 
 

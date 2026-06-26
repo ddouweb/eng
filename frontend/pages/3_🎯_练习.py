@@ -127,12 +127,16 @@ if not in_practice and not practice_done:
                 if det["code"] != 200:
                     continue
                 tasks = det["data"].get("tasks", []) or []
-                today_task = next((t for t in tasks if t["task_date"] == today_str), None)
+                today_tasks = [t for t in tasks if t["task_date"] == today_str]
+                # 按 task_type 分桶（首版每天最多一条 task）
+                by_type = {}
+                for t in today_tasks:
+                    by_type.setdefault(t["task_type"], t)
                 snapshot.append({
                     "plan_id": plan["id"],
                     "plan_name": plan["name"],
                     "unit_ids": det["data"].get("unit_ids", []),
-                    "task": today_task,
+                    "tasks": by_type,
                 })
         st.session_state["_today_plan_snapshot"] = snapshot
 
@@ -142,63 +146,146 @@ if not in_practice and not practice_done:
             st.markdown("### 📅 今日计划")
             st.caption(f"共 {len(today_snapshot)} 个进行中的计划 · 数据每小时不自动刷新，刷新页面可重读")
 
-            total_new_remaining = 0
-            total_review_remaining = 0
+            # 聚合：学习日/周复习/月复习/错题刷 各自剩余题量
+            learn_remain_new = 0
+            learn_remain_review = 0
+            weekly_remain = 0
+            monthly_remain = 0
+            drill_remain = 0
             agg_unit_ids: set[int] = set()
-            all_completed = True
-            for item in today_snapshot:
-                t = item["task"]
-                agg_unit_ids.update(item["unit_ids"])
-                if not t:
-                    continue
-                if t["status"] != "completed":
-                    all_completed = False
-                total_new_remaining += max(t["new_count"] - t["completed_new"], 0)
-                total_review_remaining += max(t["review_count"] - t["completed_review"], 0)
-            total_remaining = total_new_remaining + total_review_remaining
+            has_learn = False
+            has_weekly = False
+            has_monthly = False
+            has_drill = False
+            learn_done = True
+            weekly_done = True
+            monthly_done = True
+            drill_done = True
 
-            col_stat, col_act = st.columns([3, 2])
-            with col_stat:
-                m1, m2 = st.columns(2)
-                m1.metric("剩余新词", total_new_remaining)
-                m2.metric("剩余复习", total_review_remaining)
-            with col_act:
-                today_mode = st.selectbox(
-                    "练习模式",
-                    list(MODES.keys()),
-                    index=0,
-                    format_func=lambda m: MODES[m],
-                    key="today_mode_sel",
+            for item in today_snapshot:
+                agg_unit_ids.update(item["unit_ids"])
+                t_by_type = item["tasks"]
+                if "learn" in t_by_type:
+                    has_learn = True
+                    t = t_by_type["learn"]
+                    if t["status"] != "completed":
+                        learn_done = False
+                    learn_remain_new += max(t["new_count"] - t["completed_new"], 0)
+                    learn_remain_review += max(t["review_count"] - t["completed_review"], 0)
+                if "weekly_review" in t_by_type:
+                    has_weekly = True
+                    t = t_by_type["weekly_review"]
+                    if t["status"] != "completed":
+                        weekly_done = False
+                    weekly_remain += max(t["review_count"] - t["completed_review"], 0)
+                if "monthly_review" in t_by_type:
+                    has_monthly = True
+                    t = t_by_type["monthly_review"]
+                    if t["status"] != "completed":
+                        monthly_done = False
+                    monthly_remain += max(t["review_count"] - t["completed_review"], 0)
+                if "wrong_word_drill" in t_by_type:
+                    has_drill = True
+                    t = t_by_type["wrong_word_drill"]
+                    if t["status"] != "completed":
+                        drill_done = False
+                    drill_remain += max(t["review_count"] - t["completed_review"], 0)
+
+            today_mode = st.selectbox(
+                "练习模式",
+                list(MODES.keys()),
+                index=0,
+                format_func=lambda m: MODES[m],
+                key="today_mode_sel",
+            )
+
+            def _launch(task_type_label, count):
+                """点击按钮启动对应 task_type 的练习。"""
+                tt = None if task_type_label == "learn" else task_type_label
+                resp = client.start_practice(
+                    member_id=member_id,
+                    mode=today_mode,
+                    unit_ids=list(agg_unit_ids),
+                    count=max(count, 5),
+                    task_type=tt,
                 )
-                if all_completed:
-                    st.success("🎉 今日任务已完成", icon="🎉")
-                elif st.button(
-                    f"🚀 开始今日练习（{total_remaining} 题）",
-                    use_container_width=True,
-                    type="primary",
-                    disabled=(total_remaining == 0 or not agg_unit_ids),
-                ):
-                    resp = client.start_practice(
-                        member_id=member_id,
-                        mode=today_mode,
-                        unit_ids=list(agg_unit_ids),
-                        count=max(total_remaining, 5),
-                    )
-                    if resp["code"] == 200:
-                        questions = resp["data"]["questions"]
-                        if today_mode == "cn2en_choice":
-                            for q in questions:
-                                q["en_options"] = _gen_en_options(q, questions)
-                        p.update({
-                            "questions": questions,
-                            "session_id": resp["data"]["session_id"],
-                            "idx": 0, "results": [], "mode": today_mode,
-                            "unit_ids": list(agg_unit_ids), "finished": False,
-                            "fc_delay": 3.0, "fc_auto_next": False,
-                        })
-                        st.rerun()
-                    else:
-                        st.error(resp["message"])
+                if resp["code"] == 200:
+                    questions = resp["data"]["questions"]
+                    if today_mode == "cn2en_choice":
+                        for q in questions:
+                            q["en_options"] = _gen_en_options(q, questions)
+                    p.update({
+                        "questions": questions,
+                        "session_id": resp["data"]["session_id"],
+                        "idx": 0, "results": [], "mode": today_mode,
+                        "unit_ids": list(agg_unit_ids), "finished": False,
+                        "fc_delay": 3.0, "fc_auto_next": False,
+                    })
+                    st.session_state.pop("_today_plan_snapshot", None)
+                    st.rerun()
+                else:
+                    st.error(resp["message"])
+
+            # ── 学习日 ──────────────────────────────────
+            if has_learn:
+                learn_total = learn_remain_new + learn_remain_review
+                st.markdown(f"#### 📖 学习日（新词 {learn_remain_new} + 复习 {learn_remain_review}）")
+                if learn_done:
+                    st.success("🎉 今日学习已完成", icon="🎉")
+                else:
+                    if st.button(
+                        f"🚀 开始今日学习（{learn_total} 题）",
+                        use_container_width=True, type="primary",
+                        disabled=(learn_total == 0 or not agg_unit_ids),
+                        key="today_learn_btn",
+                    ):
+                        _launch("learn", learn_total)
+
+            # ── 周复习日 ─────────────────────────────────
+            if has_weekly:
+                st.markdown(f"#### 🔁 周复习（本周练过的词）")
+                if weekly_done:
+                    st.success("🎉 周复习已完成", icon="🎉")
+                else:
+                    if st.button(
+                        f"📖 本周复习（{weekly_remain} 题）",
+                        use_container_width=True,
+                        disabled=(weekly_remain == 0 or not agg_unit_ids),
+                        key="today_weekly_btn",
+                    ):
+                        _launch("weekly_review", weekly_remain)
+
+            # ── 月复习日 ─────────────────────────────────
+            if has_monthly:
+                st.markdown(f"#### 📚 月复习（本月练过的词）")
+                if monthly_done:
+                    st.success("🎉 月复习已完成", icon="🎉")
+                else:
+                    if st.button(
+                        f"📚 本月复习（{monthly_remain} 题）",
+                        use_container_width=True,
+                        disabled=(monthly_remain == 0 or not agg_unit_ids),
+                        key="today_monthly_btn",
+                    ):
+                        _launch("monthly_review", monthly_remain)
+
+            # ── 错题刷（三轮） ──────────────────────────
+            if has_drill:
+                st.markdown(f"#### 🎯 错题冲刺（错过的词）")
+                if drill_done:
+                    st.success("🎉 今日错题已刷完", icon="🎉")
+                else:
+                    if st.button(
+                        f"🎯 错题冲刺（{drill_remain} 题）",
+                        use_container_width=True,
+                        disabled=(drill_remain == 0 or not agg_unit_ids),
+                        key="today_drill_btn",
+                    ):
+                        _launch("wrong_word_drill", drill_remain)
+
+            # ── 什么 task 都没有 ──────────────────────
+            if not (has_learn or has_weekly or has_monthly or has_drill):
+                st.info("今日暂无任何任务")
 
         st.divider()
 

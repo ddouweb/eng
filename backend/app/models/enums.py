@@ -47,3 +47,18 @@ class TaskStatus(str, enum.Enum):
     in_progress = "in_progress"
     completed = "completed"
     skipped = "skipped"
+
+
+class TaskType(str, enum.Enum):
+    learn = "learn"
+    weekly_review = "weekly_review"
+    monthly_review = "monthly_review"
+    wrong_word_drill = "wrong_word_drill"
+
+
+class PlanType(str, enum.Enum):
+    """forward = 学新词（首轮）；review_only = 不学新词，纯滚动复习（二轮）；
+    wrong_word_drill = 错题优先刷（三轮冲刺）。"""
+    forward = "forward"
+    review_only = "review_only"
+    wrong_word_drill = "wrong_word_drill"

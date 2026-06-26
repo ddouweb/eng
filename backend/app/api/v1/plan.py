@@ -15,12 +15,16 @@ async def create_plan(body: PlanCreate, db: AsyncSession = Depends(get_db)):
     Example:
         curl -X POST http://localhost:8000/api/v1/plans \\
              -H 'Content-Type: application/json' \\
-             -d '{"name":"三年级上册","daily_goal":15,"unit_ids":[1,2],"deadline":"2026-07-31"}'
+             -d '{"name":"三年级上册","daily_goal":15,"unit_ids":[1,2],"deadline":"2026-07-31","learn_weekdays":[0,1,2,3,4],"monthly_review_day":31}'
     """
     svc = PlanService(db)
     return await svc.create_plan(
         member_id=1, name=body.name, daily_goal=body.daily_goal,
         unit_ids=body.unit_ids, deadline=body.deadline,
+        learn_weekdays=body.learn_weekdays,
+        monthly_review_day=body.monthly_review_day,
+        start_date=body.start_date,
+        plan_type=body.plan_type,
     )
 
 
