@@ -89,6 +89,11 @@ def _scramble(word):
     return word[:-1] + word[0] + word[1:-1]
 
 
+def _pronunciation(english: str, autoplay: bool = False, container=st):
+    """渲染标准音频播放器，播放英文单词发音。container 可传入 st.columns 的列对象。"""
+    container.audio(client.get_tts_url(english, "en"), format="audio/mpeg", autoplay=autoplay)
+
+
 st.header("🎯 练习")
 
 # ── 状态初始化 ─────────────────────────────────────────
@@ -114,6 +119,12 @@ if not in_practice and not practice_done:
     if not units:
         st.info("还没有 Unit，请先添加单词。")
         st.stop()
+
+    auto_pron = st.checkbox(
+        "🔊 自动播放单词发音",
+        value=False,
+        help="开启后，每展示一个英文单词自动播放一次发音（仍可随时手动点播放器重听）",
+    )
 
     # ── 今日计划快捷入口 ───────────────────────────────
     member_id = st.session_state.get("member_id", 1)
@@ -220,6 +231,7 @@ if not in_practice and not practice_done:
                         "idx": 0, "results": [], "mode": today_mode,
                         "unit_ids": list(agg_unit_ids), "finished": False,
                         "fc_delay": 3.0, "fc_auto_next": False,
+                        "autoplay_audio": auto_pron,
                     })
                     st.session_state.pop("_today_plan_snapshot", None)
                     st.rerun()
@@ -345,6 +357,7 @@ if not in_practice and not practice_done:
                             "unit_ids": selected_ids, "finished": False,
                             "fc_delay": fc_delay,
                             "fc_auto_next": fc_auto_next,
+                            "autoplay_audio": auto_pron,
                         })
                         st.rerun()
                     else:
@@ -379,6 +392,7 @@ if in_practice:
         pending = st.session_state.get("fc_pending_answer")  # True/False/None
 
         st.markdown(f"### {q['english']}")
+        _pronunciation(q["english"], autoplay=p.get("autoplay_audio", False))
 
         if not answered:
             # ── 阶段 1：未答 ───────────────────────────────
@@ -493,6 +507,7 @@ if in_practice:
         q = p["questions"][p["idx"]]
         st.progress(p["idx"] / total, text=f"第 {p['idx'] + 1} / {total} 题")
         st.markdown(f"### {q['english']}")
+        _pronunciation(q["english"], autoplay=p.get("autoplay_audio", False))
         options = q.get("options", [q["chinese"]])
         answers = p.setdefault("answers", {})
         cur = answers.get(p["idx"])
@@ -562,6 +577,7 @@ if in_practice:
                 st.success("✅ 正确！")
             else:
                 st.error(f"❌ 你的答案: {cur['answer']}　|　正确答案: **{q['english']}**")
+            _pronunciation(q["english"])
             col_prev, col_next = st.columns([1, 1])
             with col_prev:
                 if st.button("⬅️ 上一题", use_container_width=True,
@@ -581,20 +597,36 @@ if in_practice:
         q = p["questions"][p["idx"]]
         st.progress(p["idx"] / total, text=f"第 {p['idx'] + 1} / {total} 题")
         st.markdown(f"**中文：** {q['chinese']}")
-        answer = st.text_input("输入英文拼写：", key=f"sp_{q['word_id']}")
-        if st.button("提交", key=f"sp_sub_{q['word_id']}"):
-            ans = answer.strip() if answer else ""
-            correct = ans.lower() == q["english"].lower()
-            if correct: st.success("✅ 正确！")
-            else: st.error(f"❌ 正确答案: **{q['english']}**")
-            _bg_submit(sid, q["word_id"], correct, ans)
-            p["results"].append(correct); p["idx"] += 1; st.rerun()
+        answers = p.setdefault("answers", {})
+        cur = answers.get(p["idx"])
+        answered = cur is not None
+        answer = st.text_input("输入英文拼写：", key=f"sp_{q['word_id']}", disabled=answered)
+        if not answered:
+            if st.button("提交", key=f"sp_sub_{q['word_id']}", type="primary"):
+                ans = answer.strip() if answer else ""
+                correct = ans.lower() == q["english"].lower()
+                answers[p["idx"]] = {"answer": ans, "correct": correct}
+                _bg_submit(sid, q["word_id"], correct, ans)
+                p["results"].append(correct)
+                st.rerun()
+        else:
+            if cur["correct"]:
+                st.success("✅ 正确！")
+            else:
+                st.error(f"❌ 你的拼写: {cur['answer']}　|　正确答案: **{q['english']}**")
+            _pronunciation(q["english"])
+            btn_label = "➡️ 下一题" if p["idx"] < total - 1 else "✅ 完成练习"
+            if st.button(btn_label, key=f"sp_next_{q['word_id']}", type="primary",
+                         use_container_width=True):
+                p["idx"] += 1
+                st.rerun()
 
     # ═══ 英→中 默写 ════════════════════════════════════
     elif p["mode"] == "en2cn_write":
         q = p["questions"][p["idx"]]
         st.progress(p["idx"] / total, text=f"第 {p['idx'] + 1} / {total} 题")
         st.markdown(f"### {q['english']}")
+        _pronunciation(q["english"], autoplay=p.get("autoplay_audio", False))
         answer = st.text_input("输入中文释义：", key=f"ew_{q['word_id']}")
         if st.button("提交", key=f"ew_sub_{q['word_id']}"):
             ans = answer.strip() if answer else ""
@@ -694,6 +726,8 @@ if in_practice:
             for k in ("tc_start", "tc_opts"): st.session_state.pop(k, None)
             st.rerun()
         st.markdown(f"### {q['english']}")
+        # 限时模式用整页刷新倒计时，不自动播放以免每秒重复响
+        _pronunciation(q["english"])
         if "tc_opts" not in st.session_state:
             st.session_state.tc_opts = _gen_cn_options(q, p["questions"])
         for i, opt in enumerate(st.session_state.tc_opts):
@@ -717,14 +751,29 @@ if in_practice:
         st.markdown(f"**中文释义：** {q['chinese']}")
         st.markdown(f"### {'  '.join(list(st.session_state[skey]))}")
         st.caption("将上面的字母重新排列成正确的英文单词")
-        answer = st.text_input("输入答案：", key=f"scr_in_{q['word_id']}")
-        if st.button("提交", key=f"scr_sub_{q['word_id']}"):
-            ans = answer.strip() if answer else ""
-            correct = ans.lower() == q["english"].lower()
-            if correct: st.success("✅ 正确！")
-            else: st.error(f"❌ 正确答案: **{q['english']}**")
-            _bg_submit(sid, q["word_id"], correct, ans)
-            p["results"].append(correct); p["idx"] += 1; st.rerun()
+        answers = p.setdefault("answers", {})
+        cur = answers.get(p["idx"])
+        answered = cur is not None
+        answer = st.text_input("输入答案：", key=f"scr_in_{q['word_id']}", disabled=answered)
+        if not answered:
+            if st.button("提交", key=f"scr_sub_{q['word_id']}", type="primary"):
+                ans = answer.strip() if answer else ""
+                correct = ans.lower() == q["english"].lower()
+                answers[p["idx"]] = {"answer": ans, "correct": correct}
+                _bg_submit(sid, q["word_id"], correct, ans)
+                p["results"].append(correct)
+                st.rerun()
+        else:
+            if cur["correct"]:
+                st.success("✅ 正确！")
+            else:
+                st.error(f"❌ 你的答案: {cur['answer']}　|　正确答案: **{q['english']}**")
+            _pronunciation(q["english"])
+            btn_label = "➡️ 下一题" if p["idx"] < total - 1 else "✅ 完成练习"
+            if st.button(btn_label, key=f"scr_next_{q['word_id']}", type="primary",
+                         use_container_width=True):
+                p["idx"] += 1
+                st.rerun()
 
     # ═══ 记忆闪卡 ══════════════════════════════════════
     elif p["mode"] == "memory_flash":
@@ -743,6 +792,7 @@ if in_practice:
             st.info(f"📚 记住这些单词！({mf['idx'] + 1}/{len(batch)})")
             col1, col2 = st.columns(2)
             col1.markdown(f"### {q['english']}")
+            _pronunciation(q["english"], autoplay=p.get("autoplay_audio", False), container=col1)
             col2.markdown(f"### {q['chinese']}")
             if st.button("下一张 ➡️", use_container_width=True):
                 mf["idx"] += 1
@@ -754,6 +804,7 @@ if in_practice:
             q = batch[mf["idx"]]
             st.warning(f"🧠 回忆测试 ({mf['idx'] + 1}/{len(batch)})")
             st.markdown(f"### {q['english']}")
+            _pronunciation(q["english"], autoplay=p.get("autoplay_audio", False))
             okey = f"mf_opts_{q['word_id']}"
             if okey not in st.session_state:
                 st.session_state[okey] = _gen_cn_options(q, p["questions"])

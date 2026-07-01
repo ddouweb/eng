@@ -34,6 +34,9 @@ Thumbs.db
 # Uploads
 backend/uploads/
 
+# TTS 音频缓存（运行时懒生成 / 预生成脚本产出，勿入库）
+backend/static/audio/
+
 # Test
 .pytest_cache/
 .coverage

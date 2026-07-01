@@ -18,12 +18,14 @@ api_router = APIRouter(prefix="/api/v1")
 # 不需要认证的路由
 api_router.include_router(auth_router)
 api_router.include_router(health_router)
+# TTS 免登录：st.audio 加载音频时不带 Authorization 头，且音频内容无敏感性
+api_router.include_router(tts_router)
 
 # 需要 JWT 认证的路由
 _auth = Depends(get_current_user)
 for r in [
     member_router, unit_router, word_router,
     practice_router, plan_router, stats_router, leaderboard_router,
-    ai_router, tts_router,
+    ai_router,
 ]:
     api_router.include_router(r, dependencies=[_auth])
