@@ -11,6 +11,13 @@ try:
 except ImportError:
     _HAS_AUTOREFRESH = False
 
+try:
+    import eng_to_ipa as _ipa
+    _HAS_IPA = True
+except ImportError:
+    _ipa = None
+    _HAS_IPA = False
+
 from api_client import client
 
 MODES = {
@@ -89,15 +96,66 @@ def _scramble(word):
     return word[:-1] + word[0] + word[1:-1]
 
 
-def _pronunciation(english: str, autoplay: bool | None = None, container=st):
-    """渲染标准音频播放器，播放英文单词发音。
-    autoplay=None 时跟随 session_state 的 auto_pron_global 全局开关；
-    显式传 False 用于强制手动（限时模式、答案展示重听等场景）。
-    container 可传入 st.columns 的列对象。
-    """
+_IPA_CACHE: dict[str, str] = {}
+
+
+def _phonetic(english: str) -> str:
+    """查 IPA 音标；词典未收录（含 OOV 推测）返回空串。"""
+    if not english or not _HAS_IPA:
+        return ""
+    s = english.strip()
+    if not s:
+        return ""
+    cached = _IPA_CACHE.get(s)
+    if cached is not None:
+        return cached
+    try:
+        result = _ipa.convert(s, keep_punct=False)
+    except Exception:
+        result = ""
+    # 末尾 * 表示词典未命中，结果不可靠，不展示
+    if result.endswith("*"):
+        result = ""
+    _IPA_CACHE[s] = result
+    return result
+
+
+def _audio_compact(english: str, autoplay: bool | None = None, container=st):
+    """短的音频播放条：用窄列约束宽度，避免占满整行。"""
     if autoplay is None:
         autoplay = st.session_state.get("auto_pron_global", False)
-    container.audio(client.get_tts_url(english, "en"), format="audio/mpeg", autoplay=autoplay)
+    _, c_a = container.columns([2, 3])
+    c_a.audio(client.get_tts_url(english, "en"), format="audio/mpeg", autoplay=autoplay)
+
+
+def _word_audio_inline(english: str, autoplay: bool | None = None, container=st, word_md: str = "###"):
+    """一行内联：单词 + 音标 + 短播放条。音标词典未命中时只显示单词+播放条。"""
+    if autoplay is None:
+        autoplay = st.session_state.get("auto_pron_global", False)
+    phon = _phonetic(english)
+    c_w, c_a = container.columns([5, 3])
+    if phon:
+        c_w.markdown(
+            f"{word_md} {english} "
+            f"<span style='font-size:0.45em;color:gray;font-weight:normal'>/ {phon} /</span>",
+            unsafe_allow_html=True,
+        )
+    else:
+        c_w.markdown(f"{word_md} {english}")
+    c_a.audio(client.get_tts_url(english, "en"), format="audio/mpeg", autoplay=autoplay)
+
+
+def _phonetic_audio_inline(english: str, autoplay: bool | None = None, container=st):
+    """一行内联：音标 + 短播放条（不显示单词，用于答题后揭示）。"""
+    if autoplay is None:
+        autoplay = st.session_state.get("auto_pron_global", False)
+    phon = _phonetic(english)
+    if phon:
+        c_p, c_a = container.columns([5, 3])
+        c_p.markdown(f"#### `/ {phon} /`")
+    else:
+        _, c_a = container.columns([2, 3])
+    c_a.audio(client.get_tts_url(english, "en"), format="audio/mpeg", autoplay=autoplay)
 
 
 _hdr_l, _hdr_r = st.columns([7, 2])
@@ -123,38 +181,100 @@ in_practice = bool(p["questions"]) and p["idx"] < len(p["questions"])
 practice_done = bool(p["questions"]) and p["idx"] >= len(p["questions"])
 
 # ── 试听预览（不计统计） ─────────────────────────────────
+# 自动下一题用与「单词卡 答后自动下一题」同一套计时套路：
+#   - word_start 记录当前单词出现时刻
+#   - 每次渲染检查 elapsed，到点 -> 推进 idx；未到点 -> 调度一次 st_autorefresh
 if "preview" not in st.session_state:
-    st.session_state.preview = {"words": [], "idx": 0, "active": False}
+    st.session_state.preview = {
+        "words": [], "idx": 0, "active": False,
+        "auto_pron": False, "auto": False, "delay": 3.0,
+        "word_start": None, "last_idx": -1,
+    }
 pv = st.session_state.preview
 if pv["active"] and pv["words"]:
-    if pv["idx"] >= len(pv["words"]):
-        pv.update({"active": False, "idx": 0})
+    total = len(pv["words"])
+    if pv["idx"] >= total:
+        pv.update({"active": False, "idx": 0, "word_start": None, "last_idx": -1})
         st.rerun()
 
-    col_pv_l, col_pv_r = st.columns([6, 1])
-    with col_pv_l:
-        st.caption(f"🧪 试听预览 · {pv['idx'] + 1}/{len(pv['words'])} · 不计统计")
-    with col_pv_r:
-        if st.button("🚪 退出预览"):
-            pv.update({"active": False, "idx": 0})
+    idx = pv["idx"]
+    w = pv["words"][idx]
+
+    # 顶栏：进度 + 退出
+    col_t, col_x = st.columns([8, 1])
+    with col_t:
+        st.caption(f"🧪 试听预览 · {idx + 1}/{total} · 不计统计")
+    with col_x:
+        if st.button("🚪 退出"):
+            pv.update({"active": False, "idx": 0, "word_start": None, "last_idx": -1})
             st.rerun()
 
-    w = pv["words"][pv["idx"]]
-    st.progress((pv["idx"] + 1) / len(pv["words"]))
-    st.markdown(f"### {w['english']}")
-    _pronunciation(w["english"])
-    st.info(f"**{w['chinese']}**")
+    # 配置行：自动播放 / 自动下一题 / 延时（仅在勾选自动下一题时显示）
+    col_ap, col_an, col_d = st.columns([2, 2, 2])
+    with col_ap:
+        # 默认跟随页面顶部的全局开关，但可在预览内单独调整
+        auto_pron = st.checkbox(
+            "🔊 自动播放",
+            value=pv.get("auto_pron", st.session_state.get("auto_pron_global", False)),
+            help="勾选后，每个新词出现时自动播放一次发音",
+        )
+    with col_an:
+        auto_next = st.checkbox(
+            "⏭️ 自动下一题",
+            value=pv.get("auto", False),
+            disabled=not _HAS_AUTOREFRESH,
+            help="勾选后，到延时时间自动切到下一个词（与「单词卡 答后自动下一题」同一套逻辑）",
+        )
+    with col_d:
+        if auto_next:
+            delay = st.number_input(
+                "延时（秒）",
+                min_value=0.5, max_value=10.0,
+                value=pv.get("delay", 3.0), step=0.5,
+            )
+        else:
+            delay = pv.get("delay", 3.0)
 
+    # 同步到 pv；切换 auto 状态时重置计时，避免立刻触发翻页
+    prev_auto = pv.get("auto", False)
+    pv["auto_pron"] = auto_pron
+    pv["auto"] = auto_next
+    pv["delay"] = delay
+    if pv.get("last_idx") != idx or prev_auto != auto_next:
+        pv["word_start"] = time.time()
+        pv["last_idx"] = idx
+
+    st.progress((idx + 1) / total)
+
+    # 单词主体：英文 + 音标 + 播放条（按自动播放开关决定是否 autoplay）
+    _word_audio_inline(w["english"], autoplay=auto_pron)
+    st.info(f"### {w['chinese']}")
+
+    # 手动翻页
     col_p, col_n = st.columns(2)
     with col_p:
-        if st.button("⬅️ 上一张", use_container_width=True, disabled=(pv["idx"] == 0)):
+        if st.button("⬅️ 上一张", use_container_width=True, disabled=(idx == 0)):
             pv["idx"] -= 1
             st.rerun()
     with col_n:
-        btn = "✅ 完成预览" if pv["idx"] == len(pv["words"]) - 1 else "➡️ 下一张"
+        btn = "✅ 完成" if idx == total - 1 else "➡️ 下一张"
         if st.button(btn, use_container_width=True, type="primary"):
             pv["idx"] += 1
             st.rerun()
+
+    # 自动下一题：到点推进；未到点调度一次定时刷新
+    if auto_next and _HAS_AUTOREFRESH:
+        elapsed = time.time() - pv["word_start"]
+        if elapsed >= delay:
+            pv["idx"] += 1
+            st.rerun()
+        else:
+            remaining = delay - elapsed
+            st_autorefresh(
+                interval=int(remaining * 1000) + 100,
+                key=f"pv_ar_{idx}_{int(pv['word_start'] * 1000)}",
+            )
+
     st.stop()
 
 # ── 配置区 ─────────────────────────────────────────────
@@ -373,24 +493,6 @@ if not in_practice and not practice_done:
             min_value=0.5, max_value=10.0, value=3.0, step=0.5,
         )
 
-    st.divider()
-    if st.button(
-        "🧪 试听预览（不计统计）",
-        use_container_width=True,
-        disabled=not selected_ids,
-        help="从所选 Unit 拉单词逐张浏览，仅展示英文/中文/发音；不创建 session，不计入任何统计",
-    ):
-        all_words = []
-        for uid in selected_ids:
-            resp = client.list_words(uid, page_size=500)
-            if resp["code"] == 200:
-                all_words.extend(resp["data"]["items"])
-        if all_words:
-            st.session_state.preview = {"words": all_words, "idx": 0, "active": True}
-            st.rerun()
-        else:
-            st.warning("所选 Unit 没有单词")
-
     st.markdown("**👇 选择模式，点击即开始**")
 
     # 模式卡片网格 — 点击直接开始练习
@@ -421,6 +523,31 @@ if not in_practice and not practice_done:
                         st.rerun()
                     else:
                         st.error(resp["message"])
+
+    st.divider()
+    if st.button(
+        "🧪 试听预览（不计统计）",
+        use_container_width=True,
+        disabled=not selected_ids,
+        help=(
+            "从所选 Unit 拉取全部单词逐张浏览：英文 + 音标 + 中文 + 发音；"
+            "不创建 session，不计入任何统计。进入后可勾选「自动播放」「自动下一题」"
+        ),
+    ):
+        all_words = []
+        for uid in selected_ids:
+            resp = client.list_words(uid, page_size=500)
+            if resp["code"] == 200:
+                all_words.extend(resp["data"]["items"])
+        if all_words:
+            st.session_state.preview = {
+                "words": all_words, "idx": 0, "active": True,
+                "auto_pron": False, "auto": False, "delay": 3.0,
+                "word_start": None, "last_idx": -1,
+            }
+            st.rerun()
+        else:
+            st.warning("所选 Unit 没有单词")
 
 # ── 练习进行中 ─────────────────────────────────────────
 if in_practice:
@@ -455,8 +582,7 @@ if in_practice:
         answer_time = st.session_state.get("fc_answer_time")
         pending = st.session_state.get("fc_pending_answer")  # True/False/None
 
-        st.markdown(f"### {q['english']}")
-        _pronunciation(q["english"])
+        _word_audio_inline(q["english"])
 
         if not answered:
             # ── 阶段 1：未答 ───────────────────────────────
@@ -570,8 +696,7 @@ if in_practice:
     elif p["mode"] == "choice":
         q = p["questions"][p["idx"]]
         st.progress(p["idx"] / total, text=f"第 {p['idx'] + 1} / {total} 题")
-        st.markdown(f"### {q['english']}")
-        _pronunciation(q["english"])
+        _word_audio_inline(q["english"])
         options = q.get("options", [q["chinese"]])
         answers = p.setdefault("answers", {})
         cur = answers.get(p["idx"])
@@ -641,7 +766,7 @@ if in_practice:
                 st.success("✅ 正确！")
             else:
                 st.error(f"❌ 你的答案: {cur['answer']}　|　正确答案: **{q['english']}**")
-            _pronunciation(q["english"], autoplay=False)
+            _phonetic_audio_inline(q["english"], autoplay=False)
             col_prev, col_next = st.columns([1, 1])
             with col_prev:
                 if st.button("⬅️ 上一题", use_container_width=True,
@@ -678,7 +803,7 @@ if in_practice:
                 st.success("✅ 正确！")
             else:
                 st.error(f"❌ 你的拼写: {cur['answer']}　|　正确答案: **{q['english']}**")
-            _pronunciation(q["english"], autoplay=False)
+            _phonetic_audio_inline(q["english"], autoplay=False)
             btn_label = "➡️ 下一题" if p["idx"] < total - 1 else "✅ 完成练习"
             if st.button(btn_label, key=f"sp_next_{q['word_id']}", type="primary",
                          use_container_width=True):
@@ -689,8 +814,7 @@ if in_practice:
     elif p["mode"] == "en2cn_write":
         q = p["questions"][p["idx"]]
         st.progress(p["idx"] / total, text=f"第 {p['idx'] + 1} / {total} 题")
-        st.markdown(f"### {q['english']}")
-        _pronunciation(q["english"])
+        _word_audio_inline(q["english"])
         answer = st.text_input("输入中文释义：", key=f"ew_{q['word_id']}")
         if st.button("提交", key=f"ew_sub_{q['word_id']}"):
             ans = answer.strip() if answer else ""
@@ -704,8 +828,7 @@ if in_practice:
     elif p["mode"] == "dictation":
         q = p["questions"][p["idx"]]
         st.progress(p["idx"] / total, text=f"第 {p['idx'] + 1} / {total} 题")
-        tts_url = client.get_tts_url(q["english"], "en")
-        st.audio(tts_url, format="audio/mpeg")
+        _audio_compact(q["english"])
         st.caption("🎧 听音频，拼写对应的英文单词")
         answer = st.text_input("输入英文", key=f"dt_{q['word_id']}_{p['idx']}")
         col_ok, col_skip = st.columns(2)
@@ -789,9 +912,8 @@ if in_practice:
             p["results"].append(False); p["idx"] += 1
             for k in ("tc_start", "tc_opts"): st.session_state.pop(k, None)
             st.rerun()
-        st.markdown(f"### {q['english']}")
         # 限时模式用整页刷新倒计时，强制不自动播放以免每秒重复响
-        _pronunciation(q["english"], autoplay=False)
+        _word_audio_inline(q["english"], autoplay=False)
         if "tc_opts" not in st.session_state:
             st.session_state.tc_opts = _gen_cn_options(q, p["questions"])
         for i, opt in enumerate(st.session_state.tc_opts):
@@ -832,7 +954,7 @@ if in_practice:
                 st.success("✅ 正确！")
             else:
                 st.error(f"❌ 你的答案: {cur['answer']}　|　正确答案: **{q['english']}**")
-            _pronunciation(q["english"], autoplay=False)
+            _phonetic_audio_inline(q["english"], autoplay=False)
             btn_label = "➡️ 下一题" if p["idx"] < total - 1 else "✅ 完成练习"
             if st.button(btn_label, key=f"scr_next_{q['word_id']}", type="primary",
                          use_container_width=True):
@@ -855,8 +977,7 @@ if in_practice:
             q = batch[mf["idx"]]
             st.info(f"📚 记住这些单词！({mf['idx'] + 1}/{len(batch)})")
             col1, col2 = st.columns(2)
-            col1.markdown(f"### {q['english']}")
-            _pronunciation(q["english"], container=col1)
+            _word_audio_inline(q["english"], container=col1)
             col2.markdown(f"### {q['chinese']}")
             if st.button("下一张 ➡️", use_container_width=True):
                 mf["idx"] += 1
@@ -867,8 +988,7 @@ if in_practice:
         elif mf["phase"] == "quiz":
             q = batch[mf["idx"]]
             st.warning(f"🧠 回忆测试 ({mf['idx'] + 1}/{len(batch)})")
-            st.markdown(f"### {q['english']}")
-            _pronunciation(q["english"])
+            _word_audio_inline(q["english"])
             okey = f"mf_opts_{q['word_id']}"
             if okey not in st.session_state:
                 st.session_state[okey] = _gen_cn_options(q, p["questions"])

@@ -3,3 +3,4 @@ streamlit-autorefresh>=1.0,<2
 requests>=2.31,<3
 pandas>=2.0,<3
 Pillow>=10.0,<11
+eng-to-ipa>=0.2.2,<1
