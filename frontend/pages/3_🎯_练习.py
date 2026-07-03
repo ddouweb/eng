@@ -158,16 +158,36 @@ def _phonetic_audio_inline(english: str, autoplay: bool | None = None, container
     c_a.audio(client.get_tts_url(english, "en"), format="audio/mpeg", autoplay=autoplay)
 
 
-_hdr_l, _hdr_r = st.columns([7, 2])
+_hdr_l, _hdr_r = st.columns([5, 4])
 with _hdr_l:
     st.header("🎯 练习")
 with _hdr_r:
-    st.checkbox(
-        "🔊 自动播放",
-        value=False,
-        key="auto_pron_global",
-        help="开启后，每展示一个英文单词自动播放一次发音；只对下一题起生效（当前题已渲染，不会立即补放）",
-    )
+    # 右上角三个控件：自动播放（全局，所有展示英文的地方都生效）
+    # + 自动下一题（试听预览专用）+ 延时
+    _cr1, _cr2, _cr3 = _hdr_r.columns([1, 1, 1])
+    with _cr1:
+        st.checkbox(
+            "🔊 自动播放",
+            value=False,
+            key="auto_pron_global",
+            help="开启后，每展示一个英文单词自动播放一次发音；只对下一题起生效（当前题已渲染，不会立即补放）",
+        )
+    with _cr2:
+        st.checkbox(
+            "⏭️ 自动下一题",
+            value=False,
+            key="pv_auto_next",
+            disabled=not _HAS_AUTOREFRESH,
+            help="试听预览专用：到延时时间自动切到下一个词（与「单词卡 答后自动下一题」同一套逻辑）",
+        )
+    with _cr3:
+        if st.session_state.get("pv_auto_next", False):
+            st.number_input(
+                "延时(秒)",
+                min_value=0.5, max_value=10.0,
+                value=3.0, step=0.5,
+                key="pv_delay_input",
+            )
 
 # ── 状态初始化 ─────────────────────────────────────────
 if "prac" not in st.session_state:
@@ -181,13 +201,13 @@ in_practice = bool(p["questions"]) and p["idx"] < len(p["questions"])
 practice_done = bool(p["questions"]) and p["idx"] >= len(p["questions"])
 
 # ── 试听预览（不计统计） ─────────────────────────────────
-# 自动下一题用与「单词卡 答后自动下一题」同一套计时套路：
+# 自动下一题的开关 / 延时在页面右上角（与「🔊 自动播放」并排），
+# 此处只读取 session_state；计时套路与「单词卡 答后自动下一题」一致：
 #   - word_start 记录当前单词出现时刻
 #   - 每次渲染检查 elapsed，到点 -> 推进 idx；未到点 -> 调度一次 st_autorefresh
 if "preview" not in st.session_state:
     st.session_state.preview = {
         "words": [], "idx": 0, "active": False,
-        "auto_pron": False, "auto": False, "delay": 3.0,
         "word_start": None, "last_idx": -1,
     }
 pv = st.session_state.preview
@@ -209,44 +229,21 @@ if pv["active"] and pv["words"]:
             pv.update({"active": False, "idx": 0, "word_start": None, "last_idx": -1})
             st.rerun()
 
-    # 配置行：自动播放 / 自动下一题 / 延时（仅在勾选自动下一题时显示）
-    col_ap, col_an, col_d = st.columns([2, 2, 2])
-    with col_ap:
-        # 默认跟随页面顶部的全局开关，但可在预览内单独调整
-        auto_pron = st.checkbox(
-            "🔊 自动播放",
-            value=pv.get("auto_pron", st.session_state.get("auto_pron_global", False)),
-            help="勾选后，每个新词出现时自动播放一次发音",
-        )
-    with col_an:
-        auto_next = st.checkbox(
-            "⏭️ 自动下一题",
-            value=pv.get("auto", False),
-            disabled=not _HAS_AUTOREFRESH,
-            help="勾选后，到延时时间自动切到下一个词（与「单词卡 答后自动下一题」同一套逻辑）",
-        )
-    with col_d:
-        if auto_next:
-            delay = st.number_input(
-                "延时（秒）",
-                min_value=0.5, max_value=10.0,
-                value=pv.get("delay", 3.0), step=0.5,
-            )
-        else:
-            delay = pv.get("delay", 3.0)
+    # 读取右上角控件的当前值
+    auto_pron = st.session_state.get("auto_pron_global", False)
+    auto_next = st.session_state.get("pv_auto_next", False) and _HAS_AUTOREFRESH
+    delay = st.session_state.get("pv_delay_input", 3.0)
 
-    # 同步到 pv；切换 auto 状态时重置计时，避免立刻触发翻页
-    prev_auto = pv.get("auto", False)
-    pv["auto_pron"] = auto_pron
-    pv["auto"] = auto_next
-    pv["delay"] = delay
+    # 进入新单词或切换 auto_next 时，重置计时（避免刚开就翻页）
+    prev_auto = pv.get("prev_auto_next", False)
     if pv.get("last_idx") != idx or prev_auto != auto_next:
         pv["word_start"] = time.time()
         pv["last_idx"] = idx
+        pv["prev_auto_next"] = auto_next
 
     st.progress((idx + 1) / total)
 
-    # 单词主体：英文 + 音标 + 播放条（按自动播放开关决定是否 autoplay）
+    # 单词主体：英文 + 音标 + 播放条（按全局自动播放开关决定是否 autoplay）
     _word_audio_inline(w["english"], autoplay=auto_pron)
     st.info(f"### {w['chinese']}")
 
@@ -263,7 +260,7 @@ if pv["active"] and pv["words"]:
             st.rerun()
 
     # 自动下一题：到点推进；未到点调度一次定时刷新
-    if auto_next and _HAS_AUTOREFRESH:
+    if auto_next:
         elapsed = time.time() - pv["word_start"]
         if elapsed >= delay:
             pv["idx"] += 1
@@ -542,8 +539,7 @@ if not in_practice and not practice_done:
         if all_words:
             st.session_state.preview = {
                 "words": all_words, "idx": 0, "active": True,
-                "auto_pron": False, "auto": False, "delay": 3.0,
-                "word_start": None, "last_idx": -1,
+                "word_start": None, "last_idx": -1, "prev_auto_next": False,
             }
             st.rerun()
         else:
