@@ -1,7 +1,9 @@
 import pandas as pd
 import streamlit as st
 from api_client import client
+from auth import require_auth
 
+require_auth()
 st.header("📊 学习统计")
 
 member_id = st.session_state.get("member_id", 1)

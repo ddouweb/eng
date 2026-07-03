@@ -76,7 +76,10 @@ def _extract_message(resp: requests.Response) -> str:
 
 def _handle(resp: requests.Response) -> dict:
     # 401：token 失效 — 清掉本地 token，设置标志位让 app.py 自动跳登录页；
-    # 并立即触发一次 rerun，避免当前页面继续渲染出 "加载失败" 错误
+    # 并立即触发一次 rerun，避免当前页面继续渲染出 "加载失败" 错误。
+    # 注意：st.rerun() 是抛 RerunException（继承自 Exception），
+    # 所以这里只能 catch ImportError（streamlit 不在环境里），不能 catch Exception，
+    # 否则 RerunException 被吞掉 rerun 就失效了。
     if resp.status_code == 401:
         global _token, _auth_invalid
         _token = None
@@ -84,7 +87,7 @@ def _handle(resp: requests.Response) -> dict:
         try:
             import streamlit as st
             st.rerun()
-        except Exception:
+        except ImportError:
             pass
         return {"code": 401, "message": "登录已过期，请重新登录", "data": None}
     if resp.status_code >= 400:

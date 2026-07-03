@@ -3,6 +3,9 @@ import re
 import pandas as pd
 import streamlit as st
 from api_client import client
+from auth import require_auth
+
+require_auth()
 
 # 隐藏整条顶部 header（含右上角三个点主菜单）让内容顶格；
 # 内容区顶到视口左右边缘让表格横向真正占满（wide 布局默认有 max-width + 左右 padding 会把表格收窄、

@@ -1,6 +1,8 @@
 import streamlit as st
 from api_client import client
+from auth import require_auth
 
+require_auth()
 st.header("🤖 AI 助手")
 
 resp = client.list_all_units()

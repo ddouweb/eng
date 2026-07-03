@@ -19,6 +19,9 @@ except ImportError:
     _HAS_IPA = False
 
 from api_client import client
+from auth import require_auth
+
+require_auth()
 
 MODES = {
     "flashcard": "🃏 单词卡",
