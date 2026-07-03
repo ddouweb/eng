@@ -7,6 +7,7 @@ API_BASE = os.environ.get("API_BASE_URL", "http://localhost:8000/api/v1")
 PUBLIC_API_BASE = os.environ.get("PUBLIC_API_URL", API_BASE)
 _TIMEOUT = 30
 _token: str | None = None
+_auth_invalid: bool = False  # 401 标志位，由 app.py 入口检测并跳登录页
 
 
 def set_token(token: str | None):
@@ -16,6 +17,16 @@ def set_token(token: str | None):
 
 def get_token() -> str | None:
     return _token
+
+
+def is_auth_invalid() -> bool:
+    """是否出现过 token 失效（401）。读取后请用 clear_auth_invalid() 复位。"""
+    return _auth_invalid
+
+
+def clear_auth_invalid():
+    global _auth_invalid
+    _auth_invalid = False
 
 
 def _url(path: str) -> str:
@@ -49,13 +60,35 @@ def _error_response(code: int, msg: str) -> _FakeResp:
     return _FakeResp(code, msg)
 
 
+def _extract_message(resp: requests.Response) -> str:
+    """从错误响应里抽人类可读消息：优先 message，其次 detail（FastAPI HTTPException）。"""
+    try:
+        body = resp.json()
+    except Exception:
+        return resp.text or resp.reason
+    if isinstance(body, dict):
+        for key in ("message", "detail", "error"):
+            v = body.get(key)
+            if v:
+                return str(v)
+    return resp.text or resp.reason
+
+
 def _handle(resp: requests.Response) -> dict:
-    if resp.status_code >= 400:
+    # 401：token 失效 — 清掉本地 token，设置标志位让 app.py 自动跳登录页；
+    # 并立即触发一次 rerun，避免当前页面继续渲染出 "加载失败" 错误
+    if resp.status_code == 401:
+        global _token, _auth_invalid
+        _token = None
+        _auth_invalid = True
         try:
-            body = resp.json()
-            return {"code": resp.status_code, "message": body.get("message", resp.text), "data": None}
+            import streamlit as st
+            st.rerun()
         except Exception:
-            return {"code": resp.status_code, "message": resp.text, "data": None}
+            pass
+        return {"code": 401, "message": "登录已过期，请重新登录", "data": None}
+    if resp.status_code >= 400:
+        return {"code": resp.status_code, "message": _extract_message(resp), "data": None}
     try:
         return resp.json()
     except Exception:

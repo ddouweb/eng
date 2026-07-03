@@ -42,6 +42,16 @@ if "token" not in st.session_state:
 elif st.session_state.token and client.get_token() is None:
     client.set_token(st.session_state.token)
 
+# API 调用返回 401 时，client 会清掉 token 并设置标志位；
+# 这里在每次进入页面时检测到，立即清登录态并 rerun 到登录表单
+if client.is_auth_invalid():
+    client.clear_auth_invalid()
+    client.set_token(None)
+    st.session_state.token = None
+    st.session_state.pop("_prac_units", None)
+    _clear_auth_cookie()
+    st.rerun()
+
 if not st.session_state.token:
     st.title("📚 家庭英语学习")
     st.subheader("请登录")
