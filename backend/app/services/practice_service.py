@@ -1,7 +1,7 @@
 import random
 from datetime import date, datetime, timedelta, timezone
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.enums import MasteryLevel, PlanStatus, PracticeMode, TagType, TaskStatus, TaskType
@@ -16,6 +16,11 @@ from app.schemas.common import success
 from app.schemas.exceptions import AppException
 from app.utils.weighting import compute_weight, weighted_sample
 
+# 错题本在前端以「虚拟 Unit」形式出现在 Unit 列表中，使用 0 作为虚拟 ID。
+# 真实 Unit 表自增从 1 开始，0 不会冲突。start_practice 的 unit_ids 含 0 即表示
+# 把该 member 的错题本词也加入候选池（可与真实 Unit 多选混合）。
+WRONG_BOOK_VIRTUAL_UNIT_ID = 0
+
 
 class PracticeService:
     def __init__(self, session: AsyncSession):
@@ -29,19 +34,9 @@ class PracticeService:
         self, member_id: int, mode: PracticeMode,
         unit_ids: list[int], count: int = 10,
         task_type: TaskType | None = None,
-        source: str = "units",
     ) -> dict:
-        # source 与 task_type 互斥守卫
-        if source == "wrong_book" and task_type is not None:
-            raise AppException(400, "错题本模式不支持 task_type")
-        # units 模式必须有 unit_ids
-        if source == "units" and not unit_ids and task_type is None:
-            raise AppException(400, "请至少选择一个 Unit")
-        if source == "units" and task_type in (TaskType.learn, TaskType.wrong_word_drill) and not unit_ids:
-            raise AppException(400, "请至少选择一个 Unit")
-
         questions = await self._build_questions(
-            member_id, unit_ids, count, task_type=task_type, source=source,
+            member_id, unit_ids, count, task_type=task_type,
         )
         if not questions:
             if task_type == TaskType.weekly_review:
@@ -50,8 +45,6 @@ class PracticeService:
                 raise AppException(400, "本月暂无可复习词")
             elif task_type == TaskType.wrong_word_drill:
                 raise AppException(400, "暂无错题可刷")
-            elif source == "wrong_book":
-                raise AppException(400, "错题本是空的")
             raise AppException(400, "没有可练习的单词")
 
         ps = PracticeSession(
@@ -110,13 +103,12 @@ class PracticeService:
 
         mastery = await self._update_mastery(ps.member_id, word_id, is_correct)
 
-        # 答错 → upsert 错题本（保留 added_at，更新 wrong_count_snapshot）
+        # 答错 → upsert 错题本（已有记录则 wrong_count +1，保留 added_at）
         # 答对时刻意不动错题本，需用户在错题本页手动移除
         if not is_correct:
             await self.wb_repo.upsert_on_wrong(
                 member_id=ps.member_id,
                 word_id=word_id,
-                wrong_count_snapshot=mastery.wrong_count,
             )
 
         # 答对 + 今天首次 → 回流到对应 active plan 的今日任务
@@ -184,17 +176,10 @@ class PracticeService:
     async def _build_questions(
         self, member_id: int, unit_ids: list[int], count: int,
         task_type: TaskType | None = None,
-        source: str = "units",
     ) -> list[dict]:
         today = date.today()
         word_filter = None
-        if source == "wrong_book":
-            # 错题本训练：候选限定为该 member 错题本里的所有 word_id（跨所有 Unit）
-            wb_word_ids = await self.wb_repo.list_word_ids_by_member(member_id)
-            if not wb_word_ids:
-                return []
-            word_filter = Word.id.in_(wb_word_ids)
-        elif task_type == TaskType.weekly_review:
+        if task_type == TaskType.weekly_review:
             monday = today - timedelta(days=today.weekday())
             word_ids = await self.record_repo.get_word_ids_between(member_id, monday, today)
             if not word_ids:
@@ -210,7 +195,20 @@ class PracticeService:
             # 三轮错题刷：候选限定为 unit 内、有错题记录且未到 permanent 的词
             word_filter = Word.unit_id.in_(unit_ids)
         else:
-            word_filter = Word.unit_id.in_(unit_ids)
+            # 普通模式：支持虚拟错题本单元（id=0）与真实 Unit 混合多选
+            has_wrong_book = WRONG_BOOK_VIRTUAL_UNIT_ID in unit_ids
+            real_unit_ids = [u for u in unit_ids if u != WRONG_BOOK_VIRTUAL_UNIT_ID]
+            conditions = []
+            wb_word_ids: list[int] = []
+            if has_wrong_book:
+                wb_word_ids = await self.wb_repo.list_word_ids_by_member(member_id)
+                if wb_word_ids:
+                    conditions.append(Word.id.in_(wb_word_ids))
+            if real_unit_ids:
+                conditions.append(Word.unit_id.in_(real_unit_ids))
+            if not conditions:
+                return []
+            word_filter = conditions[0] if len(conditions) == 1 else or_(*conditions)
 
         stmt = (
             select(Word, WordTag.tag)

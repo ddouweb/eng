@@ -19,22 +19,21 @@ class WrongWordBookRepo(BaseRepo[WrongWordBook]):
         result = await self.session.execute(stmt)
         return result.scalar_one_or_none()
 
-    async def upsert_on_wrong(
-        self, member_id: int, word_id: int, wrong_count_snapshot: int
-    ) -> None:
-        """答错时调用：已存在则更新 wrong_count_snapshot（added_at 保留）；
-        不存在则插入。MySQL 走原生 ON DUPLICATE KEY UPDATE，SQLite 走两步。
+    async def upsert_on_wrong(self, member_id: int, word_id: int) -> None:
+        """答错时调用：已存在则 wrong_count +1（added_at 保留）；不存在则插入 wrong_count=1。
+        联合唯一约束保证同一 (member, word) 只有一条记录 —— 错误次数累计，不会重复添加。
+        MySQL 走原生 ON DUPLICATE KEY UPDATE，SQLite 走 select+insert/update 两步。
         """
         bind = self.session.bind
         dialect = bind.dialect.name if bind else "sqlite"
         if dialect == "mysql":
             await self.session.execute(
                 text(
-                    "INSERT INTO wrong_word_book (member_id, word_id, wrong_count_snapshot) "
-                    "VALUES (:mid, :wid, :wc) "
-                    "ON DUPLICATE KEY UPDATE wrong_count_snapshot = VALUES(wrong_count_snapshot)"
+                    "INSERT INTO wrong_word_book (member_id, word_id, wrong_count) "
+                    "VALUES (:mid, :wid, 1) "
+                    "ON DUPLICATE KEY UPDATE wrong_count = wrong_count + 1"
                 ),
-                {"mid": member_id, "wid": word_id, "wc": wrong_count_snapshot},
+                {"mid": member_id, "wid": word_id},
             )
         else:
             existing = await self.get_by_member_word(member_id, word_id)
@@ -43,11 +42,11 @@ class WrongWordBookRepo(BaseRepo[WrongWordBook]):
                     WrongWordBook(
                         member_id=member_id,
                         word_id=word_id,
-                        wrong_count_snapshot=wrong_count_snapshot,
+                        wrong_count=1,
                     )
                 )
             else:
-                existing.wrong_count_snapshot = wrong_count_snapshot
+                existing.wrong_count += 1
         await self.session.flush()
 
     async def list_word_ids_by_member(self, member_id: int) -> list[int]:

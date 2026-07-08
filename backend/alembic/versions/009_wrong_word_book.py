@@ -32,7 +32,7 @@ def upgrade() -> None:
             member_id BIGINT NOT NULL,
             word_id BIGINT NOT NULL,
             added_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            wrong_count_snapshot INT NOT NULL DEFAULT 1,
+            wrong_count INT NOT NULL DEFAULT 1,
             PRIMARY KEY (id),
             CONSTRAINT fk_wrongbook_member FOREIGN KEY (member_id)
                 REFERENCES member (id) ON DELETE CASCADE,
@@ -47,6 +47,5 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_index("ix_wrongbook_word", table_name="wrong_word_book")
-    op.drop_index("ix_wrongbook_member", table_name="wrong_word_book")
+    # MariaDB 下 drop_index 会因 FK 占用索引失败，直接 drop_table 一步到位
     op.drop_table("wrong_word_book")

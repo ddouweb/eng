@@ -82,7 +82,7 @@ for it in items:
                 f"中文：{it['chinese']}　·　"
                 f"Unit：{it.get('unit_title') or '-'}　·　"
                 f"掌握 {icon} {it.get('mastery_level') or 'unlearned'}　·　"
-                f"累计错 {it.get('mastery_wrong_count', 0)} 次　·　"
+                f"🔥 错题本中累计错 {it.get('wrong_count', 0)} 次　·　"
                 f"加入于 {(it.get('added_at') or '')[:16]}"
             )
         with col_btn:

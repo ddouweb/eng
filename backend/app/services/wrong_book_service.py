@@ -60,7 +60,7 @@ class WrongBookService:
                 "unit_title": unit_title,
                 "word_type": word.type.value,
                 "added_at": wb.added_at.isoformat() if wb.added_at else None,
-                "wrong_count_snapshot": wb.wrong_count_snapshot,
+                "wrong_count": wb.wrong_count,
                 "mastery_level": mastery.level.value if mastery else None,
                 "mastery_wrong_count": mastery.wrong_count if mastery else 0,
                 "mastery_correct_count": mastery.correct_count if mastery else 0,
@@ -100,15 +100,6 @@ class WrongBookService:
         if existing:
             return success(data={"id": existing.id, "already_existed": True})
 
-        snapshot = 1
-        mastery_stmt = select(MasteryRecord).where(
-            MasteryRecord.member_id == member_id,
-            MasteryRecord.word_id == word_id,
-        )
-        mastery = (await self.session.execute(mastery_stmt)).scalar_one_or_none()
-        if mastery and mastery.wrong_count > 0:
-            snapshot = mastery.wrong_count
-
-        await self.repo.upsert_on_wrong(member_id, word_id, snapshot)
+        await self.repo.upsert_on_wrong(member_id, word_id)
         await self.session.commit()
         return success(data={"word_id": word_id, "already_existed": False})

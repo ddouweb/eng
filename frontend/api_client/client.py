@@ -184,11 +184,9 @@ def remove_tag(word_id: int, tag: str) -> dict:
 def start_practice(
     member_id: int, mode: str, unit_ids: list[int],
     count: int = 10, task_type: str | None = None,
-    source: str = "units",
 ) -> dict:
     body: dict = {
         "member_id": member_id, "mode": mode, "unit_ids": unit_ids, "count": count,
-        "source": source,
     }
     if task_type:
         body["task_type"] = task_type

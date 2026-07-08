@@ -14,7 +14,7 @@ class WrongWordItem(BaseModel):
     unit_title: str | None = None
     word_type: str
     added_at: datetime
-    wrong_count_snapshot: int
+    wrong_count: int
     mastery_level: str | None = None
     mastery_wrong_count: int = 0
     mastery_correct_count: int = 0

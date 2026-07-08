@@ -464,31 +464,32 @@ if not in_practice and not practice_done:
 
         st.divider()
 
-    # ── 训练对象切换：单元 / 错题本 ─────────────────────
-    train_target = st.radio(
-        "🎯 训练对象",
-        options=["units", "wrong_book"],
-        format_func=lambda x: "📚 单元" if x == "units" else "📕 错题本",
-        horizontal=True,
-        key="train_target_sel",
-    )
+    # ── 训练对象：错题本（虚拟 Unit）+ 真实 Units ───────
+    # 错题本以「虚拟 Unit」形式出现在选择列表中，可与真实 Unit 多选混合。
+    # 虚拟 ID = 0，真实 Unit 自增从 1 开始，不冲突。
+    WRONG_BOOK_VIRTUAL_UNIT_ID = 0
 
-    selected_ids: list[int] = []
-    if train_target == "wrong_book":
-        _wb_cnt_resp = client.count_wrong_book(member_id=member_id)
-        _wb_total = _wb_cnt_resp["data"]["total"] if _wb_cnt_resp["code"] == 200 else 0
-        st.caption(
-            f"错题本当前共 {_wb_total} 词 · 答对不会自动移除，可在「📕 错题本」页手动管理"
-        )
-        if _wb_total == 0:
-            st.info("错题本为空，先去练习并答错一些题，再来这里训练")
-            st.stop()
-    else:
-        # Unit 选择 — 点击药丸切换
-        unit_names = [u["title"] for u in units]
-        unit_id_map = {u["title"]: u["id"] for u in units}
-        selected_names = st.pills("📚 选择 Unit", unit_names, selection_mode="multi")
-        selected_ids = [unit_id_map[n] for n in (selected_names or [])]
+    # 错题本数量 badge（用于在标签上提示）
+    _wb_cnt_resp = client.count_wrong_book(member_id=member_id)
+    _wb_total = _wb_cnt_resp["data"]["total"] if _wb_cnt_resp["code"] == 200 else 0
+
+    # 构造选择列表：错题本 + 所有真实 Unit
+    # 用 "title::id" 作为 pill 的唯一 key（避免不同 Unit 同名冲突），format_func 还原展示
+    WRONG_BOOK_LABEL = f"📕 错题本（{_wb_total}）"
+    options: list[str] = [f"{WRONG_BOOK_LABEL}::{WRONG_BOOK_VIRTUAL_UNIT_ID}"]
+    for u in units:
+        options.append(f"{u['title']}::{u['id']}")
+
+    def _fmt(opt: str) -> str:
+        return opt.rsplit("::", 1)[0]
+
+    selected = st.pills(
+        "📚 选择 Unit（📕 错题本可作为虚拟单元一起选）",
+        options,
+        selection_mode="multi",
+        format_func=_fmt,
+    )
+    selected_ids = [int(opt.rsplit("::", 1)[1]) for opt in (selected or [])]
 
     # 题目数量 — 预设按钮（"全部" 表示所有可练习单词）
     count_opts = [10, 20, 30, 50, 80, 100, 150, 200, "全部"]
@@ -515,7 +516,6 @@ if not in_practice and not practice_done:
 
     st.markdown("**👇 选择模式，点击即开始**")
 
-    can_start = (train_target == "wrong_book") or bool(selected_ids)
     # 模式卡片网格 — 点击直接开始练习
     mode_keys = list(MODES.keys())
     for row_start in range(0, len(mode_keys), 4):
@@ -523,12 +523,11 @@ if not in_practice and not practice_done:
         for i, key in enumerate(mode_keys[row_start:row_start + 4]):
             with cols[i]:
                 if st.button(MODES[key], key=f"mode_{key}",
-                             use_container_width=True, disabled=not can_start):
+                             use_container_width=True, disabled=not selected_ids):
                     member_id = st.session_state.get("member_id", 1)
                     resp = client.start_practice(
                         member_id=member_id, mode=key,
                         unit_ids=selected_ids, count=count,
-                        source=train_target,
                     )
                     if resp["code"] == 200:
                         questions = resp["data"]["questions"]
@@ -548,30 +547,51 @@ if not in_practice and not practice_done:
                         st.error(resp["message"])
 
     st.divider()
-    # 试听预览仅对 Unit 模式有意义（错题本没有「拉全部单词」语义）
-    if train_target == "units":
+    # 试听预览：错题本（虚拟 Unit 0）也参与，按"虚拟 Unit"理念一并拉词
+    if selected_ids:
         if st.button(
             "🧪 试听预览（不计统计）",
             use_container_width=True,
             disabled=not selected_ids,
             help=(
-                "从所选 Unit 拉取全部单词逐张浏览：英文 + 音标 + 中文 + 发音；"
+                "从所选 Unit（含📕 错题本）拉取全部单词逐张浏览：英文 + 音标 + 中文 + 发音；"
                 "不创建 session，不计入任何统计。进入后可勾选「自动播放」「自动下一题」"
             ),
         ):
             all_words = []
+            # 错题本：拉该 member 错题本里的所有词
+            if WRONG_BOOK_VIRTUAL_UNIT_ID in selected_ids:
+                wb_resp = client.list_wrong_book(member_id=member_id, page_size=500)
+                if wb_resp["code"] == 200:
+                    for it in wb_resp["data"]["items"]:
+                        all_words.append({
+                            "id": it["word_id"],
+                            "english": it["english"],
+                            "chinese": it["chinese"],
+                            "type": it.get("word_type", "word"),
+                        })
+            # 真实 Unit
             for uid in selected_ids:
+                if uid == WRONG_BOOK_VIRTUAL_UNIT_ID:
+                    continue
                 resp = client.list_words(uid, page_size=500)
                 if resp["code"] == 200:
                     all_words.extend(resp["data"]["items"])
-            if all_words:
+            # 去重（错题本里的词可能也属于已选真实 Unit）
+            seen = set()
+            deduped = []
+            for w in all_words:
+                if w["id"] not in seen:
+                    seen.add(w["id"])
+                    deduped.append(w)
+            if deduped:
                 st.session_state.preview = {
-                    "words": all_words, "idx": 0, "active": True,
+                    "words": deduped, "idx": 0, "active": True,
                     "word_start": None, "last_idx": -1, "prev_auto_next": False,
                 }
                 st.rerun()
             else:
-                st.warning("所选 Unit 没有单词")
+                st.warning("所选范围内没有单词")
 
 # ── 练习进行中 ─────────────────────────────────────────
 if in_practice:

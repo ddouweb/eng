@@ -9,7 +9,8 @@ from app.models.base import Base
 class WrongWordBook(Base):
     """错题本：member 维度的全局错题集合，跨所有 Unit。
 
-    答错自动 upsert（保留 added_at，更新 wrong_count_snapshot）；
+    答错自动 upsert：联合唯一保证同一 (member, word) 只有一条记录，
+    wrong_count 字段在已有记录上 +1，added_at 保留首次加入时间。
     答对时刻意不动 —— 仅由用户在错题本页手动移除。
     """
 
@@ -28,7 +29,7 @@ class WrongWordBook(Base):
     added_at: Mapped[datetime] = mapped_column(
         DateTime, nullable=False, server_default=func.now()
     )
-    wrong_count_snapshot: Mapped[int] = mapped_column(
+    wrong_count: Mapped[int] = mapped_column(
         Integer, nullable=False, default=1, server_default="1"
     )
 
