@@ -18,6 +18,7 @@ class Word(TimestampMixin, Base):
     unit: Mapped["Unit"] = relationship(back_populates="words")  # noqa: F821
     tags: Mapped[list["WordTag"]] = relationship(back_populates="word", cascade="all, delete-orphan")
     mastery_records: Mapped[list["MasteryRecord"]] = relationship(back_populates="word", cascade="all, delete-orphan")  # noqa: F821
+    wrong_word_book: Mapped[list["WrongWordBook"]] = relationship(back_populates="word", cascade="all, delete-orphan")
 
     def __repr__(self) -> str:
         return f"<Word(id={self.id}, english='{self.english}')>"

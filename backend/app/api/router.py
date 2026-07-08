@@ -12,6 +12,7 @@ from app.api.v1.stats import router as stats_router
 from app.api.v1.tts import router as tts_router
 from app.api.v1.unit import router as unit_router
 from app.api.v1.word import router as word_router
+from app.api.v1.wrong_book import router as wrong_book_router
 
 api_router = APIRouter(prefix="/api/v1")
 
@@ -26,6 +27,6 @@ _auth = Depends(get_current_user)
 for r in [
     member_router, unit_router, word_router,
     practice_router, plan_router, stats_router, leaderboard_router,
-    ai_router,
+    ai_router, wrong_book_router,
 ]:
     api_router.include_router(r, dependencies=[_auth])

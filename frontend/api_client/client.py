@@ -184,9 +184,11 @@ def remove_tag(word_id: int, tag: str) -> dict:
 def start_practice(
     member_id: int, mode: str, unit_ids: list[int],
     count: int = 10, task_type: str | None = None,
+    source: str = "units",
 ) -> dict:
     body: dict = {
         "member_id": member_id, "mode": mode, "unit_ids": unit_ids, "count": count,
+        "source": source,
     }
     if task_type:
         body["task_type"] = task_type
@@ -294,6 +296,30 @@ def parse_words(text: str) -> dict:
 
 def get_tts_url(text: str, lang: str = "en") -> str:
     return f"{PUBLIC_API_BASE}/tts/generate?text={quote(text)}&lang={lang}"
+
+
+# ── Wrong Book (错题本) ────────────────────────────────
+
+def list_wrong_book(member_id: int = 1, page: int = 1, page_size: int = 50) -> dict:
+    return _handle(_request("GET", _url("/wrong-book"), params={
+        "member_id": member_id, "page": page, "page_size": page_size,
+    }))
+
+
+def count_wrong_book(member_id: int = 1) -> dict:
+    return _handle(_request("GET", _url("/wrong-book/count"), params={"member_id": member_id}))
+
+
+def remove_wrong_word(word_id: int, member_id: int = 1) -> dict:
+    return _handle(_request("DELETE", _url(f"/wrong-book/{word_id}"), params={"member_id": member_id}))
+
+
+def clear_wrong_book(member_id: int = 1) -> dict:
+    return _handle(_request("DELETE", _url("/wrong-book"), params={"member_id": member_id}))
+
+
+def add_wrong_word(word_id: int, member_id: int = 1) -> dict:
+    return _handle(_request("POST", _url(f"/wrong-book/{word_id}"), params={"member_id": member_id}))
 
 
 # ── Auth ─────────────────────────────────────────────────

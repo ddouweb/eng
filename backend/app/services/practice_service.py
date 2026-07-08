@@ -11,6 +11,7 @@ from app.models.practice import PracticeRecord, PracticeSession
 from app.models.word import Word, WordTag
 from app.repositories.mastery_repo import MasteryRepo
 from app.repositories.practice_repo import PracticeRecordRepo, PracticeSessionRepo
+from app.repositories.wrong_book_repo import WrongWordBookRepo
 from app.schemas.common import success
 from app.schemas.exceptions import AppException
 from app.utils.weighting import compute_weight, weighted_sample
@@ -22,13 +23,26 @@ class PracticeService:
         self.session_repo = PracticeSessionRepo(session)
         self.record_repo = PracticeRecordRepo(session)
         self.mastery_repo = MasteryRepo(session)
+        self.wb_repo = WrongWordBookRepo(session)
 
     async def start_practice(
         self, member_id: int, mode: PracticeMode,
         unit_ids: list[int], count: int = 10,
         task_type: TaskType | None = None,
+        source: str = "units",
     ) -> dict:
-        questions = await self._build_questions(member_id, unit_ids, count, task_type=task_type)
+        # source 与 task_type 互斥守卫
+        if source == "wrong_book" and task_type is not None:
+            raise AppException(400, "错题本模式不支持 task_type")
+        # units 模式必须有 unit_ids
+        if source == "units" and not unit_ids and task_type is None:
+            raise AppException(400, "请至少选择一个 Unit")
+        if source == "units" and task_type in (TaskType.learn, TaskType.wrong_word_drill) and not unit_ids:
+            raise AppException(400, "请至少选择一个 Unit")
+
+        questions = await self._build_questions(
+            member_id, unit_ids, count, task_type=task_type, source=source,
+        )
         if not questions:
             if task_type == TaskType.weekly_review:
                 raise AppException(400, "本周暂无可复习词")
@@ -36,6 +50,8 @@ class PracticeService:
                 raise AppException(400, "本月暂无可复习词")
             elif task_type == TaskType.wrong_word_drill:
                 raise AppException(400, "暂无错题可刷")
+            elif source == "wrong_book":
+                raise AppException(400, "错题本是空的")
             raise AppException(400, "没有可练习的单词")
 
         ps = PracticeSession(
@@ -93,6 +109,15 @@ class PracticeService:
             ps.correct_count += 1
 
         mastery = await self._update_mastery(ps.member_id, word_id, is_correct)
+
+        # 答错 → upsert 错题本（保留 added_at，更新 wrong_count_snapshot）
+        # 答对时刻意不动错题本，需用户在错题本页手动移除
+        if not is_correct:
+            await self.wb_repo.upsert_on_wrong(
+                member_id=ps.member_id,
+                word_id=word_id,
+                wrong_count_snapshot=mastery.wrong_count,
+            )
 
         # 答对 + 今天首次 → 回流到对应 active plan 的今日任务
         if is_correct and is_first_today:
@@ -159,10 +184,17 @@ class PracticeService:
     async def _build_questions(
         self, member_id: int, unit_ids: list[int], count: int,
         task_type: TaskType | None = None,
+        source: str = "units",
     ) -> list[dict]:
         today = date.today()
         word_filter = None
-        if task_type == TaskType.weekly_review:
+        if source == "wrong_book":
+            # 错题本训练：候选限定为该 member 错题本里的所有 word_id（跨所有 Unit）
+            wb_word_ids = await self.wb_repo.list_word_ids_by_member(member_id)
+            if not wb_word_ids:
+                return []
+            word_filter = Word.id.in_(wb_word_ids)
+        elif task_type == TaskType.weekly_review:
             monday = today - timedelta(days=today.weekday())
             word_ids = await self.record_repo.get_word_ids_between(member_id, monday, today)
             if not word_ids:

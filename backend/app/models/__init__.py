@@ -5,6 +5,7 @@ from app.models.word import Word, WordTag
 from app.models.mastery import MasteryRecord
 from app.models.practice import PracticeSession, PracticeRecord
 from app.models.plan import DailyTask, LearningPlan, PlanUnit
+from app.models.wrong_book import WrongWordBook
 from app.models.enums import (
     MasteryLevel,
     PlanStatus,
@@ -26,6 +27,7 @@ __all__ = [
     "LearningPlan",
     "PlanUnit",
     "DailyTask",
+    "WrongWordBook",
     "MasteryLevel",
     "PlanStatus",
     "PracticeMode",

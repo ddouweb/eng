@@ -464,11 +464,31 @@ if not in_practice and not practice_done:
 
         st.divider()
 
-    # Unit 选择 — 点击药丸切换
-    unit_names = [u["title"] for u in units]
-    unit_id_map = {u["title"]: u["id"] for u in units}
-    selected_names = st.pills("📚 选择 Unit", unit_names, selection_mode="multi")
-    selected_ids = [unit_id_map[n] for n in (selected_names or [])]
+    # ── 训练对象切换：单元 / 错题本 ─────────────────────
+    train_target = st.radio(
+        "🎯 训练对象",
+        options=["units", "wrong_book"],
+        format_func=lambda x: "📚 单元" if x == "units" else "📕 错题本",
+        horizontal=True,
+        key="train_target_sel",
+    )
+
+    selected_ids: list[int] = []
+    if train_target == "wrong_book":
+        _wb_cnt_resp = client.count_wrong_book(member_id=member_id)
+        _wb_total = _wb_cnt_resp["data"]["total"] if _wb_cnt_resp["code"] == 200 else 0
+        st.caption(
+            f"错题本当前共 {_wb_total} 词 · 答对不会自动移除，可在「📕 错题本」页手动管理"
+        )
+        if _wb_total == 0:
+            st.info("错题本为空，先去练习并答错一些题，再来这里训练")
+            st.stop()
+    else:
+        # Unit 选择 — 点击药丸切换
+        unit_names = [u["title"] for u in units]
+        unit_id_map = {u["title"]: u["id"] for u in units}
+        selected_names = st.pills("📚 选择 Unit", unit_names, selection_mode="multi")
+        selected_ids = [unit_id_map[n] for n in (selected_names or [])]
 
     # 题目数量 — 预设按钮（"全部" 表示所有可练习单词）
     count_opts = [10, 20, 30, 50, 80, 100, 150, 200, "全部"]
@@ -495,6 +515,7 @@ if not in_practice and not practice_done:
 
     st.markdown("**👇 选择模式，点击即开始**")
 
+    can_start = (train_target == "wrong_book") or bool(selected_ids)
     # 模式卡片网格 — 点击直接开始练习
     mode_keys = list(MODES.keys())
     for row_start in range(0, len(mode_keys), 4):
@@ -502,11 +523,13 @@ if not in_practice and not practice_done:
         for i, key in enumerate(mode_keys[row_start:row_start + 4]):
             with cols[i]:
                 if st.button(MODES[key], key=f"mode_{key}",
-                             use_container_width=True, disabled=not selected_ids):
+                             use_container_width=True, disabled=not can_start):
                     member_id = st.session_state.get("member_id", 1)
                     resp = client.start_practice(
                         member_id=member_id, mode=key,
-                        unit_ids=selected_ids, count=count)
+                        unit_ids=selected_ids, count=count,
+                        source=train_target,
+                    )
                     if resp["code"] == 200:
                         questions = resp["data"]["questions"]
                         if key == "cn2en_choice":
@@ -525,28 +548,30 @@ if not in_practice and not practice_done:
                         st.error(resp["message"])
 
     st.divider()
-    if st.button(
-        "🧪 试听预览（不计统计）",
-        use_container_width=True,
-        disabled=not selected_ids,
-        help=(
-            "从所选 Unit 拉取全部单词逐张浏览：英文 + 音标 + 中文 + 发音；"
-            "不创建 session，不计入任何统计。进入后可勾选「自动播放」「自动下一题」"
-        ),
-    ):
-        all_words = []
-        for uid in selected_ids:
-            resp = client.list_words(uid, page_size=500)
-            if resp["code"] == 200:
-                all_words.extend(resp["data"]["items"])
-        if all_words:
-            st.session_state.preview = {
-                "words": all_words, "idx": 0, "active": True,
-                "word_start": None, "last_idx": -1, "prev_auto_next": False,
-            }
-            st.rerun()
-        else:
-            st.warning("所选 Unit 没有单词")
+    # 试听预览仅对 Unit 模式有意义（错题本没有「拉全部单词」语义）
+    if train_target == "units":
+        if st.button(
+            "🧪 试听预览（不计统计）",
+            use_container_width=True,
+            disabled=not selected_ids,
+            help=(
+                "从所选 Unit 拉取全部单词逐张浏览：英文 + 音标 + 中文 + 发音；"
+                "不创建 session，不计入任何统计。进入后可勾选「自动播放」「自动下一题」"
+            ),
+        ):
+            all_words = []
+            for uid in selected_ids:
+                resp = client.list_words(uid, page_size=500)
+                if resp["code"] == 200:
+                    all_words.extend(resp["data"]["items"])
+            if all_words:
+                st.session_state.preview = {
+                    "words": all_words, "idx": 0, "active": True,
+                    "word_start": None, "last_idx": -1, "prev_auto_next": False,
+                }
+                st.rerun()
+            else:
+                st.warning("所选 Unit 没有单词")
 
 # ── 练习进行中 ─────────────────────────────────────────
 if in_practice:

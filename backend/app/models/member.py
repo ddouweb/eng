@@ -12,6 +12,7 @@ class Member(TimestampMixin, Base):
     avatar: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     mastery_records: Mapped[list["MasteryRecord"]] = relationship(back_populates="member", cascade="all, delete-orphan")  # noqa: F821
+    wrong_word_book: Mapped[list["WrongWordBook"]] = relationship(back_populates="member", cascade="all, delete-orphan")  # noqa: F821
 
     def __repr__(self) -> str:
         return f"<Member(id={self.id}, name='{self.name}')>"
