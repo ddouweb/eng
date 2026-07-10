@@ -21,10 +21,11 @@ def service(mock_session):
 
 
 def _make_word(id=1, english="hello", chinese="你好", type="word", unit_id=1):
-    w = MagicMock(id=id, english=english, chinese=chinese, type=type, unit_id=unit_id)
+    w = MagicMock(id=id, english=english, chinese=chinese, unit_id=unit_id)
     w.created_at = datetime(2026, 1, 1)
     w.updated_at = datetime(2026, 1, 1)
-    w.type.value = type
+    # word.type 是 WordType 枚举，业务代码访问 word.type.value
+    w.type = MagicMock(value=type)
     return w
 
 
@@ -82,7 +83,7 @@ async def test_get_mastery_creates_default(service, mock_session):
         consecutive_correct=0, correct_count=0, wrong_count=0,
         updated_at=datetime(2026, 1, 1),
     )
-    record.level.value = "unlearned"
+    # level 已是真枚举 MasteryLevel.unlearned，其 .value 本就是 "unlearned"，无需也不可再赋值
     service.mastery_repo.get_or_create = AsyncMock(return_value=record)
     result = await service.get_mastery(1)
     assert result["code"] == 200

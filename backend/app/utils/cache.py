@@ -1,3 +1,4 @@
+import hashlib
 import json
 import logging
 from functools import wraps
@@ -55,11 +56,14 @@ async def set_cached(key: str, value: Any, ttl: int = 300) -> None:
         pass
 
 
-def cached(ttl: int = 300, key_prefix: str = ""):
+def cached(ttl: int = 300, key_prefix: str = "", key_builder: Callable | None = None):
     """Decorator for caching async function results in Redis.
 
     Falls back to no caching if Redis is unavailable.
     Only use with methods whose args are JSON-serializable.
+
+    缓存键默认纳入参数指纹（剔除 self），避免不同参数命中同一 key 串数据；
+    可通过 key_builder 自定义键（接收与被装饰方法相同的参数，返回字符串）。
     """
     def decorator(func: Callable):
         @wraps(func)
@@ -68,7 +72,20 @@ def cached(ttl: int = 300, key_prefix: str = ""):
             if not r:
                 return await func(*args, **kwargs)
 
-            cache_key = f"{key_prefix or func.__name__}"
+            base = key_prefix or func.__name__
+            if key_builder is not None:
+                param_part = key_builder(*args, **kwargs)
+            else:
+                # args[0] 通常是 self（repository），剔除后参与指纹
+                try:
+                    payload = {"args": list(args[1:]), "kwargs": kwargs}
+                    param_part = hashlib.md5(
+                        json.dumps(payload, default=str, sort_keys=True).encode()
+                    ).hexdigest()[:12]
+                except (TypeError, ValueError):
+                    param_part = ""  # 不可序列化 → 退化为仅函数名
+            cache_key = f"{base}:{param_part}" if param_part else base
+
             try:
                 cached_val = await get_cached(cache_key)
                 if cached_val is not None:

@@ -1,11 +1,9 @@
-from sqlalchemy import select, func
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.enums import PlanStatus, TaskStatus
-from app.models.plan import DailyTask, LearningPlan, PlanUnit
-from app.models.word import Word
+from app.models.enums import PlanStatus
+from app.models.plan import DailyTask, LearningPlan
 from app.repositories.base import BaseRepo
-from app.schemas.exceptions import AppException
 
 
 class PlanRepo(BaseRepo[LearningPlan]):

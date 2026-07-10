@@ -18,8 +18,15 @@ def test_compute_weight_high_freq():
 
 
 def test_compute_weight_permanent_no_tags():
+    # 永久掌握默认不进入主动练习 → 权重 0
     w = compute_weight(MasteryLevel.permanent, None)
-    assert w == 0.1
+    assert w == 0.0
+
+
+def test_compute_weight_permanent_with_boost_tag_still_zero():
+    # 即便带 high_freq 等加权标签，永久掌握仍短路归零（不会被乘子救回）
+    w = compute_weight(MasteryLevel.permanent, [TagType.high_freq])
+    assert w == 0.0
 
 
 def test_compute_weight_multiple_tags():

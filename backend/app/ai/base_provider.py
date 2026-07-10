@@ -90,8 +90,8 @@ class BaseAIProvider:
         if not data:
             return DialogueResult(scenario="", lines=[])
         lines = [
-            DialogueLine(role=l.get("role", "narrator"), english=l["english"], chinese=l["chinese"])
-            for l in data.get("lines", [])
+            DialogueLine(role=line.get("role", "narrator"), english=line["english"], chinese=line["chinese"])
+            for line in data.get("lines", [])
         ]
         return DialogueResult(scenario=data.get("scenario", ""), lines=lines)
 

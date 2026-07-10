@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.models.enums import MasteryLevel, PlanStatus, PracticeMode, TaskStatus
+from app.models.enums import MasteryLevel, PlanStatus, PracticeMode, TaskStatus, TaskType
 from app.schemas.exceptions import AppException
 from app.services.practice_service import PracticeService
 
@@ -120,10 +120,13 @@ async def test_finish_practice_not_found(service):
 # ────────────────────────────────────────────────────────────
 
 
-def _mock_scalar_result(value):
-    """模拟 session.execute(...).scalar_one() 的链式调用。"""
+def _mock_classify_row(today_cnt: int, prior_cnt: int):
+    """模拟 session.execute(...).one() 返回 (今日次数, 历史次数) 的链式调用。
+
+    _classify_attempt 已改为一次条件聚合返回 (today_cnt, prior_cnt)。
+    """
     result = MagicMock()
-    result.scalar_one.return_value = value
+    result.one.return_value = (today_cnt, prior_cnt)
     return result
 
 
@@ -131,9 +134,7 @@ class TestClassifyAttempt:
     @pytest.mark.asyncio
     async def test_first_time_ever(self, service, mock_session):
         # 今天 0 条、历史 0 条 → (True, True)
-        mock_session.execute = AsyncMock(
-            side_effect=[_mock_scalar_result(0), _mock_scalar_result(0)]
-        )
+        mock_session.execute = AsyncMock(return_value=_mock_classify_row(0, 0))
         is_first, is_new = await service._classify_attempt(1, 100, date(2026, 6, 16))
         assert is_first is True
         assert is_new is True
@@ -141,9 +142,7 @@ class TestClassifyAttempt:
     @pytest.mark.asyncio
     async def test_already_practiced_today(self, service, mock_session):
         # 今天已有 1 条 → (False, True)
-        mock_session.execute = AsyncMock(
-            side_effect=[_mock_scalar_result(1), _mock_scalar_result(0)]
-        )
+        mock_session.execute = AsyncMock(return_value=_mock_classify_row(1, 0))
         is_first, is_new = await service._classify_attempt(1, 100, date(2026, 6, 16))
         assert is_first is False
         assert is_new is True
@@ -151,18 +150,21 @@ class TestClassifyAttempt:
     @pytest.mark.asyncio
     async def test_practiced_in_prior_days(self, service, mock_session):
         # 今天 0 条、历史 2 条 → (True, False)
-        mock_session.execute = AsyncMock(
-            side_effect=[_mock_scalar_result(0), _mock_scalar_result(2)]
-        )
+        mock_session.execute = AsyncMock(return_value=_mock_classify_row(0, 2))
         is_first, is_new = await service._classify_attempt(1, 100, date(2026, 6, 16))
         assert is_first is True
         assert is_new is False
 
 
 def _mock_task_result(task):
-    """模拟 session.execute(...).scalar_one_or_none() 的链式调用。"""
+    """模拟 session.execute(...).scalars().all() 的链式调用。
+
+    _tick_daily_task 已改为遍历所有匹配任务（去 limit(1)）；传 None 表示无匹配。
+    """
     result = MagicMock()
-    result.scalar_one_or_none.return_value = task
+    scalars = MagicMock()
+    scalars.all.return_value = [task] if task is not None else []
+    result.scalars.return_value = scalars
     return result
 
 
@@ -173,6 +175,7 @@ class TestTickDailyTask:
             new_count=10, review_count=5,
             completed_new=3, completed_review=2,
             status=TaskStatus.in_progress,
+            task_type=TaskType.learn,
         )
         mock_session.execute = AsyncMock(return_value=_mock_task_result(task))
 
@@ -216,6 +219,7 @@ class TestTickDailyTask:
             new_count=10, review_count=5,
             completed_new=9, completed_review=5,
             status=TaskStatus.in_progress,
+            task_type=TaskType.learn,
         )
         mock_session.execute = AsyncMock(return_value=_mock_task_result(task))
 
@@ -243,6 +247,7 @@ async def test_submit_answer_reflows_to_daily_task(service, mock_session):
     service.session.get = AsyncMock(return_value=word)
 
     service.record_repo.create = AsyncMock()
+    service.record_repo.get_by_session_word = AsyncMock(return_value=None)  # 去重：无已有记录，走正常计分路径
     service._update_mastery = AsyncMock(return_value=MagicMock(
         level=MasteryLevel.learning, consecutive_correct=1,
         correct_count=1, wrong_count=0,
@@ -271,6 +276,7 @@ async def test_submit_answer_wrong_answer_does_not_tick(service, mock_session):
     service.session.get = AsyncMock(return_value=word)
 
     service.record_repo.create = AsyncMock()
+    service.record_repo.get_by_session_word = AsyncMock(return_value=None)  # 去重：无已有记录，走正常计分路径
     service._update_mastery = AsyncMock(return_value=MagicMock(
         level=MasteryLevel.unlearned, consecutive_correct=0,
         correct_count=0, wrong_count=1,
@@ -279,6 +285,7 @@ async def test_submit_answer_wrong_answer_does_not_tick(service, mock_session):
 
     service._classify_attempt = AsyncMock(return_value=(True, True))
     service._tick_daily_task = AsyncMock()
+    service.wb_repo.upsert_on_wrong = AsyncMock()  # 隔离错题本副作用
 
     await service.submit_answer(session_id=1, word_id=42, is_correct=False)
 
@@ -295,6 +302,7 @@ async def test_submit_answer_second_attempt_today_does_not_tick(service, mock_se
     service.session.get = AsyncMock(return_value=word)
 
     service.record_repo.create = AsyncMock()
+    service.record_repo.get_by_session_word = AsyncMock(return_value=None)  # 去重：无已有记录，走正常计分路径
     service._update_mastery = AsyncMock(return_value=MagicMock(
         level=MasteryLevel.learning, consecutive_correct=2,
         correct_count=2, wrong_count=0,

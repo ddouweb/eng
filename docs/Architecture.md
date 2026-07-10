@@ -88,13 +88,13 @@ family-english-coach/
 │   │   │   ├── plan_repo.py
 │   │   │   └── practice_repo.py
 │   │   │
-│   │   ├── ai/                     # AI 能力抽象层
+│   │   ├── ai/                     # AI 能力抽象层（provider 可热切换）
 │   │   │   ├── __init__.py
 │   │   │   ├── base.py             # AIProvider Protocol
+│   │   │   ├── base_provider.py    # 公共 HTTP/重试 基类
 │   │   │   ├── claude_provider.py
-│   │   │   ├── minimax_provider.py
-│   │   │   ├── zhipu_provider.py
-│   │   │   ├── deepseek_provider.py
+│   │   │   ├── deepseek_provider.py  # deepseek + glm（智谱）复用同一实现
+│   │   │   ├── tts_service.py      # TTS 语音合成
 │   │   │   └── factory.py          # 根据 config 选择 provider
 │   │   │
 │   │   └── utils/

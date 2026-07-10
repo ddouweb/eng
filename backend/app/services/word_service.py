@@ -1,10 +1,10 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.enums import TagType, WordType
-from app.models.word import Word, WordTag
+from app.models.word import Word
 from app.repositories.mastery_repo import MasteryRepo
 from app.repositories.word_repo import WordRepo
-from app.schemas.common import error, success
+from app.schemas.common import success
 from app.schemas.exceptions import AppException
 
 

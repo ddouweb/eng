@@ -24,7 +24,9 @@ class TestPlanToDict:
             deadline="2026-07-31", status=PlanStatus.active,
             created_at=None,
         )
-        result = PlanService(plan=None)._plan_to_dict(plan)
+        # MagicMock 的 name 是特殊参数（设 repr 名而非属性），需显式赋值才能被 .name 取到
+        plan.name = "test plan"
+        result = PlanService(None)._plan_to_dict(plan)
         assert result["name"] == "test plan"
         assert result["status"] == "active"
         assert result["deadline"] == "2026-07-31"
@@ -35,7 +37,7 @@ class TestPlanToDict:
             deadline=None, status=PlanStatus.active,
             created_at=None,
         )
-        result = PlanService(plan=None)._plan_to_dict(plan)
+        result = PlanService(None)._plan_to_dict(plan)
         assert result["deadline"] is None
 
 

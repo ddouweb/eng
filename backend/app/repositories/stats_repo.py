@@ -1,11 +1,10 @@
 from datetime import date, datetime, time, timedelta
 
-from sqlalchemy import select, func, text
+from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.enums import MasteryLevel, TaskStatus
+from app.models.enums import MasteryLevel
 from app.models.mastery import MasteryRecord
-from app.models.plan import DailyTask, LearningPlan
 from app.models.practice import PracticeSession
 from app.models.word import Word
 
@@ -15,26 +14,47 @@ class StatsRepo:
         self.session = session
 
     async def get_mastery_distribution(self, member_id: int) -> dict[str, int]:
+        # LEFT JOIN Word → MasteryRecord：从未练过的词无记录，COALESCE 计为 unlearned，
+        # 使分布的 unlearned 桶如实反映"未学"词数（原先几乎恒为 0，与 mastery_rate 口径矛盾）。
+        level_expr = func.coalesce(MasteryRecord.level, MasteryLevel.unlearned).label("level")
         stmt = (
-            select(MasteryRecord.level, func.count())
-            .where(MasteryRecord.member_id == member_id)
-            .group_by(MasteryRecord.level)
+            select(level_expr, func.count())
+            .select_from(Word)
+            .outerjoin(
+                MasteryRecord,
+                (MasteryRecord.word_id == Word.id) & (MasteryRecord.member_id == member_id),
+            )
+            .group_by(level_expr)
         )
         result = await self.session.execute(stmt)
-        counts = {row[0].value: row[1] for row in result.all()}
+        counts: dict[str, int] = {}
+        for row in result.all():
+            lvl = row[0]
+            key = lvl.value if hasattr(lvl, "value") else str(lvl)
+            counts[key] = row[1]
         for level in ("unlearned", "learning", "familiar", "permanent"):
             counts.setdefault(level, 0)
         return counts
 
     async def get_mastery_by_unit(self, member_id: int, unit_id: int) -> dict[str, int]:
+        # 同上：按 unit 范围 LEFT JOIN，未练过的词计 unlearned
+        level_expr = func.coalesce(MasteryRecord.level, MasteryLevel.unlearned).label("level")
         stmt = (
-            select(MasteryRecord.level, func.count())
-            .join(Word, Word.id == MasteryRecord.word_id)
-            .where(MasteryRecord.member_id == member_id, Word.unit_id == unit_id)
-            .group_by(MasteryRecord.level)
+            select(level_expr, func.count())
+            .select_from(Word)
+            .outerjoin(
+                MasteryRecord,
+                (MasteryRecord.word_id == Word.id) & (MasteryRecord.member_id == member_id),
+            )
+            .where(Word.unit_id == unit_id)
+            .group_by(level_expr)
         )
         result = await self.session.execute(stmt)
-        counts = {row[0].value: row[1] for row in result.all()}
+        counts: dict[str, int] = {}
+        for row in result.all():
+            lvl = row[0]
+            key = lvl.value if hasattr(lvl, "value") else str(lvl)
+            counts[key] = row[1]
         for level in ("unlearned", "learning", "familiar", "permanent"):
             counts.setdefault(level, 0)
         return counts

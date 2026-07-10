@@ -33,6 +33,15 @@ class PlanCreate(BaseModel):
             raise ValueError("learn_weekdays values must be in 0..6 (Mon=0..Sun=6)")
         return sorted(set(v))
 
+    @field_validator("monthly_review_day")
+    @classmethod
+    def _check_monthly_review_day(cls, v: int | None) -> int | None:
+        # 29/30 在 _hits_monthly_review 中无分支处理会静默永不触发，故在入口拒绝。
+        # 允许：None / 1-28 / 31（月末，2 月自动适配 28/29）。
+        if v is None or v == 31 or 1 <= v <= 28:
+            return v
+        raise ValueError("monthly_review_day 仅支持 None / 1-28 / 31（月末），不支持 29/30")
+
 
 class TaskUpdateBody(BaseModel):
     completed_new: int = Field(0, ge=0)

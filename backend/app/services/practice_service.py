@@ -1,7 +1,7 @@
 import random
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, time, timedelta, timezone
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.enums import MasteryLevel, PlanStatus, PracticeMode, TagType, TaskStatus, TaskType
@@ -51,6 +51,7 @@ class PracticeService:
             member_id=member_id,
             mode=mode,
             total_count=len(questions),
+            question_word_ids=[q["word_id"] for q in questions],
         )
         ps = await self.session_repo.create(ps)
         await self.session.commit()
@@ -80,9 +81,30 @@ class PracticeService:
         if ps.ended_at:
             raise AppException(400, "Session already ended")
 
+        # 题集归属校验：word_id 必须在本会话题集内（防提交任意词刷分）。
+        # 旧会话 question_word_ids 为 NULL → 跳过（向后兼容）。
+        qset = ps.question_word_ids
+        if isinstance(qset, list) and qset and word_id not in qset:
+            raise AppException(400, "该单词不在本次练习题集中")
+
         word = await self.session.get(Word, word_id)
         if not word:
             raise AppException(404, "Word not found")
+
+        # 去重（幂等）：同一会话同一词只计一次。防止重复提交刷分，也容忍前端
+        # rerun/重试导致的重复 _bg_submit —— 已有记录则直接回读，不重复计数/改掌握度。
+        existing = await self.record_repo.get_by_session_word(session_id, word_id)
+        if existing is not None:
+            mastery = await self.mastery_repo.get_by_member_word(ps.member_id, word_id)
+            return success(data={
+                "is_correct": existing.is_correct,
+                "correct_answer": word.english,
+                "mastery": self._mastery_dict(mastery),
+            })
+
+        # 客观题服务端复判：忽略客户端传入的 is_correct，按答案重新判定，
+        # 杜绝前端伪造 is_correct=true 刷分。主观题（闪卡/记忆/连线等）无客观答案，回退客户端。
+        is_correct = self._server_judge(ps.mode, word, user_answer, is_correct)
 
         # 在插入 PracticeRecord 之前先判定：
         #   - is_first_today: 该词今天是否还没有任何练习记录（避免同一天重复回流）
@@ -120,12 +142,7 @@ class PracticeService:
         return success(data={
             "is_correct": is_correct,
             "correct_answer": word.english,
-            "mastery": {
-                "level": mastery.level.value,
-                "consecutive_correct": mastery.consecutive_correct,
-                "correct_count": mastery.correct_count,
-                "wrong_count": mastery.wrong_count,
-            },
+            "mastery": self._mastery_dict(mastery),
         })
 
     async def finish_practice(self, session_id: int) -> dict:
@@ -139,7 +156,12 @@ class PracticeService:
         await self.session.commit()
         await self.session.refresh(ps)
 
-        accuracy = (ps.correct_count / ps.total_count * 100) if ps.total_count > 0 else 0
+        # 钳制正确率：去重后 correct_count ≤ total_count，理论上不会越界，
+        # 但旧会话/异常数据下仍兜底，确保 accuracy ∈ [0, 100]。
+        if ps.total_count > 0:
+            accuracy = min(100.0, ps.correct_count / ps.total_count * 100)
+        else:
+            accuracy = 0.0
 
         return success(data={
             "session_id": ps.id,
@@ -272,6 +294,54 @@ class PracticeService:
         random.shuffle(options)
         return options
 
+    @staticmethod
+    def _server_judge(
+        mode: PracticeMode, word: Word, user_answer: str | None, client_correct: bool,
+    ) -> bool:
+        """客观题服务端复判：忽略客户端 is_correct，按答案重新判定。
+
+        - 英文输出型（拼写/听写/重排/中→英选择）：答案应等于 word.english
+        - 中文输出型（英→中默写/选择）：答案应等于 word.chinese
+        - 主观型（闪卡/记忆/连线/对话等）：无客观答案，回退客户端判定
+        缺少 user_answer 时也无法复判，回退客户端（避免误判为错）。
+        """
+        en_modes = {
+            PracticeMode.spelling, PracticeMode.dictation,
+            PracticeMode.scramble, PracticeMode.cn2en_choice,
+        }
+        cn_modes = {PracticeMode.choice, PracticeMode.en2cn_write}
+        if mode in en_modes:
+            target = word.english
+        elif mode in cn_modes:
+            target = word.chinese
+        else:
+            return client_correct
+        if not user_answer or target is None:
+            return client_correct
+
+        def _norm(s: str) -> str:
+            # 小写 + 仅保留字母数字（汉字属字母，会被保留），忽略大小写/空格/标点差异
+            return "".join(ch for ch in s.lower() if ch.isalnum())
+
+        return _norm(user_answer) == _norm(target)
+
+    @staticmethod
+    def _mastery_dict(mastery: MasteryRecord | None) -> dict:
+        """统一掌握度快照序列化；mastery 为 None（从未练过）时给默认值。"""
+        if mastery is None:
+            return {
+                "level": MasteryLevel.unlearned.value,
+                "consecutive_correct": 0,
+                "correct_count": 0,
+                "wrong_count": 0,
+            }
+        return {
+            "level": mastery.level.value,
+            "consecutive_correct": mastery.consecutive_correct,
+            "correct_count": mastery.correct_count,
+            "wrong_count": mastery.wrong_count,
+        }
+
     async def _update_mastery(self, member_id: int, word_id: int, is_correct: bool) -> MasteryRecord:
         record = await self.mastery_repo.get_or_create(member_id, word_id)
 
@@ -316,9 +386,24 @@ class PracticeService:
 
         is_first_today: 该词今天还没有任何 PracticeRecord（在本次提交之前）。
         is_new_word:   该词在今天之前从未被练过。
+
+        用一次条件聚合同时拿"今日次数"与"历史次数"（原先 2 次 COUNT 往返），
+        并以 created_at 区间比较替代 func.DATE()，使其能命中 created_at 索引。
         """
-        base = (
-            select(func.count())
+        today_start = datetime.combine(today, time.min)
+        tomorrow_start = today_start + timedelta(days=1)
+        stmt = (
+            select(
+                func.coalesce(func.sum(case(
+                    (and_(PracticeRecord.created_at >= today_start,
+                          PracticeRecord.created_at < tomorrow_start), 1),
+                    else_=0,
+                )), 0),
+                func.coalesce(func.sum(case(
+                    (PracticeRecord.created_at < today_start, 1),
+                    else_=0,
+                )), 0),
+            )
             .select_from(PracticeRecord)
             .join(PracticeSession, PracticeSession.id == PracticeRecord.session_id)
             .where(
@@ -326,12 +411,9 @@ class PracticeService:
                 PracticeSession.member_id == member_id,
             )
         )
-        today_cnt = (await self.session.execute(
-            base.where(func.DATE(PracticeRecord.created_at) == today)
-        )).scalar_one()
-        prior_cnt = (await self.session.execute(
-            base.where(func.DATE(PracticeRecord.created_at) < today)
-        )).scalar_one()
+        row = (await self.session.execute(stmt)).one()
+        today_cnt = int(row[0])
+        prior_cnt = int(row[1])
         return today_cnt == 0, prior_cnt == 0
 
     async def _tick_daily_task(
@@ -355,22 +437,24 @@ class PracticeService:
                 DailyTask.task_date == today,
                 DailyTask.status != TaskStatus.completed,
             )
-            .limit(1)
         )
-        task = (await self.session.execute(stmt)).scalar_one_or_none()
-        if task is None:
+        tasks = (await self.session.execute(stmt)).scalars().all()
+        if not tasks:
             return
 
-        if task.task_type == TaskType.learn:
-            slot = "new" if is_new_word else "review"
-            if slot == "new" and task.completed_new < task.new_count:
-                task.completed_new += 1
-            elif slot == "review" and task.completed_review < task.review_count:
-                task.completed_review += 1
-        else:
-            # weekly_review / monthly_review：只填 review 槽
-            if task.completed_review < task.review_count:
-                task.completed_review += 1
+        # 同一 unit 可能被多个 active plan 选中（如 forward + review_only），
+        # 一次答对应推进所有匹配的当日任务，而非仅首个（原先 limit(1) 会漏推进）。
+        for task in tasks:
+            if task.task_type == TaskType.learn:
+                slot = "new" if is_new_word else "review"
+                if slot == "new" and task.completed_new < task.new_count:
+                    task.completed_new += 1
+                elif slot == "review" and task.completed_review < task.review_count:
+                    task.completed_review += 1
+            else:
+                # weekly_review / monthly_review：只填 review 槽
+                if task.completed_review < task.review_count:
+                    task.completed_review += 1
 
-        if task.completed_new >= task.new_count and task.completed_review >= task.review_count:
-            task.status = TaskStatus.completed
+            if task.completed_new >= task.new_count and task.completed_review >= task.review_count:
+                task.status = TaskStatus.completed

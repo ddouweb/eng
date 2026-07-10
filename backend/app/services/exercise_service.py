@@ -24,8 +24,8 @@ class ExerciseService:
         return success(data={
             "scenario": result.scenario,
             "lines": [
-                {"role": l.role, "english": l.english, "chinese": l.chinese}
-                for l in result.lines
+                {"role": line.role, "english": line.english, "chinese": line.chinese}
+                for line in result.lines
             ],
         })
 

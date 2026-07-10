@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Integer, String, func
+from sqlalchemy import JSON, Boolean, DateTime, Enum, ForeignKey, Integer, String, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TimestampMixin
@@ -17,6 +17,9 @@ class PracticeSession(TimestampMixin, Base):
     mode: Mapped[PracticeMode] = mapped_column(Enum(PracticeMode), nullable=False)
     total_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     correct_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # 本次会话的题集（word_id 列表）：用于提交时校验 word_id 归属本会话、防刷分。
+    # 旧数据为 NULL，提交时跳过校验（向后兼容）。
+    question_word_ids: Mapped[list[int] | None] = mapped_column(JSON, nullable=True)
     started_at: Mapped[datetime] = mapped_column(
         DateTime, nullable=False, server_default=func.now(),
     )

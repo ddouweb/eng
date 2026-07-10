@@ -1,5 +1,6 @@
 from datetime import date, timedelta
 import calendar
+import math
 
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -147,12 +148,29 @@ class PlanService:
         remaining = max(total_words - mastered, 0)
 
         start = plan.start_date or date.today()
-        end = plan.deadline or start + timedelta(days=max(remaining // max(plan.daily_goal, 1), 1))
-        total_days = max((end - start).days + 1, 1)
-
-        new_per_day = min(plan.daily_goal, remaining) if total_days > 0 else remaining
         weekdays = parse_learn_weekdays(plan.learn_weekdays)
         mrd = plan.monthly_review_day
+
+        if plan.deadline:
+            end = plan.deadline
+            # 有 deadline：按区间内实际学习日数均摊新词
+            learn_days = _count_learn_days(start, end, weekdays)
+            new_per_day = (
+                min(plan.daily_goal, math.ceil(remaining / learn_days))
+                if learn_days > 0 else min(plan.daily_goal, remaining)
+            )
+        else:
+            # 无 deadline：按"学完 remaining 需要多少个学习日"反推结束日，
+            # 保证所有新词都能落到学习日任务上（修复原先仅按日历天数估算、
+            # 未考虑 learn_weekdays 导致 20-30% 新词漏排的问题）。
+            needed = math.ceil(remaining / max(plan.daily_goal, 1)) if remaining > 0 else 0
+            end = _end_for_learn_days(start, needed, weekdays)
+            new_per_day = (
+                min(plan.daily_goal, math.ceil(remaining / needed))
+                if needed > 0 else remaining
+            )
+
+        total_days = max((end - start).days + 1, 1)
 
         existing = await self.task_repo.get_by_plan_range(plan.id, start, end)
         existing_keys = {(t.task_date, t.task_type) for t in existing}
@@ -242,6 +260,38 @@ class PlanService:
 def _last_day_of_month(d: date) -> int:
     """返回 d 所在月份的最后一天（1-31）。"""
     return calendar.monthrange(d.year, d.month)[1]
+
+
+def _count_learn_days(start: date, end: date, weekdays: list[int]) -> int:
+    """统计 [start, end] 闭区间内、weekday ∈ weekdays 的学习日数。"""
+    if end < start:
+        return 0
+    wd = set(weekdays)
+    n = 0
+    d = start
+    while d <= end:
+        if d.weekday() in wd:
+            n += 1
+        d += timedelta(days=1)
+    return n
+
+
+def _end_for_learn_days(start: date, needed_learn_days: int, weekdays: list[int]) -> date:
+    """从 start 起逐日推进，返回恰好覆盖 needed_learn_days 个学习日的结束日。
+
+    用于无 deadline 计划反推结束日：保证区间内学习日数 ≥ needed_learn_days，
+    从而所有新词都能排进学习日任务（月复习日占用日历日但不计入学习日，自动顺延）。
+    """
+    if needed_learn_days <= 0:
+        return start
+    wd = set(weekdays)
+    count = 0
+    d = start
+    while count < needed_learn_days:
+        if d.weekday() in wd:
+            count += 1
+        d += timedelta(days=1)
+    return d - timedelta(days=1)
 
 
 def _hits_monthly_review(d: date, mrd: int | None) -> bool:

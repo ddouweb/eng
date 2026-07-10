@@ -1,4 +1,4 @@
-from sqlalchemy import Enum, ForeignKey, Integer
+from sqlalchemy import Enum, ForeignKey, Integer, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TimestampMixin
@@ -7,6 +7,11 @@ from app.models.enums import MasteryLevel
 
 class MasteryRecord(TimestampMixin, Base):
     __tablename__ = "mastery_record"
+    # 同一 (member, word) 只允许一条掌握记录：并发 get_or_create 不会产生重复行，
+    # 也保证下游 stats 计数 / mastery_map 取值正确。
+    __table_args__ = (
+        UniqueConstraint("member_id", "word_id", name="uk_member_word_mastery"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     member_id: Mapped[int] = mapped_column(

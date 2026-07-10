@@ -1,6 +1,6 @@
-from datetime import date
+from datetime import date, datetime, time, timedelta
 
-from sqlalchemy import select, func
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.practice import PracticeRecord, PracticeSession
@@ -25,20 +25,34 @@ class PracticeRecordRepo(BaseRepo[PracticeRecord]):
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
 
+    async def get_by_session_word(
+        self, session_id: int, word_id: int
+    ) -> PracticeRecord | None:
+        """查询某会话中某词是否已有作答记录（用于去重，防同一题重复提交刷分）。"""
+        stmt = select(PracticeRecord).where(
+            PracticeRecord.session_id == session_id,
+            PracticeRecord.word_id == word_id,
+        )
+        result = await self.session.execute(stmt)
+        return result.scalar_one_or_none()
+
     async def get_word_ids_between(
         self, member_id: int, start_date: date, end_date: date,
     ) -> list[int]:
         """返回该 member 在 [start_date, end_date] 区间内 practice_record 出现过的 DISTINCT word_id。
 
-        用于周复习/月复习的题源筛选。
+        用于周复习/月复习的题源筛选。用 created_at 区间比较替代 func.DATE()，
+        使其命中 created_at 索引（范围 [start_date 00:00, end_date+1 00:00)）。
         """
+        start_dt = datetime.combine(start_date, time.min)
+        end_excl = datetime.combine(end_date + timedelta(days=1), time.min)
         stmt = (
             select(PracticeRecord.word_id)
             .join(PracticeSession, PracticeSession.id == PracticeRecord.session_id)
             .where(
                 PracticeSession.member_id == member_id,
-                func.DATE(PracticeRecord.created_at) >= start_date,
-                func.DATE(PracticeRecord.created_at) <= end_date,
+                PracticeRecord.created_at >= start_dt,
+                PracticeRecord.created_at < end_excl,
             )
             .distinct()
         )

@@ -2,7 +2,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.unit import Unit
 from app.repositories.unit_repo import UnitRepo
-from app.schemas.common import error, success
+from app.schemas.common import success
 from app.schemas.exceptions import AppException
 
 
