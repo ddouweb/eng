@@ -45,11 +45,14 @@ with tab_dialogue:
             st.info(f"**场景：{data['scenario']}**")
         for line in data.get("lines", []):
             role = line["role"]
-            icon = {"teacher": "👩‍🏫", "student": "👦", "narrator": "📖"}.get(role, "💬")
+            role_zh = {"teacher": "👩‍🏫 老师", "student": "👦 学生", "narrator": "📖 旁白"}.get(role, "💬")
             with st.chat_message(role):
-                st.markdown(f"{icon} **{role}**")
+                st.markdown(f"**{role_zh}**")
                 st.markdown(f"**{line['english']}**")
                 st.caption(line["chinese"])
+        if st.button("🗑️ 清除对话", key="dlg_clear"):
+            del st.session_state.dialogue_result
+            st.rerun()
 
 # ── AI 练习 ────────────────────────────────────────────
 with tab_exercise:

@@ -14,7 +14,6 @@ require_auth()
 st.markdown(
     """
     <style>
-    header[data-testid="stHeader"] { display: none !important; }
     .block-container, section[data-testid="stMain"] {
         padding-top: 0.5rem !important;
         padding-left: 1rem !important;
@@ -93,8 +92,106 @@ if probe["code"] != 200:
     st.stop()
 total = probe["data"]["total"]
 
+# ── 添加单词（AI 文本解析 / 手动录入）──────────────────────
+# 置于「空 Unit」判定之前：即使是空 Unit 也能在此加词，补齐 MVP 词库生成环节。
+with st.expander("➕ 添加单词到本 Unit"):
+    _tab_ai, _tab_manual = st.tabs(["🤖 AI 文本解析", "✍️ 手动录入"])
+
+    with _tab_ai:
+        raw = st.text_area(
+            "粘贴任意文本（单词表 / 课文 / 笔记），AI 自动提取词条",
+            height=140,
+            key=f"parse_text_{unit_id}",
+            placeholder="例如：\napple 苹果\nbanana 香蕉\nHow are you? 你好吗？",
+        )
+        if st.button("🔍 解析文本", key=f"parse_btn_{unit_id}"):
+            if not raw.strip():
+                st.warning("请先粘贴待解析文本")
+            else:
+                with st.spinner("AI 解析中…"):
+                    r = client.parse_words(raw.strip())
+                if r["code"] != 200:
+                    st.error(r["message"])
+                else:
+                    drafts = r["data"].get("draft_words", [])
+                    if not drafts:
+                        st.info("未解析到任何词条，换段文本试试")
+                    else:
+                        st.session_state[f"draft_df_{unit_id}"] = drafts
+                        st.success(f"解析到 {len(drafts)} 条，请在下方核对后再导入")
+
+        drafts = st.session_state.get(f"draft_df_{unit_id}")
+        if drafts:
+            edited_drafts = st.data_editor(
+                pd.DataFrame([
+                    {"英文": d.get("english", ""), "中文": d.get("chinese", ""), "类型": d.get("type", "word")}
+                    for d in drafts
+                ]),
+                column_config={
+                    "英文": st.column_config.TextColumn(width="large"),
+                    "中文": st.column_config.TextColumn(width="large"),
+                    "类型": st.column_config.SelectboxColumn(
+                        options=["word", "sentence"], width="small", required=True,
+                    ),
+                },
+                hide_index=True,
+                use_container_width=True,
+                num_rows="dynamic",
+                key=f"draft_editor_{unit_id}",
+            )
+            _c_imp, _c_clr = st.columns(2)
+            if _c_imp.button("⬇️ 导入本 Unit", type="primary", key=f"import_btn_{unit_id}"):
+                words_to_add = []
+                for rec in edited_drafts.to_dict("records"):
+                    en = str(rec.get("英文", "")).strip()
+                    cn = str(rec.get("中文", "")).strip()
+                    if en and cn:
+                        words_to_add.append({"english": en, "chinese": cn, "type": rec.get("类型") or "word"})
+                if not words_to_add:
+                    st.warning("没有有效词条（英文和中文都不能为空）")
+                else:
+                    rr = client.batch_create_words(unit_id, words_to_add)
+                    if rr["code"] == 200:
+                        st.success(f"已导入 {len(words_to_add)} 个单词")
+                        st.session_state.pop(f"draft_df_{unit_id}", None)
+                        st.rerun()
+                    else:
+                        st.error(rr["message"])
+            if _c_clr.button("🗑️ 清空解析结果", key=f"clr_draft_{unit_id}"):
+                st.session_state.pop(f"draft_df_{unit_id}", None)
+                st.rerun()
+
+    with _tab_manual:
+        _mc1, _mc2 = st.columns(2)
+        m_en = _mc1.text_input("英文", key=f"m_en_{unit_id}")
+        m_cn = _mc2.text_input("中文", key=f"m_cn_{unit_id}")
+        m_type = st.selectbox("类型", ["word", "sentence"], key=f"m_type_{unit_id}")
+        if st.button("➕ 加入待提交", key=f"m_add_{unit_id}"):
+            if not m_en.strip() or not m_cn.strip():
+                st.warning("英文和中文都不能为空")
+            else:
+                pend = st.session_state.setdefault(f"manual_pending_{unit_id}", [])
+                pend.append({"english": m_en.strip(), "chinese": m_cn.strip(), "type": m_type})
+                st.success(f"已加入待提交（当前 {len(pend)} 条）")
+        pend = st.session_state.get(f"manual_pending_{unit_id}", [])
+        if pend:
+            st.caption(f"待提交 {len(pend)} 条：")
+            st.dataframe(pd.DataFrame(pend), use_container_width=True, hide_index=True)
+            _pc1, _pc2 = st.columns(2)
+            if _pc1.button("⬇️ 提交到本 Unit", type="primary", key=f"m_submit_{unit_id}"):
+                rr = client.batch_create_words(unit_id, pend)
+                if rr["code"] == 200:
+                    st.success(f"已添加 {len(pend)} 个单词")
+                    st.session_state.pop(f"manual_pending_{unit_id}", None)
+                    st.rerun()
+                else:
+                    st.error(rr["message"])
+            if _pc2.button("🗑️ 清空待提交", key=f"m_clr_{unit_id}"):
+                st.session_state.pop(f"manual_pending_{unit_id}", None)
+                st.rerun()
+
 if total == 0:
-    st.info("这个 Unit 还没有单词。")
+    st.info("这个 Unit 还没有单词，点击上方「➕ 添加单词到本 Unit」开始录入。")
     st.stop()
 
 resp = client.list_words(unit_id, page=1, page_size=total)
@@ -107,7 +204,7 @@ if len(words) < total:
     st.warning(f"本 Unit 共 {total} 词，但单次最多加载 {len(words)} 词，未全部显示。")
 
 STATUS_LABEL = {
-    "unlearned": "🔴 未学习",
+    "unlearned": "⚪ 未学习",
     "learning": "🟠 学习中",
     "familiar": "🔵 熟悉",
     "permanent": "🟢 永久",
@@ -169,22 +266,29 @@ edited = st.data_editor(
 
 if save_clicked:
     changed = 0
-    for orig, row in zip(words, edited.itertuples()):
-        updates = {}
-        if orig["english"] != row.英文:
-            updates["english"] = row.英文
-        if orig["chinese"] != row.中文:
-            updates["chinese"] = row.中文
-        if not is_mobile:
-            seq_val = int(row.序号) if pd.notna(row.序号) else None
-            if orig.get("seq") != seq_val:
-                updates["seq"] = seq_val
-        if updates:
-            r = client.update_word(orig["id"], **updates)
-            if r["code"] == 200:
-                changed += 1
+    failed: list = []
+    with st.spinner("正在保存修改…"):
+        for orig, row in zip(words, edited.itertuples()):
+            updates = {}
+            if orig["english"] != row.英文:
+                updates["english"] = row.英文
+            if orig["chinese"] != row.中文:
+                updates["chinese"] = row.中文
+            if not is_mobile:
+                seq_val = int(row.序号) if pd.notna(row.序号) else None
+                if orig.get("seq") != seq_val:
+                    updates["seq"] = seq_val
+            if updates:
+                r = client.update_word(orig["id"], **updates)
+                if r["code"] == 200:
+                    changed += 1
+                else:
+                    failed.append(str(orig.get("english", orig["id"])))
+    if failed:
+        preview = ", ".join(failed[:5]) + ("…" if len(failed) > 5 else "")
+        st.warning(f"{len(failed)} 个保存失败：{preview}")
     if changed:
         st.success(f"已更新 {changed} 个单词")
         st.rerun()
-    else:
+    elif not failed:
         st.info("没有检测到修改")

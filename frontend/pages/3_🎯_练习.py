@@ -1,5 +1,4 @@
 import random
-import threading
 import time
 from datetime import date
 
@@ -47,13 +46,29 @@ TAG_EMOJI = {
 }
 
 
-def _bg_submit(session_id, word_id, is_correct, user_answer=None):
-    threading.Thread(
-        target=client.submit_answer,
-        args=(session_id, word_id, is_correct),
-        kwargs={"user_answer": user_answer},
-        daemon=True,
-    ).start()
+def _record_submit_failure(session_id, word_id, is_correct, user_answer, msg):
+    """记录一次提交失败到重试队列（由页面顶部横幅提供"重试全部"）。"""
+    st.session_state.setdefault("_submit_failures", []).append({
+        "session_id": session_id, "word_id": word_id,
+        "is_correct": is_correct, "user_answer": user_answer, "msg": msg,
+    })
+
+
+def _submit_answer(session_id, word_id, is_correct, user_answer=None):
+    """同步提交单题答案并捕获失败。
+
+    不再用后台守护线程：失败可即时捕获、避免 Streamlit session_state 的跨线程竞态；
+    401 统一由主线程的 client._handle 处理。配合后端 (session,word) 去重(#35)，
+    重试/重复点击幂等。返回非 200 或抛异常均入重试队列，由页面横幅提示重试。
+    """
+    try:
+        r = client.submit_answer(session_id, word_id, is_correct, user_answer=user_answer)
+        if r["code"] != 200:
+            _record_submit_failure(
+                session_id, word_id, is_correct, user_answer, r.get("message", "提交失败")
+            )
+    except Exception as e:
+        _record_submit_failure(session_id, word_id, is_correct, user_answer, str(e))
 
 
 def _restart_practice():
@@ -71,9 +86,9 @@ def _restart_practice():
 
 
 def _gen_en_options(q, all_questions, n=4):
+    # 选项数自适应：词太少时减少选项，避免用 "???" 填充（一眼可排除、破坏沉浸感）
+    n = max(2, min(n, len(all_questions)))
     distractors = [x["english"] for x in all_questions if x["word_id"] != q["word_id"]]
-    if len(distractors) < n - 1:
-        distractors.extend(["???"] * (n - 1 - len(distractors)))
     picked = random.sample(distractors, min(n - 1, len(distractors)))
     opts = picked + [q["english"]]
     random.shuffle(opts)
@@ -81,9 +96,8 @@ def _gen_en_options(q, all_questions, n=4):
 
 
 def _gen_cn_options(q, all_questions, n=4):
+    n = max(2, min(n, len(all_questions)))
     distractors = [x["chinese"] for x in all_questions if x["word_id"] != q["word_id"]]
-    if len(distractors) < n - 1:
-        distractors.extend(["???"] * (n - 1 - len(distractors)))
     picked = random.sample(distractors, min(n - 1, len(distractors)))
     opts = picked + [q["chinese"]]
     random.shuffle(opts)
@@ -612,6 +626,33 @@ if in_practice:
                 p["idx"] = total
                 st.rerun()
 
+    # ── 提交失败重试横幅（_submit_answer 同步提交，失败入 _submit_failures 队列）──
+    _fails = st.session_state.get("_submit_failures", [])
+    if _fails:
+        with st.container(border=True):
+            st.warning(f"⚠️ 有 {len(_fails)} 次答题提交失败，可能影响掌握度统计。")
+            _rf1, _rf2 = st.columns([1, 2])
+            if _rf1.button("🔄 重试全部", type="primary", key="retry_all_submits"):
+                pending = list(_fails)
+                still_fail = []
+                for f in pending:
+                    try:
+                        rr = client.submit_answer(
+                            f["session_id"], f["word_id"], f["is_correct"],
+                            user_answer=f["user_answer"],
+                        )
+                        if rr["code"] != 200:
+                            still_fail.append(f)
+                    except Exception:
+                        still_fail.append(f)
+                st.session_state["_submit_failures"] = still_fail
+                if not still_fail:
+                    st.toast("重试成功")
+                st.rerun()
+            if _rf2.button("🗑️ 忽略并清空", key="clear_submits"):
+                st.session_state["_submit_failures"] = []
+                st.rerun()
+
     # ═══ 单词卡 ════════════════════════════════════════
     if p["mode"] == "flashcard":
         q = p["questions"][p["idx"]]
@@ -642,7 +683,7 @@ if in_practice:
             with col_ok:
                 if st.button("✅ 认识", use_container_width=True, key=f"fc_ok_{p['idx']}"):
                     if auto_next:
-                        _bg_submit(sid, q["word_id"], True)
+                        _submit_answer(sid, q["word_id"], True)
                         p["results"].append(True)
                         st.session_state.fc_answer_time = time.time()
                     else:
@@ -653,7 +694,7 @@ if in_practice:
             with col_fail:
                 if st.button("❌ 不认识", use_container_width=True, key=f"fc_fail_{p['idx']}"):
                     if auto_next:
-                        _bg_submit(sid, q["word_id"], False, q["english"])
+                        _submit_answer(sid, q["word_id"], False, q["english"])
                         p["results"].append(False)
                         st.session_state.fc_answer_time = time.time()
                     else:
@@ -725,7 +766,7 @@ if in_practice:
             ):
                 # 提交最终答案（仅在下一题时提交一次）
                 is_correct = pending is True
-                _bg_submit(
+                _submit_answer(
                     sid, q["word_id"], is_correct,
                     None if is_correct else q["english"],
                 )
@@ -747,17 +788,21 @@ if in_practice:
         answered = cur is not None
         answer = st.radio(
             "选择正确的中文释义：", options,
+            index=None,
             key=f"ch_{q['word_id']}",
             disabled=answered,
         )
         if not answered:
             if st.button("确认", key=f"ch_sub_{q['word_id']}", type="primary"):
+                if answer is None:
+                    st.warning("请先选择一个答案")
+                    st.stop()
                 correct = answer == q["chinese"]
                 if correct:
                     st.success("✅ 正确！")
                 else:
                     st.error(f"❌ 正确答案: **{q['chinese']}**")
-                _bg_submit(sid, q["word_id"], correct, answer)
+                _submit_answer(sid, q["word_id"], correct, answer)
                 p["results"].append(correct)
                 answers[p["idx"]] = {"answer": answer, "correct": correct}
                 st.rerun()
@@ -791,17 +836,21 @@ if in_practice:
         answered = cur is not None
         answer = st.radio(
             "选择正确的英文：", options,
+            index=None,
             key=f"ce_{q['word_id']}",
             disabled=answered,
         )
         if not answered:
             if st.button("确认", key=f"ce_sub_{q['word_id']}", type="primary"):
+                if answer is None:
+                    st.warning("请先选择一个答案")
+                    st.stop()
                 correct = answer == q["english"]
                 if correct:
                     st.success("✅ 正确！")
                 else:
                     st.error(f"❌ 正确答案: **{q['english']}**")
-                _bg_submit(sid, q["word_id"], correct, answer)
+                _submit_answer(sid, q["word_id"], correct, answer)
                 p["results"].append(correct)
                 answers[p["idx"]] = {"answer": answer, "correct": correct}
                 st.rerun()
@@ -837,9 +886,12 @@ if in_practice:
         if not answered:
             if st.button("提交", key=f"sp_sub_{q['word_id']}", type="primary"):
                 ans = answer.strip() if answer else ""
+                if not ans:
+                    st.warning("请输入答案后再提交")
+                    st.stop()
                 correct = ans.lower() == q["english"].lower()
                 answers[p["idx"]] = {"answer": ans, "correct": correct}
-                _bg_submit(sid, q["word_id"], correct, ans)
+                _submit_answer(sid, q["word_id"], correct, ans)
                 p["results"].append(correct)
                 st.rerun()
         else:
@@ -859,14 +911,27 @@ if in_practice:
         q = p["questions"][p["idx"]]
         st.progress(p["idx"] / total, text=f"第 {p['idx'] + 1} / {total} 题")
         _word_audio_inline(q["english"])
-        answer = st.text_input("输入中文释义：", key=f"ew_{q['word_id']}")
-        if st.button("提交", key=f"ew_sub_{q['word_id']}"):
-            ans = answer.strip() if answer else ""
-            correct = ans == q["chinese"]
-            if correct: st.success("✅ 正确！")
-            else: st.error(f"❌ 正确答案: **{q['chinese']}**")
-            _bg_submit(sid, q["word_id"], correct, ans)
-            p["results"].append(correct); p["idx"] += 1; st.rerun()
+        answers = p.setdefault("answers", {})
+        cur = answers.get(p["idx"])
+        answered = cur is not None
+        answer = st.text_input("输入中文释义：", key=f"ew_{q['word_id']}", disabled=answered)
+        if not answered:
+            if st.button("提交", key=f"ew_sub_{q['word_id']}", type="primary"):
+                ans = answer.strip() if answer else ""
+                correct = ans == q["chinese"]
+                answers[p["idx"]] = {"answer": ans, "correct": correct}
+                _submit_answer(sid, q["word_id"], correct, ans)
+                p["results"].append(correct)
+                st.rerun()
+        else:
+            if cur["correct"]:
+                st.success("✅ 正确！")
+            else:
+                st.error(f"❌ 你的答案: {cur['answer']}　|　正确答案: **{q['chinese']}**")
+            btn_label = "➡️ 下一题" if p["idx"] < total - 1 else "✅ 完成练习"
+            if st.button(btn_label, key=f"ew_next_{q['word_id']}", type="primary", use_container_width=True):
+                p["idx"] += 1
+                st.rerun()
 
     # ═══ 听写 ══════════════════════════════════════════
     elif p["mode"] == "dictation":
@@ -874,19 +939,35 @@ if in_practice:
         st.progress(p["idx"] / total, text=f"第 {p['idx'] + 1} / {total} 题")
         _audio_compact(q["english"])
         st.caption("🎧 听音频，拼写对应的英文单词")
-        answer = st.text_input("输入英文", key=f"dt_{q['word_id']}_{p['idx']}")
-        col_ok, col_skip = st.columns(2)
-        with col_ok:
-            if st.button("✅ 提交", use_container_width=True):
-                correct = answer.strip().lower() == q["english"].lower()
-                if correct: st.success("✅ 正确！")
-                else: st.error(f"❌ 正确答案: **{q['english']}**")
-                _bg_submit(sid, q["word_id"], correct, answer)
-                p["results"].append(correct); p["idx"] += 1; st.rerun()
-        with col_skip:
-            if st.button("⏭ 跳过", use_container_width=True):
-                _bg_submit(sid, q["word_id"], False, "")
-                p["results"].append(False); p["idx"] += 1; st.rerun()
+        answers = p.setdefault("answers", {})
+        cur = answers.get(p["idx"])
+        answered = cur is not None
+        answer = st.text_input("输入英文", key=f"dt_{q['word_id']}_{p['idx']}", disabled=answered)
+        if not answered:
+            col_ok, col_skip = st.columns(2)
+            with col_ok:
+                if st.button("✅ 提交", use_container_width=True, type="primary"):
+                    correct = answer.strip().lower() == q["english"].lower()
+                    answers[p["idx"]] = {"answer": answer, "correct": correct}
+                    _submit_answer(sid, q["word_id"], correct, answer)
+                    p["results"].append(correct)
+                    st.rerun()
+            with col_skip:
+                if st.button("⏭ 跳过", use_container_width=True):
+                    answers[p["idx"]] = {"answer": "(跳过)", "correct": False}
+                    _submit_answer(sid, q["word_id"], False, "")
+                    p["results"].append(False)
+                    st.rerun()
+        else:
+            if cur["correct"]:
+                st.success("✅ 正确！")
+            else:
+                st.error(f"❌ 你的答案: {cur['answer']}　|　正确答案: **{q['english']}**")
+            _phonetic_audio_inline(q["english"], autoplay=False)
+            btn_label = "➡️ 下一题" if p["idx"] < total - 1 else "✅ 完成练习"
+            if st.button(btn_label, key=f"dt_next_{q['word_id']}", type="primary", use_container_width=True):
+                p["idx"] += 1
+                st.rerun()
 
     # ═══ 连连看 ════════════════════════════════════════
     elif p["mode"] == "matching":
@@ -894,6 +975,9 @@ if in_practice:
         if "mg" not in st.session_state:
             st.session_state.mg = {"batch": 0, "matched": set(), "sel_en": None}
         mg = st.session_state.mg
+        if mg.get("mismatch"):
+            st.error("❌ 不匹配！再试试")
+            mg["mismatch"] = False
         start_i = mg["batch"] * BATCH
         end_i = min(start_i + BATCH, total)
         batch = p["questions"][start_i:end_i]
@@ -903,7 +987,11 @@ if in_practice:
         if not batch:
             p["idx"] = total; st.rerun()
         overall = min(p["idx"] + len(mg["matched"]), total)
-        st.progress(overall / total, text=f"第 {mg['batch'] + 1} 轮 · 已配对 {overall}/{total}")
+        wrong = mg.get("wrong", 0)
+        st.progress(
+            overall / total,
+            text=f"第 {mg['batch'] + 1} 轮 · 已配对 {overall}/{total}" + (f" · 错配 {wrong}" if wrong else ""),
+        )
         cn_key = f"mg_cn_{mg['batch']}"
         if cn_key not in st.session_state:
             st.session_state[cn_key] = random.sample(range(len(batch)), len(batch))
@@ -931,10 +1019,11 @@ if in_practice:
                         if mg["sel_en"] is not None:
                             if mg["sel_en"] == wid:
                                 mg["matched"].add(wid)
-                                _bg_submit(sid, wid, True); p["results"].append(True)
+                                _submit_answer(sid, wid, True); p["results"].append(True)
                             else:
-                                _bg_submit(sid, mg["sel_en"], False, q["english"])
+                                _submit_answer(sid, mg["sel_en"], False, q["english"])
                                 mg["wrong"] = mg.get("wrong", 0) + 1; p["results"].append(False)
+                                mg["mismatch"] = True
                             mg["sel_en"] = None; st.rerun()
 
     # ═══ 限时挑战 ══════════════════════════════════════
@@ -942,33 +1031,48 @@ if in_practice:
         q = p["questions"][p["idx"]]
         st.progress(p["idx"] / total, text=f"第 {p['idx'] + 1} / {total} 题")
         TIME_LIMIT = 8
+        answers = p.setdefault("answers", {})
+        cur = answers.get(p["idx"])
+        answered = cur is not None
         if "tc_start" not in st.session_state:
             st.session_state.tc_start = time.time()
-        elapsed = time.time() - st.session_state.tc_start
-        remaining = max(0, TIME_LIMIT - elapsed)
-        st.progress(remaining / TIME_LIMIT, text=f"⏱️ {remaining:.1f}s")
-        if remaining > 0.5:
-            st.markdown(f'<meta http-equiv="refresh" content="{max(1, int(remaining) + 1)}">',
-                        unsafe_allow_html=True)
-        if remaining <= 0:
-            st.warning("⏰ 时间到！")
-            _bg_submit(sid, q["word_id"], False, "")
-            p["results"].append(False); p["idx"] += 1
-            for k in ("tc_start", "tc_opts"): st.session_state.pop(k, None)
-            st.rerun()
-        # 限时模式用整页刷新倒计时，强制不自动播放以免每秒重复响
-        _word_audio_inline(q["english"], autoplay=False)
-        if "tc_opts" not in st.session_state:
-            st.session_state.tc_opts = _gen_cn_options(q, p["questions"])
-        for i, opt in enumerate(st.session_state.tc_opts):
-            if st.button(opt, key=f"tc_{q['word_id']}_{i}", use_container_width=True):
-                correct = opt == q["chinese"]
-                rt = time.time() - st.session_state.tc_start
-                if correct: st.success(f"✅ 正确！反应 {rt:.1f}s")
-                else: st.error(f"❌ 正确答案: **{q['chinese']}**")
-                _bg_submit(sid, q["word_id"], correct, opt)
-                p["results"].append(correct); p["idx"] += 1
-                for k in ("tc_start", "tc_opts"): st.session_state.pop(k, None)
+        if not answered:
+            elapsed = time.time() - st.session_state.tc_start
+            remaining = max(0, TIME_LIMIT - elapsed)
+            st.progress(remaining / TIME_LIMIT, text=f"⏱️ {remaining:.1f}s")
+            if remaining > 0.5:
+                st.markdown(f'<meta http-equiv="refresh" content="{max(1, int(remaining) + 1)}">',
+                            unsafe_allow_html=True)
+            if remaining <= 0:
+                st.warning("⏰ 时间到！")
+                answers[p["idx"]] = {"answer": "(超时)", "correct": False}
+                _submit_answer(sid, q["word_id"], False, "")
+                p["results"].append(False)
+                st.rerun()
+            # 限时模式用整页刷新倒计时，强制不自动播放以免每秒重复响
+            _word_audio_inline(q["english"], autoplay=False)
+            if "tc_opts" not in st.session_state:
+                st.session_state.tc_opts = _gen_cn_options(q, p["questions"])
+            for i, opt in enumerate(st.session_state.tc_opts):
+                if st.button(opt, key=f"tc_{q['word_id']}_{i}", use_container_width=True):
+                    correct = opt == q["chinese"]
+                    rt = time.time() - st.session_state.tc_start
+                    answers[p["idx"]] = {"answer": opt, "correct": correct, "rt": rt}
+                    _submit_answer(sid, q["word_id"], correct, opt)
+                    p["results"].append(correct)
+                    st.rerun()
+        else:
+            # 已作答：停表、展示反馈、手动下一题（不再注入整页刷新，反馈不再一闪而过）
+            if cur["correct"]:
+                st.success(f"✅ 正确！反应 {cur.get('rt', 0):.1f}s")
+            else:
+                st.error(f"❌ 你的答案: {cur.get('answer', '')}　|　正确答案: **{q['chinese']}**")
+            _word_audio_inline(q["english"], autoplay=False)
+            btn_label = "➡️ 下一题" if p["idx"] < total - 1 else "✅ 完成练习"
+            if st.button(btn_label, key=f"tc_next_{q['word_id']}", type="primary", use_container_width=True):
+                p["idx"] += 1
+                for k in ("tc_start", "tc_opts"):
+                    st.session_state.pop(k, None)
                 st.rerun()
 
     # ═══ 打乱重排 ══════════════════════════════════════
@@ -988,9 +1092,12 @@ if in_practice:
         if not answered:
             if st.button("提交", key=f"scr_sub_{q['word_id']}", type="primary"):
                 ans = answer.strip() if answer else ""
+                if not ans:
+                    st.warning("请输入答案后再提交")
+                    st.stop()
                 correct = ans.lower() == q["english"].lower()
                 answers[p["idx"]] = {"answer": ans, "correct": correct}
-                _bg_submit(sid, q["word_id"], correct, ans)
+                _submit_answer(sid, q["word_id"], correct, ans)
                 p["results"].append(correct)
                 st.rerun()
         else:
@@ -1031,23 +1138,40 @@ if in_practice:
 
         elif mf["phase"] == "quiz":
             q = batch[mf["idx"]]
+            wid = q["word_id"]
+            mf.setdefault("quiz_ans", {})
+            done = wid in mf["quiz_ans"]
             st.warning(f"🧠 回忆测试 ({mf['idx'] + 1}/{len(batch)})")
             _word_audio_inline(q["english"])
-            okey = f"mf_opts_{q['word_id']}"
+            okey = f"mf_opts_{wid}"
             if okey not in st.session_state:
                 st.session_state[okey] = _gen_cn_options(q, p["questions"])
-            answer = st.radio("选择正确的中文：", st.session_state[okey], key=f"mf_{q['word_id']}")
-            if st.button("确认", key=f"mf_sub_{q['word_id']}"):
-                correct = answer == q["chinese"]
-                if correct: st.success("✅ 记忆力不错！")
-                else: st.error(f"❌ 忘了吗？正确答案: **{q['chinese']}**")
-                _bg_submit(sid, q["word_id"], correct, answer)
-                p["results"].append(correct)
-                mf["idx"] += 1
-                if mf["idx"] >= len(batch):
-                    mf["batch"] += 1; mf["phase"] = "study"; mf["idx"] = 0
-                    p["idx"] = min(mf["batch"] * BATCH, total)
-                st.rerun()
+            if not done:
+                answer = st.radio("选择正确的中文：", st.session_state[okey], index=None, key=f"mf_{wid}")
+                if st.button("确认", key=f"mf_sub_{wid}", type="primary"):
+                    if answer is None:
+                        st.warning("请先选择一个答案")
+                        st.stop()
+                    correct = answer == q["chinese"]
+                    mf["quiz_ans"][wid] = {"answer": answer, "correct": correct}
+                    _submit_answer(sid, wid, correct, answer)
+                    p["results"].append(correct)
+                    st.rerun()
+            else:
+                cur = mf["quiz_ans"][wid]
+                if cur["correct"]:
+                    st.success("✅ 记忆力不错！")
+                else:
+                    st.error(f"❌ 忘了吗？正确答案: **{q['chinese']}**")
+                if st.button("➡️ 下一题", key=f"mf_next_{wid}", type="primary", use_container_width=True):
+                    mf["idx"] += 1
+                    if mf["idx"] >= len(batch):
+                        mf["batch"] += 1
+                        mf["phase"] = "study"
+                        mf["idx"] = 0
+                        mf["quiz_ans"] = {}
+                        p["idx"] = min(mf["batch"] * BATCH, total)
+                    st.rerun()
 
     # ═══ 翻牌寻配 ══════════════════════════════════════
     elif p["mode"] == "flip_match":
@@ -1112,11 +1236,11 @@ if in_practice:
                                     c1, c2 = fm["cards"][fm["flipped"][0]], fm["cards"][fm["flipped"][1]]
                                     if c1["wid"] == c2["wid"] and c1["en"] != c2["en"]:
                                         fm["matched"].update(fm["flipped"])
-                                        _bg_submit(sid, c1["wid"], True)
+                                        _submit_answer(sid, c1["wid"], True)
                                         p["results"].append(True)
                                         fm["flipped"] = []
                                     else:
-                                        _bg_submit(sid, c1["wid"], False, c2["text"])
+                                        _submit_answer(sid, c1["wid"], False, c2["text"])
                                         p["results"].append(False)
                                         fm["mismatch"] = True
                                         fm["mm_cards"] = list(fm["flipped"])
@@ -1125,22 +1249,33 @@ if in_practice:
 
 # ── 练习结束 ───────────────────────────────────────────
 elif practice_done:
-    first_finish = not p["finished"]
-    if first_finish:
-        threading.Thread(target=client.finish_practice, args=(p["session_id"],), daemon=True).start()
+    sid = p["session_id"]
+    if not p["finished"]:
+        # 同步结束会话：拿到后端权威统计（避免后台线程丢弃结果 / 本地与后端不一致）
+        r = client.finish_practice(sid)
         p["finished"] = True
-        st.balloons()
+        if r["code"] == 200:
+            p["_finish_data"] = r["data"]
+            st.balloons()
+        else:
+            p["_finish_data"] = None
+            st.error(f"结束练习失败：{r['message']}")
 
     st.subheader("🎉 练习完成！")
-    sid = p["session_id"]
     member_id = st.session_state.get("member_id", 1)
-    total = len(p["results"])
-    correct = sum(p["results"])
-    accuracy = round(correct / total * 100, 1) if total > 0 else 0
+    local_total = len(p["results"])
+    local_correct = sum(p["results"])
+    fd = p.get("_finish_data")
+    # 以后端记录为权威；拿不到则回退本地统计
+    total = fd["total_count"] if fd else local_total
+    correct = fd["correct_count"] if fd else local_correct
+    accuracy = fd["accuracy"] if fd else (round(local_correct / local_total * 100, 1) if local_total > 0 else 0)
     col1, col2, col3 = st.columns(3)
     col1.metric("总题数", total)
     col2.metric("正确数", correct)
     col3.metric("正确率", f"{accuracy}%")
+    if fd and local_total != fd["total_count"]:
+        st.caption(f"ℹ️ 本地记录 {local_total} 题，后端记录 {fd['total_count']} 题（以后端为准）")
 
     if st.button("🔄 再来一次", use_container_width=True, type="primary"):
         _restart_practice()
@@ -1155,8 +1290,8 @@ elif practice_done:
                 icon = "✅" if is_correct else "❌"
                 st.markdown(f"{icon} **{q['english']}** — {q['chinese']}")
             with col_btn:
-                if not is_correct and st.button("改标", key=f"fix_{i}"):
-                    _bg_submit(sid, q["word_id"], True)
+                if not is_correct and st.button("↩️ 改判为对", key=f"fix_{i}"):
+                    _submit_answer(sid, q["word_id"], True)
                     p["results"][i] = True
                     st.rerun()
 
@@ -1177,7 +1312,7 @@ elif practice_done:
                 st.rerun()
 
     st.subheader("📊 单元进度")
-    level_emoji = {"unlearned": "🔴", "learning": "🟠", "familiar": "🔵", "permanent": "🟢"}
+    level_emoji = {"unlearned": "⚪", "learning": "🟠", "familiar": "🔵", "permanent": "🟢"}
     if "_prac_units" not in st.session_state or (
         not st.session_state["_prac_units"] and client.get_token()
     ):
@@ -1201,6 +1336,3 @@ elif practice_done:
                 dist_str = "  ".join(f"{level_emoji[lv]} {dist[lv]}" for lv in level_emoji)
                 st.caption(f"**{unit_map.get(uid, f'Unit {uid}')}** · 掌握率 {s['mastery_rate']}%")
                 st.progress(rate, text=dist_str)
-
-    if st.button("🔄 再来一次"):
-        _restart_practice()

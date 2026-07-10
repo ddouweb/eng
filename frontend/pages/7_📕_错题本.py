@@ -66,22 +66,29 @@ total_pages = max(1, (total + PAGE_SIZE - 1) // PAGE_SIZE)
 st.caption(f"第 {page} / {total_pages} 页 · 每页 {PAGE_SIZE} 条")
 
 MASTERY_EMOJI = {
-    "unlearned": "🔴",
+    "unlearned": "⚪",
     "learning": "🟠",
     "familiar": "🔵",
     "permanent": "🟢",
+}
+MASTERY_LABEL = {
+    "unlearned": "未学习",
+    "learning": "学习中",
+    "familiar": "熟悉",
+    "permanent": "永久",
 }
 
 for it in items:
     with st.container(border=True):
         col_main, col_btn = st.columns([7, 1])
         with col_main:
-            icon = MASTERY_EMOJI.get(it.get("mastery_level"), "⚪")
+            mlevel = it.get("mastery_level") or "unlearned"
+            icon = MASTERY_EMOJI.get(mlevel, "⚪")
             st.markdown(f"### {it['english']}")
             st.caption(
                 f"中文：{it['chinese']}　·　"
                 f"Unit：{it.get('unit_title') or '-'}　·　"
-                f"掌握 {icon} {it.get('mastery_level') or 'unlearned'}　·　"
+                f"掌握 {icon} {MASTERY_LABEL.get(mlevel, '未学习')}　·　"
                 f"🔥 错题本中累计错 {it.get('wrong_count', 0)} 次　·　"
                 f"加入于 {(it.get('added_at') or '')[:16]}"
             )

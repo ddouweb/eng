@@ -74,13 +74,18 @@ def _extract_message(resp: requests.Response) -> str:
     return resp.text or resp.reason
 
 
-def _handle(resp: requests.Response) -> dict:
-    # 401：token 失效 — 清掉本地 token，设置标志位让 app.py 自动跳登录页；
-    # 并立即触发一次 rerun，避免当前页面继续渲染出 "加载失败" 错误。
+def _handle(resp: requests.Response, *, auth_request: bool = False) -> dict:
+    # 401 分两种：
+    #   1) 登录接口（auth_request=True）的 401 = 凭证错误：仅回传错误消息，不清 token、不跳转，
+    #      由登录页把"用户名或密码错误"提示给用户；
+    #   2) 其它接口的 401 = token 失效：清掉本地 token，置标志位让 app.py 自动跳登录页，
+    #      并立即触发一次 rerun，避免当前页面继续渲染出 "加载失败" 错误。
     # 注意：st.rerun() 是抛 RerunException（继承自 Exception），
     # 所以这里只能 catch ImportError（streamlit 不在环境里），不能 catch Exception，
     # 否则 RerunException 被吞掉 rerun 就失效了。
     if resp.status_code == 401:
+        if auth_request:
+            return {"code": 401, "message": _extract_message(resp) or "用户名或密码错误", "data": None}
         global _token, _auth_invalid
         _token = None
         _auth_invalid = True
@@ -324,7 +329,8 @@ def add_wrong_word(word_id: int, member_id: int = 1) -> dict:
 
 def login(username: str, password: str) -> dict:
     resp = _request("POST", _url("/auth/login"), json={"username": username, "password": password})
-    data = _handle(resp)
+    # 登录接口的 401 是"凭证错误"，不应触发 token 失效的登出流程
+    data = _handle(resp, auth_request=True)
     if data["code"] == 200:
         set_token(data["data"]["token"])
     return data

@@ -36,7 +36,7 @@ if data["total_words"] > 0:
 
 # ── 掌握分布 ─────────────────────────────────────────
 st.subheader("掌握分布")
-level_colors = {"unlearned": "🔴 未学习", "learning": "🟠 学习中", "familiar": "🔵 熟悉", "permanent": "🟢 永久"}
+level_colors = {"unlearned": "⚪ 未学习", "learning": "🟠 学习中", "familiar": "🔵 熟悉", "permanent": "🟢 永久"}
 dist_df = pd.DataFrame([
     {"level": level_colors[k], "count": v}
     for k, v in dist.items()
