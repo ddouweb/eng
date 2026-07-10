@@ -1,7 +1,9 @@
+import json
 import re
 
 import pandas as pd
 import streamlit as st
+import streamlit.components.v1 as components
 from api_client import client
 from auth import require_auth
 from components.phonetics import phonetic
@@ -12,9 +14,8 @@ require_auth()
 st.markdown(
     """
     <style>
-    /* stMain(外层) 与 block-container(内层) 是嵌套关系，
-       不能用同一选择器同时设 padding-top，否则两层叠加成 8rem。
-       外层归零，只让内层单层垫 4rem 刚好清掉固定 header(3.75rem)。 */
+    /* stMain(外层) 与 block-container(内层) 嵌套，不能同一选择器同设 padding-top（会叠成 8rem）。
+       外层归零，内层单层垫 0 清掉默认顶部留白。 */
     section[data-testid="stMain"] {
         padding-top: 0 !important;
     }
@@ -24,19 +25,19 @@ st.markdown(
         padding-right: 1rem !important;
         max-width: 100% !important;
     }
-    /* 工具条 sticky 到视口顶（盖住 header 带、与 Deploy 同高），但它留在主内容流里
-       （侧边栏右边），所以不碰侧边栏导航；右侧留 250px 给 Deploy。 */
+    /* 顶栏 sticky 到视口顶（盖住 header 带、与 Deploy 同高），留在主内容流里（侧边栏右边），
+       不碰侧边栏导航；右侧留 250px 给 Deploy。 */
     .st-key-wm_topbar {
         position: sticky !important;
         top: 0 !important;
         z-index: 999999 !important;
         height: 3.75rem !important;
         margin: 0 250px 0 0 !important;
-        padding: 0.6rem 1rem !important;
+        padding: 0.5rem 1rem !important;
         background: var(--background-color, #ffffff) !important;
     }
     div[data-testid="stDataFrame"] {
-        height: calc(100vh - 110px) !important;
+        height: calc(100vh - 80px) !important;
         min-height: 420px;
         width: 100% !important;
     }
@@ -71,46 +72,6 @@ if not units:
     st.stop()
 unit_options = {f"{u['title']} (ID:{u['id']})": u["id"] for u in units}
 
-# 顶栏 sticky 到视口顶：用 st.container(key=) 拿到 .st-key-wm_topbar 类做定位
-with st.container(key="wm_topbar"):
-    c_unit, c_info, c_ref = st.columns([7, 3, 1])
-    with c_unit:
-        selected = st.selectbox("选择 Unit", list(unit_options.keys()), label_visibility="collapsed")
-    unit_id = unit_options[selected]
-
-    # 全量加载本单元单词并缓存到 session_state：表格虚拟滚动足以承载数千词，
-    # 缓存后点行播放的 rerun 不会反复请求后端。
-    cache_key = f"_wm_all_{unit_id}"
-    words = st.session_state.get(cache_key)
-    if words is None:
-        resp = client.list_words(unit_id, page=1, page_size=5000)
-        if resp["code"] != 200:
-            st.error(resp["message"])
-            st.stop()
-        words = resp["data"]["items"]
-        total = resp["data"]["total"]
-        st.session_state[cache_key] = words
-        st.session_state[cache_key + "_total"] = total
-    else:
-        total = st.session_state.get(cache_key + "_total", len(words))
-
-    with c_info:
-        if len(words) >= total:
-            st.caption(f"共 {total} 词（已全部加载，滚动浏览）")
-        else:
-            st.caption(f"共 {total} 词（仅加载前 {len(words)}）")
-    with c_ref:
-        if st.button("🔄", help="重新加载本单元单词"):
-            st.session_state.pop(cache_key, None)
-            st.rerun()
-
-if total == 0:
-    st.info("这个 Unit 还没有单词。")
-    st.stop()
-
-if len(words) < total:
-    st.warning(f"本单元共 {total} 词，单次最多加载 {len(words)} 词（后端上限 5000），未全部显示。")
-
 
 def _seq_key(w):
     s = w.get("seq")
@@ -129,25 +90,19 @@ STATUS_LABEL = {
     "permanent": "🟢 永久",
 }
 
-words = sorted(words, key=_seq_key)
 
-# ── 只读浏览表（点行 → 上方播放发音）────────────────────
-rows = []
-for w in words:
+def _row_dict(w):
     if is_mobile:
-        rows.append({"英文": w["english"], "音标": phonetic(w["english"]), "中文": w["chinese"]})
-    else:
-        level = (w.get("mastery") or {}).get("level", "unlearned")
-        rows.append({
-            "序号": w.get("seq"),
-            "英文": w["english"],
-            "音标": phonetic(w["english"]),
-            "中文": w["chinese"],
-            "状态": STATUS_LABEL.get(level, level),
-        })
-df = pd.DataFrame(rows)
-if not is_mobile:
-    df["序号"] = pd.to_numeric(df["序号"], errors="coerce").astype("Int64")
+        return {"英文": w["english"], "音标": phonetic(w["english"]), "中文": w["chinese"]}
+    level = (w.get("mastery") or {}).get("level", "unlearned")
+    return {
+        "序号": w.get("seq"),
+        "英文": w["english"],
+        "音标": phonetic(w["english"]),
+        "中文": w["chinese"],
+        "状态": STATUS_LABEL.get(level, level),
+    }
+
 
 if is_mobile:
     _col_cfg = {
@@ -164,27 +119,100 @@ else:
         "状态": st.column_config.TextColumn(width="small"),
     }
 
-# 播放器占位（渲染在表格上方，点行后立即可见）
-player_ph = st.empty()
 
-# st.dataframe 支持行选择；返回 {"selection": {"rows": [行号], ...}}，行号为原始 df 位置（排序后仍对齐 words）
-browse_sel = st.dataframe(
-    df,
-    column_config=_col_cfg,
-    hide_index=True,
-    use_container_width=True,
-    on_select="rerun",
-    selection_mode="single-row",
+# ── 顶栏 sticky：Unit(窄 ~1/10) | 自动播放器(宽) | 刷新 ───
+# Unit 选择器收窄，腾出的宽度全给播放器。播放器是纯客户端 JS：▶/⏮/⏭/推进
+# 全在浏览器端，零 Streamlit rerun、零逐词请求（音频走浏览器缓存 + 后端磁盘缓存）。
+with st.container(key="wm_topbar"):
+    c_unit, c_player, c_ref = st.columns([1, 8, 1])
+    with c_unit:
+        selected = st.selectbox("选择 Unit", list(unit_options.keys()), label_visibility="collapsed")
+    unit_id = unit_options[selected]
+
+    # 全量加载本单元单词并缓存（虚拟滚动足以承载数千词；浏览/播放纯客户端，无 rerun）
+    cache_key = f"_wm_all_{unit_id}"
+    words = st.session_state.get(cache_key)
+    if words is None:
+        resp = client.list_words(unit_id, page=1, page_size=5000)
+        if resp["code"] != 200:
+            st.error(resp["message"])
+            st.stop()
+        words = resp["data"]["items"]
+        total = resp["data"]["total"]
+        st.session_state[cache_key] = words
+        st.session_state[cache_key + "_total"] = total
+    else:
+        total = st.session_state.get(cache_key + "_total", len(words))
+
+    words = sorted(words, key=_seq_key)
+
+    if total > 0:
+        with c_player:
+            _ap_data = [
+                {"e": w["english"], "p": phonetic(w["english"]), "c": w["chinese"],
+                 "u": client.get_tts_url(w["english"], "en")}
+                for w in words
+            ]
+            components.html(
+                """<div style="display:flex;align-items:center;gap:6px;padding:2px 6px;font-family:-apple-system,Segoe UI,sans-serif;">
+                  <button id="ap_p"  style="min-width:42px;height:30px;font-size:15px;cursor:pointer;border-radius:6px;border:1px solid #ccc;background:#f3f3f3;">▶</button>
+                  <button id="ap_pv" style="height:30px;cursor:pointer;border-radius:6px;border:1px solid #ccc;background:#f3f3f3;">⏮</button>
+                  <button id="ap_nx" style="height:30px;cursor:pointer;border-radius:6px;border:1px solid #ccc;background:#f3f3f3;">⏭</button>
+                  <select id="ap_sp" style="height:30px;font-size:13px;border-radius:6px;border:1px solid #ccc;">
+                    <option value="0.8">0.8×</option><option value="1" selected>1×</option>
+                    <option value="1.25">1.25×</option><option value="1.5">1.5×</option>
+                  </select>
+                  <span id="ap_i" style="font-size:14px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">点 ▶ 开始连续播放发音（⏮⏭ 切换）</span>
+                  <audio id="ap_a" preload="auto"></audio>
+                </div>
+                <script>
+                (function () {
+                  const W = __WORDS__;
+                  const a = document.getElementById('ap_a'), info = document.getElementById('ap_i'), bp = document.getElementById('ap_p');
+                  let i = 0, playing = false;
+                  function show() {
+                    const w = W[i] || {};
+                    info.innerHTML = '<b>' + (i + 1) + '/' + W.length + '</b> &nbsp; ' + (w.e || '') +
+                      (w.p ? ' <span style="color:#888">/' + w.p + '/</span>' : '') + ' &mdash; ' + (w.c || '');
+                  }
+                  function load(k) {
+                    i = Math.max(0, Math.min(W.length - 1, k));
+                    const w = W[i]; if (!w) return;
+                    a.src = w.u; a.playbackRate = parseFloat(document.getElementById('ap_sp').value) || 1; show();
+                  }
+                  function play()  { a.play().catch(function () {}); playing = true;  bp.textContent = '⏸'; }
+                  function pause() { a.pause();                       playing = false; bp.textContent = '▶'; }
+                  a.addEventListener('ended', function () {
+                    if (playing && i < W.length - 1) { load(i + 1); play(); } else { pause(); info.textContent = '播放完毕'; }
+                  });
+                  bp.addEventListener('click', function () {
+                    if (playing) { pause(); } else { if (!a.src) load(0); play(); }
+                  });
+                  document.getElementById('ap_pv').addEventListener('click', function () { load(i - 1); if (playing) play(); });
+                  document.getElementById('ap_nx').addEventListener('click', function () { load(i + 1); if (playing) play(); });
+                  document.getElementById('ap_sp').addEventListener('change', function () { a.playbackRate = parseFloat(this.value) || 1; });
+                  show();
+                })();
+                </script>""".replace("__WORDS__", json.dumps(_ap_data, ensure_ascii=False)),
+                height=40,
+            )
+    with c_ref:
+        if st.button("🔄", help="重新加载本单元单词"):
+            st.session_state.pop(cache_key, None)
+            st.rerun()
+
+if total == 0:
+    st.info("这个 Unit 还没有单词。")
+    st.stop()
+
+if len(words) < total:
+    st.warning(f"本单元共 {total} 词，单次最多加载 {len(words)} 词（后端上限 5000），未全部显示。")
+
+# ── 只读浏览表（滚动浏览；发音由顶栏 JS 播放器控制）──────
+df = pd.DataFrame([_row_dict(w) for w in words])
+if not is_mobile:
+    df["序号"] = pd.to_numeric(df["序号"], errors="coerce").astype("Int64")
+st.dataframe(
+    df, column_config=_col_cfg, hide_index=True, use_container_width=True,
     key=f"browse_{unit_id}",
 )
-sel_rows = (browse_sel or {}).get("selection", {}).get("rows", [])
-
-with player_ph.container():
-    if sel_rows and 0 <= sel_rows[-1] < len(words):
-        w = words[sel_rows[-1]]
-        phon = phonetic(w["english"])
-        c_w, c_a = st.columns([2, 3])
-        c_w.markdown(f"### 🔊 {w['english']}　{f'/{phon}/' if phon else ''}")
-        c_a.audio(client.get_tts_url(w["english"], "en"), format="audio/mpeg", autoplay=True)
-    else:
-        st.caption("👆 点击表格中任一行 → 播放该单词发音")
