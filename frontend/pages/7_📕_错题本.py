@@ -7,6 +7,7 @@ import streamlit as st
 
 from api_client import client
 from auth import require_auth
+from components.phonetics import phonetic
 
 require_auth()
 
@@ -80,11 +81,13 @@ MASTERY_LABEL = {
 
 for it in items:
     with st.container(border=True):
-        col_main, col_btn = st.columns([7, 1])
+        col_main, col_play, col_btn = st.columns([7, 1, 1])
         with col_main:
             mlevel = it.get("mastery_level") or "unlearned"
             icon = MASTERY_EMOJI.get(mlevel, "⚪")
-            st.markdown(f"### {it['english']}")
+            phon = phonetic(it["english"])
+            ipa_md = f"　/{phon}/" if phon else ""
+            st.markdown(f"### {it['english']}{ipa_md}")
             st.caption(
                 f"中文：{it['chinese']}　·　"
                 f"Unit：{it.get('unit_title') or '-'}　·　"
@@ -92,17 +95,27 @@ for it in items:
                 f"🔥 错题本中累计错 {it.get('wrong_count', 0)} 次　·　"
                 f"加入于 {(it.get('added_at') or '')[:16]}"
             )
+        with col_play:
+            pk = f"wb_play_{it['word_id']}"
+            just_clicked = st.button("🔊", key=pk, help="播放发音", use_container_width=True)
+            if just_clicked:
+                st.session_state[pk] = True
         with col_btn:
             if st.button("移除", key=f"rm_{it['word_id']}", use_container_width=True):
                 r = client.remove_wrong_word(it["word_id"], member_id=member_id)
                 if r["code"] == 200:
                     st.toast(f"已移除 {it['english']}")
+                    st.session_state.pop(pk, None)
                     # 若当前页删完，回到上一页避免空页
                     if len(items) == 1 and page > 1:
                         st.session_state["_wb_page"] = page - 1
                     st.rerun()
                 else:
                     st.error(r["message"])
+        # 懒播放：点过 🔊 才渲染音频条；autoplay 仅在点击当次触发，
+        # 避免翻页 / 删词等 rerun 时反复重播。音标与发音同源（见 components.phonetics）。
+        if st.session_state.get(pk):
+            st.audio(client.get_tts_url(it["english"], "en"), format="audio/mpeg", autoplay=just_clicked)
 
 st.divider()
 nav_l, nav_info, nav_r = st.columns([1, 6, 1])

@@ -4,24 +4,39 @@ import pandas as pd
 import streamlit as st
 from api_client import client
 from auth import require_auth
+from components.phonetics import phonetic
 
 require_auth()
 
-# 隐藏整条顶部 header（含右上角三个点主菜单）让内容顶格；
-# 内容区顶到视口左右边缘让表格横向真正占满（wide 布局默认有 max-width + 左右 padding 会把表格收窄、
-# 还可能因收窄后宽度 < 列宽之和而出现横向滚动条）；
-# 表格撑满视口剩余高度
+# 只读浏览页：撑满宽度 + 表格占满剩余高度（表格内部虚拟滚动）；不动 padding-top
 st.markdown(
     """
     <style>
-    .block-container, section[data-testid="stMain"] {
-        padding-top: 0.5rem !important;
+    /* stMain(外层) 与 block-container(内层) 是嵌套关系，
+       不能用同一选择器同时设 padding-top，否则两层叠加成 8rem。
+       外层归零，只让内层单层垫 4rem 刚好清掉固定 header(3.75rem)。 */
+    section[data-testid="stMain"] {
+        padding-top: 0 !important;
+    }
+    .block-container {
+        padding-top: 0 !important;
         padding-left: 1rem !important;
         padding-right: 1rem !important;
         max-width: 100% !important;
     }
+    /* 工具条 sticky 到视口顶（盖住 header 带、与 Deploy 同高），但它留在主内容流里
+       （侧边栏右边），所以不碰侧边栏导航；右侧留 250px 给 Deploy。 */
+    .st-key-wm_topbar {
+        position: sticky !important;
+        top: 0 !important;
+        z-index: 999999 !important;
+        height: 3.75rem !important;
+        margin: 0 250px 0 0 !important;
+        padding: 0.6rem 1rem !important;
+        background: var(--background-color, #ffffff) !important;
+    }
     div[data-testid="stDataFrame"] {
-        height: calc(100vh - 180px) !important;
+        height: calc(100vh - 110px) !important;
         min-height: 420px;
         width: 100% !important;
     }
@@ -29,22 +44,12 @@ st.markdown(
         height: 100% !important;
         width: 100% !important;
     }
-    /* 禁用列头点击排序：默认即按序号升序（行顺序）显示，切换单元也自动升序，无需手动点 */
-    div[data-testid="stDataFrame"] [role="columnheader"],
-    div[data-testid="stDataFrame"] th,
-    div[data-testid="stDataFrame"] [data-testid*="column-header"] {
-        pointer-events: none !important;
-        cursor: default !important;
-    }
     </style>
     """,
     unsafe_allow_html=True,
 )
 
-# ── 移动端探测：窄屏（手机）只显示「英文·中文」两列，避免列宽溢出看不到中文 ──
-# Glide 表格是 canvas 渲染、列宽只能 small/medium/large 固定档位，CSS 改不动，
-# 故按设备切换列配置。User-Agent 经 st.context.headers 读取（Streamlit≥1.37；
-# 版本不支持则 try 兜底为桌面布局，不报错）。
+
 def _is_mobile() -> bool:
     try:
         ua = st.context.headers.get("User-Agent", "")
@@ -55,153 +60,67 @@ def _is_mobile() -> bool:
 
 is_mobile = _is_mobile()
 
-# ── 选择 Unit（顶格；标签与下拉框同一行）──────────────
+# ── Unit 列表 ───────────────────────────────────────────
 resp = client.list_all_units()
 if resp["code"] != 200:
     st.error(f"加载失败: {resp['message']}")
     st.stop()
-
 units = resp["data"]["items"]
 if not units:
     st.info("还没有 Unit，请先到 Units 页面创建。")
     st.stop()
-
 unit_options = {f"{u['title']} (ID:{u['id']})": u["id"] for u in units}
-_label_col, _select_col, _btn_col = st.columns([1, 5, 1])
-with _label_col:
-    st.markdown(
-        '<div style="font-size:16px; font-weight:600; padding-top:8px;">选择 Unit</div>',
-        unsafe_allow_html=True,
-    )
-with _select_col:
-    selected = st.selectbox(
-        "选择 Unit",
-        list(unit_options.keys()),
-        label_visibility="collapsed",
-    )
-with _btn_col:
-    save_clicked = st.button("💾 保存所有修改", type="primary", use_container_width=True)
-unit_id = unit_options[selected]
 
-# ── 单词列表（统一编辑表格；按序号升序，撑满页面）─────────
-# 先取 total 再一次取全部，避免被分页截断而显示不全
-# （后端 page_size 上限 5000，覆盖当前最大 Unit 2797 词；万一超限会在下方提示）
-probe = client.list_words(unit_id, page=1, page_size=1)
-if probe["code"] != 200:
-    st.error(probe["message"])
-    st.stop()
-total = probe["data"]["total"]
+# 顶栏 sticky 到视口顶：用 st.container(key=) 拿到 .st-key-wm_topbar 类做定位
+with st.container(key="wm_topbar"):
+    c_unit, c_info, c_ref = st.columns([7, 3, 1])
+    with c_unit:
+        selected = st.selectbox("选择 Unit", list(unit_options.keys()), label_visibility="collapsed")
+    unit_id = unit_options[selected]
 
-# ── 添加单词（AI 文本解析 / 手动录入）──────────────────────
-# 置于「空 Unit」判定之前：即使是空 Unit 也能在此加词，补齐 MVP 词库生成环节。
-with st.expander("➕ 添加单词到本 Unit"):
-    _tab_ai, _tab_manual = st.tabs(["🤖 AI 文本解析", "✍️ 手动录入"])
+    # 全量加载本单元单词并缓存到 session_state：表格虚拟滚动足以承载数千词，
+    # 缓存后点行播放的 rerun 不会反复请求后端。
+    cache_key = f"_wm_all_{unit_id}"
+    words = st.session_state.get(cache_key)
+    if words is None:
+        resp = client.list_words(unit_id, page=1, page_size=5000)
+        if resp["code"] != 200:
+            st.error(resp["message"])
+            st.stop()
+        words = resp["data"]["items"]
+        total = resp["data"]["total"]
+        st.session_state[cache_key] = words
+        st.session_state[cache_key + "_total"] = total
+    else:
+        total = st.session_state.get(cache_key + "_total", len(words))
 
-    with _tab_ai:
-        raw = st.text_area(
-            "粘贴任意文本（单词表 / 课文 / 笔记），AI 自动提取词条",
-            height=140,
-            key=f"parse_text_{unit_id}",
-            placeholder="例如：\napple 苹果\nbanana 香蕉\nHow are you? 你好吗？",
-        )
-        if st.button("🔍 解析文本", key=f"parse_btn_{unit_id}"):
-            if not raw.strip():
-                st.warning("请先粘贴待解析文本")
-            else:
-                with st.spinner("AI 解析中…"):
-                    r = client.parse_words(raw.strip())
-                if r["code"] != 200:
-                    st.error(r["message"])
-                else:
-                    drafts = r["data"].get("draft_words", [])
-                    if not drafts:
-                        st.info("未解析到任何词条，换段文本试试")
-                    else:
-                        st.session_state[f"draft_df_{unit_id}"] = drafts
-                        st.success(f"解析到 {len(drafts)} 条，请在下方核对后再导入")
-
-        drafts = st.session_state.get(f"draft_df_{unit_id}")
-        if drafts:
-            edited_drafts = st.data_editor(
-                pd.DataFrame([
-                    {"英文": d.get("english", ""), "中文": d.get("chinese", ""), "类型": d.get("type", "word")}
-                    for d in drafts
-                ]),
-                column_config={
-                    "英文": st.column_config.TextColumn(width="large"),
-                    "中文": st.column_config.TextColumn(width="large"),
-                    "类型": st.column_config.SelectboxColumn(
-                        options=["word", "sentence"], width="small", required=True,
-                    ),
-                },
-                hide_index=True,
-                use_container_width=True,
-                num_rows="dynamic",
-                key=f"draft_editor_{unit_id}",
-            )
-            _c_imp, _c_clr = st.columns(2)
-            if _c_imp.button("⬇️ 导入本 Unit", type="primary", key=f"import_btn_{unit_id}"):
-                words_to_add = []
-                for rec in edited_drafts.to_dict("records"):
-                    en = str(rec.get("英文", "")).strip()
-                    cn = str(rec.get("中文", "")).strip()
-                    if en and cn:
-                        words_to_add.append({"english": en, "chinese": cn, "type": rec.get("类型") or "word"})
-                if not words_to_add:
-                    st.warning("没有有效词条（英文和中文都不能为空）")
-                else:
-                    rr = client.batch_create_words(unit_id, words_to_add)
-                    if rr["code"] == 200:
-                        st.success(f"已导入 {len(words_to_add)} 个单词")
-                        st.session_state.pop(f"draft_df_{unit_id}", None)
-                        st.rerun()
-                    else:
-                        st.error(rr["message"])
-            if _c_clr.button("🗑️ 清空解析结果", key=f"clr_draft_{unit_id}"):
-                st.session_state.pop(f"draft_df_{unit_id}", None)
-                st.rerun()
-
-    with _tab_manual:
-        _mc1, _mc2 = st.columns(2)
-        m_en = _mc1.text_input("英文", key=f"m_en_{unit_id}")
-        m_cn = _mc2.text_input("中文", key=f"m_cn_{unit_id}")
-        m_type = st.selectbox("类型", ["word", "sentence"], key=f"m_type_{unit_id}")
-        if st.button("➕ 加入待提交", key=f"m_add_{unit_id}"):
-            if not m_en.strip() or not m_cn.strip():
-                st.warning("英文和中文都不能为空")
-            else:
-                pend = st.session_state.setdefault(f"manual_pending_{unit_id}", [])
-                pend.append({"english": m_en.strip(), "chinese": m_cn.strip(), "type": m_type})
-                st.success(f"已加入待提交（当前 {len(pend)} 条）")
-        pend = st.session_state.get(f"manual_pending_{unit_id}", [])
-        if pend:
-            st.caption(f"待提交 {len(pend)} 条：")
-            st.dataframe(pd.DataFrame(pend), use_container_width=True, hide_index=True)
-            _pc1, _pc2 = st.columns(2)
-            if _pc1.button("⬇️ 提交到本 Unit", type="primary", key=f"m_submit_{unit_id}"):
-                rr = client.batch_create_words(unit_id, pend)
-                if rr["code"] == 200:
-                    st.success(f"已添加 {len(pend)} 个单词")
-                    st.session_state.pop(f"manual_pending_{unit_id}", None)
-                    st.rerun()
-                else:
-                    st.error(rr["message"])
-            if _pc2.button("🗑️ 清空待提交", key=f"m_clr_{unit_id}"):
-                st.session_state.pop(f"manual_pending_{unit_id}", None)
-                st.rerun()
+    with c_info:
+        if len(words) >= total:
+            st.caption(f"共 {total} 词（已全部加载，滚动浏览）")
+        else:
+            st.caption(f"共 {total} 词（仅加载前 {len(words)}）")
+    with c_ref:
+        if st.button("🔄", help="重新加载本单元单词"):
+            st.session_state.pop(cache_key, None)
+            st.rerun()
 
 if total == 0:
-    st.info("这个 Unit 还没有单词，点击上方「➕ 添加单词到本 Unit」开始录入。")
+    st.info("这个 Unit 还没有单词。")
     st.stop()
 
-resp = client.list_words(unit_id, page=1, page_size=total)
-if resp["code"] != 200:
-    st.error(resp["message"])
-    st.stop()
-
-words = resp["data"]["items"]
 if len(words) < total:
-    st.warning(f"本 Unit 共 {total} 词，但单次最多加载 {len(words)} 词，未全部显示。")
+    st.warning(f"本单元共 {total} 词，单次最多加载 {len(words)} 词（后端上限 5000），未全部显示。")
+
+
+def _seq_key(w):
+    s = w.get("seq")
+    if s is None:
+        return (True, 0)
+    try:
+        return (False, int(s))
+    except (TypeError, ValueError):
+        return (True, 0)
+
 
 STATUS_LABEL = {
     "unlearned": "⚪ 未学习",
@@ -210,85 +129,62 @@ STATUS_LABEL = {
     "permanent": "🟢 永久",
 }
 
-# 按 seq 数字升序兜底排序（None 排末尾）；words 与 df 必须同序，保存时才能按行对齐
-def _seq_key(w):
-    s = w.get("seq")
-    if s is None:
-        return (True, 0)
-    try:
-        return (False, int(s))   # 显式转 int，避免字符串字典序（1,10,11 而非 1,2,...10）
-    except (TypeError, ValueError):
-        return (True, 0)
-
-
 words = sorted(words, key=_seq_key)
 
+# ── 只读浏览表（点行 → 上方播放发音）────────────────────
 rows = []
 for w in words:
     if is_mobile:
-        rows.append({"英文": w["english"], "中文": w["chinese"]})
+        rows.append({"英文": w["english"], "音标": phonetic(w["english"]), "中文": w["chinese"]})
     else:
         level = (w.get("mastery") or {}).get("level", "unlearned")
         rows.append({
             "序号": w.get("seq"),
             "英文": w["english"],
+            "音标": phonetic(w["english"]),
             "中文": w["chinese"],
             "状态": STATUS_LABEL.get(level, level),
         })
 df = pd.DataFrame(rows)
 if not is_mobile:
-    # 「序号」强制为可空整数类型，避免被当成字符串排序（出现 1,10,11 而非 1,2,...10）
     df["序号"] = pd.to_numeric(df["序号"], errors="coerce").astype("Int64")
 
 if is_mobile:
     _col_cfg = {
         "英文": st.column_config.TextColumn(width="small"),
+        "音标": st.column_config.TextColumn(width="medium"),
         "中文": st.column_config.TextColumn(width="medium"),
     }
 else:
     _col_cfg = {
-        "序号": st.column_config.NumberColumn(width="small", step=1),
-        "英文": st.column_config.TextColumn(width="large"),
+        "序号": st.column_config.NumberColumn(width="small"),
+        "英文": st.column_config.TextColumn(width="medium"),
+        "音标": st.column_config.TextColumn(width="medium"),
         "中文": st.column_config.TextColumn(width="large"),
-        "状态": st.column_config.TextColumn(disabled=True, width="small"),
+        "状态": st.column_config.TextColumn(width="small"),
     }
 
-edited = st.data_editor(
+# 播放器占位（渲染在表格上方，点行后立即可见）
+player_ph = st.empty()
+
+# st.dataframe 支持行选择；返回 {"selection": {"rows": [行号], ...}}，行号为原始 df 位置（排序后仍对齐 words）
+browse_sel = st.dataframe(
     df,
     column_config=_col_cfg,
     hide_index=True,
     use_container_width=True,
-    num_rows="fixed",
-    height=600,
-    # 桌面/移动端列结构不同，key 区分以免切换时表格状态错乱
-    key=f"editor_{unit_id}_{'m' if is_mobile else 'd'}",
+    on_select="rerun",
+    selection_mode="single-row",
+    key=f"browse_{unit_id}",
 )
+sel_rows = (browse_sel or {}).get("selection", {}).get("rows", [])
 
-if save_clicked:
-    changed = 0
-    failed: list = []
-    with st.spinner("正在保存修改…"):
-        for orig, row in zip(words, edited.itertuples()):
-            updates = {}
-            if orig["english"] != row.英文:
-                updates["english"] = row.英文
-            if orig["chinese"] != row.中文:
-                updates["chinese"] = row.中文
-            if not is_mobile:
-                seq_val = int(row.序号) if pd.notna(row.序号) else None
-                if orig.get("seq") != seq_val:
-                    updates["seq"] = seq_val
-            if updates:
-                r = client.update_word(orig["id"], **updates)
-                if r["code"] == 200:
-                    changed += 1
-                else:
-                    failed.append(str(orig.get("english", orig["id"])))
-    if failed:
-        preview = ", ".join(failed[:5]) + ("…" if len(failed) > 5 else "")
-        st.warning(f"{len(failed)} 个保存失败：{preview}")
-    if changed:
-        st.success(f"已更新 {changed} 个单词")
-        st.rerun()
-    elif not failed:
-        st.info("没有检测到修改")
+with player_ph.container():
+    if sel_rows and 0 <= sel_rows[-1] < len(words):
+        w = words[sel_rows[-1]]
+        phon = phonetic(w["english"])
+        c_w, c_a = st.columns([2, 3])
+        c_w.markdown(f"### 🔊 {w['english']}　{f'/{phon}/' if phon else ''}")
+        c_a.audio(client.get_tts_url(w["english"], "en"), format="audio/mpeg", autoplay=True)
+    else:
+        st.caption("👆 点击表格中任一行 → 播放该单词发音")

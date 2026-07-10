@@ -10,14 +10,8 @@ try:
 except ImportError:
     _HAS_AUTOREFRESH = False
 
-try:
-    import eng_to_ipa as _ipa
-    _HAS_IPA = True
-except ImportError:
-    _ipa = None
-    _HAS_IPA = False
-
 from api_client import client
+from components.phonetics import phonetic as _phonetic
 from auth import require_auth
 
 require_auth()
@@ -111,30 +105,6 @@ def _scramble(word):
         if "".join(letters) != word:
             return "".join(letters)
     return word[:-1] + word[0] + word[1:-1]
-
-
-_IPA_CACHE: dict[str, str] = {}
-
-
-def _phonetic(english: str) -> str:
-    """查 IPA 音标；词典未收录（含 OOV 推测）返回空串。"""
-    if not english or not _HAS_IPA:
-        return ""
-    s = english.strip()
-    if not s:
-        return ""
-    cached = _IPA_CACHE.get(s)
-    if cached is not None:
-        return cached
-    try:
-        result = _ipa.convert(s, keep_punct=False)
-    except Exception:
-        result = ""
-    # 末尾 * 表示词典未命中，结果不可靠，不展示
-    if result.endswith("*"):
-        result = ""
-    _IPA_CACHE[s] = result
-    return result
 
 
 def _audio_compact(english: str, autoplay: bool | None = None, container=st):
@@ -432,7 +402,7 @@ if not in_practice and not practice_done:
 
             # ── 周复习日 ─────────────────────────────────
             if has_weekly:
-                st.markdown(f"#### 🔁 周复习（本周练过的词）")
+                st.markdown("#### 🔁 周复习（本周练过的词）")
                 if weekly_done:
                     st.success("🎉 周复习已完成", icon="🎉")
                 else:
@@ -446,7 +416,7 @@ if not in_practice and not practice_done:
 
             # ── 月复习日 ─────────────────────────────────
             if has_monthly:
-                st.markdown(f"#### 📚 月复习（本月练过的词）")
+                st.markdown("#### 📚 月复习（本月练过的词）")
                 if monthly_done:
                     st.success("🎉 月复习已完成", icon="🎉")
                 else:
@@ -460,7 +430,7 @@ if not in_practice and not practice_done:
 
             # ── 错题刷（三轮） ──────────────────────────
             if has_drill:
-                st.markdown(f"#### 🎯 错题冲刺（错过的词）")
+                st.markdown("#### 🎯 错题冲刺（错过的词）")
                 if drill_done:
                     st.success("🎉 今日错题已刷完", icon="🎉")
                 else:
