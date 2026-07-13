@@ -8,6 +8,25 @@ from api_client import client
 from auth import require_auth
 from components.phonetics import phonetic
 
+
+def _json_for_script(obj):
+    """序列化 JSON 并转义 < > & 与 U+2028/2029，安全嵌入 <script>。
+
+    词库 english/chinese 是用户可控文本（手填 + AI 解析粘贴内容），
+    json.dumps 默认不转义这些字符；若某词条含 ``</script>`` 字面量，
+    会提前闭合脚本块（播放器整段失效，同源 iframe 下还可能执行注入脚本）。
+    转义后 HTML 解析器不再将其当作脚本结束，JS 解析字符串时仍能还原成原字符。
+    """
+    return (
+        json.dumps(obj, ensure_ascii=False)
+        .replace("<", "\\u003c")
+        .replace(">", "\\u003e")
+        .replace("&", "\\u0026")
+        .replace(" ", "\\u2028")
+        .replace(" ", "\\u2029")
+    )
+
+
 require_auth()
 
 # 只读浏览页：撑满宽度 + 表格占满剩余高度（表格内部虚拟滚动）；不动 padding-top
@@ -37,7 +56,7 @@ st.markdown(
         background: var(--background-color, #ffffff) !important;
     }
     div[data-testid="stDataFrame"] {
-        height: calc(100vh - 80px) !important;
+        height: calc(100vh - 110px) !important;
         min-height: 420px;
         width: 100% !important;
     }
@@ -170,10 +189,15 @@ with st.container(key="wm_topbar"):
                   const W = __WORDS__;
                   const a = document.getElementById('ap_a'), info = document.getElementById('ap_i'), bp = document.getElementById('ap_p');
                   let i = 0, playing = false;
+                  function esc(s) {
+                    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+                      return {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c];
+                    });
+                  }
                   function show() {
                     const w = W[i] || {};
-                    info.innerHTML = '<b>' + (i + 1) + '/' + W.length + '</b> &nbsp; ' + (w.e || '') +
-                      (w.p ? ' <span style="color:#888">/' + w.p + '/</span>' : '') + ' &mdash; ' + (w.c || '');
+                    info.innerHTML = '<b>' + (i + 1) + '/' + W.length + '</b> &nbsp; ' + esc(w.e) +
+                      (w.p ? ' <span style="color:#888">/' + esc(w.p) + '/</span>' : '') + ' &mdash; ' + esc(w.c);
                   }
                   function load(k) {
                     i = Math.max(0, Math.min(W.length - 1, k));
@@ -185,6 +209,17 @@ with st.container(key="wm_topbar"):
                   a.addEventListener('ended', function () {
                     if (playing && i < W.length - 1) { load(i + 1); play(); } else { pause(); info.textContent = '播放完毕'; }
                   });
+                  // 音频加载失败(后端 503/空体/解码失败)时 ended 不触发，靠 error 推进，避免连播卡死
+                  a.addEventListener('error', function () {
+                    if (playing && i < W.length - 1) {
+                      info.textContent = '（第 ' + (i + 1) + ' 个音频加载失败，跳过…）';
+                      setTimeout(function () { load(i + 1); play(); }, 500);
+                    } else if (playing) {
+                      pause(); info.textContent = '播放完毕（含加载失败的词）';
+                    } else {
+                      info.textContent = '（第 ' + (i + 1) + ' 个音频加载失败）';
+                    }
+                  });
                   bp.addEventListener('click', function () {
                     if (playing) { pause(); } else { if (!a.src) load(0); play(); }
                   });
@@ -193,7 +228,7 @@ with st.container(key="wm_topbar"):
                   document.getElementById('ap_sp').addEventListener('change', function () { a.playbackRate = parseFloat(this.value) || 1; });
                   show();
                 })();
-                </script>""".replace("__WORDS__", json.dumps(_ap_data, ensure_ascii=False)),
+                </script>""".replace("__WORDS__", _json_for_script(_ap_data)),
                 height=40,
             )
     with c_ref:
