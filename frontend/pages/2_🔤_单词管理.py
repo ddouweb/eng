@@ -1,5 +1,6 @@
 import json
 import re
+import time
 
 import pandas as pd
 import streamlit as st
@@ -22,8 +23,91 @@ def _json_for_script(obj):
         .replace("<", "\\u003c")
         .replace(">", "\\u003e")
         .replace("&", "\\u0026")
-        .replace(" ", "\\u2028")
-        .replace(" ", "\\u2029")
+        .replace(" ", "\\u2028")
+        .replace(" ", "\\u2029")
+    )
+
+
+# JS 端按词拼 TTS URL 用：只存一份前缀常量，省去每词重复完整 URL（约省 50% 体积）。
+# 取一个样例 url 切出 `?text=` 前缀，JS 端 `TTS_PREFIX + encodeURIComponent(e) + '&lang=en'`。
+_TTS_PREFIX = client.get_tts_url("X", "en").split("text=")[0] + "text="
+
+
+# 播放器模板（HTML + JS）从调用点抽出，便于阅读/维护；占位符由 _player_html 注入。
+_PLAYER_TEMPLATE = """<div style="display:flex;align-items:center;gap:6px;padding:2px 6px;font-family:-apple-system,Segoe UI,sans-serif;">
+  <button id="ap_p"  type="button" aria-label="播放或暂停" style="min-width:42px;height:30px;font-size:15px;cursor:pointer;border-radius:6px;border:1px solid #ccc;background:#f3f3f3;">▶</button>
+  <button id="ap_pv" type="button" aria-label="上一个" style="height:30px;cursor:pointer;border-radius:6px;border:1px solid #ccc;background:#f3f3f3;">⏮</button>
+  <button id="ap_nx" type="button" aria-label="下一个" style="height:30px;cursor:pointer;border-radius:6px;border:1px solid #ccc;background:#f3f3f3;">⏭</button>
+  <select id="ap_sp" aria-label="语速" style="height:30px;font-size:13px;border-radius:6px;border:1px solid #ccc;">
+    <option value="0.8">0.8×</option><option value="1" selected>1×</option>
+    <option value="1.25">1.25×</option><option value="1.5">1.5×</option>
+  </select>
+  <span id="ap_i" style="font-size:14px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">点 ▶ 开始连续播放发音（⏮⏭ 切换）</span>
+  <audio id="ap_a" preload="auto"></audio>
+</div>
+<script>
+(function () {
+  const W = __WORDS__;
+  const TTS_PREFIX = __TTS_PREFIX__;
+  const UNIT_ID = __UNIT_ID__;
+  const LS_KEY = 'wm_ap_i_' + UNIT_ID;
+  const a = document.getElementById('ap_a'), info = document.getElementById('ap_i'), bp = document.getElementById('ap_p');
+  let i = 0;
+  // best-effort：跨 iframe 重建（切 Unit / 刷新会重挂 iframe）恢复上次播放位置
+  try { let s = parseInt(localStorage.getItem(LS_KEY), 10); if (!isNaN(s) && s >= 0) i = s; } catch (e) {}
+  let playing = false;
+  function savePos() { try { localStorage.setItem(LS_KEY, String(i)); } catch (e) {} }
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c];
+    });
+  }
+  function show() {
+    const w = W[i] || {};
+    info.innerHTML = '<b>' + (i + 1) + '/' + W.length + '</b> &nbsp; ' + esc(w.e) +
+      (w.p ? ' <span style="color:#888">/' + esc(w.p) + '/</span>' : '') + ' &mdash; ' + esc(w.c);
+  }
+  function load(k) {
+    i = Math.max(0, Math.min(W.length - 1, k));
+    const w = W[i]; if (!w) return;
+    a.src = TTS_PREFIX + encodeURIComponent(w.e) + '&lang=en';
+    a.playbackRate = parseFloat(document.getElementById('ap_sp').value) || 1;
+    show(); savePos();
+  }
+  function play()  { a.play().catch(function () {}); playing = true;  bp.textContent = '⏸'; }
+  function pause() { a.pause();                       playing = false; bp.textContent = '▶'; }
+  a.addEventListener('ended', function () {
+    if (playing && i < W.length - 1) { load(i + 1); play(); } else { pause(); info.textContent = '播放完毕'; }
+  });
+  // 音频加载失败(后端 503/空体/解码失败)时 ended 不触发，靠 error 推进，避免连播卡死
+  a.addEventListener('error', function () {
+    if (playing && i < W.length - 1) {
+      info.textContent = '（第 ' + (i + 1) + ' 个音频加载失败，跳过…）';
+      setTimeout(function () { load(i + 1); play(); }, 500);
+    } else if (playing) {
+      pause(); info.textContent = '播放完毕（含加载失败的词）';
+    } else {
+      info.textContent = '（第 ' + (i + 1) + ' 个音频加载失败）';
+    }
+  });
+  bp.addEventListener('click', function () {
+    if (playing) { pause(); } else { if (!a.src) load(0); play(); }
+  });
+  document.getElementById('ap_pv').addEventListener('click', function () { load(i - 1); if (playing) play(); });
+  document.getElementById('ap_nx').addEventListener('click', function () { load(i + 1); if (playing) play(); });
+  document.getElementById('ap_sp').addEventListener('change', function () { a.playbackRate = parseFloat(this.value) || 1; });
+  show();
+})();
+</script>"""
+
+
+def _player_html(words_json, tts_prefix, unit_id):
+    """注入占位符生成播放器 HTML。常量先替换（不会含 __WORDS__），数据最后替换。"""
+    return (
+        _PLAYER_TEMPLATE
+        .replace("__TTS_PREFIX__", _json_for_script(tts_prefix))
+        .replace("__UNIT_ID__", _json_for_script(str(unit_id)))
+        .replace("__WORDS__", words_json)
     )
 
 
@@ -110,14 +194,14 @@ STATUS_LABEL = {
 }
 
 
-def _row_dict(w):
+def _row_dict(w, ph):
     if is_mobile:
-        return {"英文": w["english"], "音标": phonetic(w["english"]), "中文": w["chinese"]}
+        return {"英文": w["english"], "音标": ph, "中文": w["chinese"]}
     level = (w.get("mastery") or {}).get("level", "unlearned")
     return {
         "序号": w.get("seq"),
         "英文": w["english"],
-        "音标": phonetic(w["english"]),
+        "音标": ph,
         "中文": w["chinese"],
         "状态": STATUS_LABEL.get(level, level),
     }
@@ -139,19 +223,23 @@ else:
     }
 
 
-# ── 顶栏 sticky：Unit(窄 ~1/10) | 自动播放器(宽) | 刷新 ───
-# Unit 选择器收窄，腾出的宽度全给播放器。播放器是纯客户端 JS：▶/⏮/⏭/推进
-# 全在浏览器端，零 Streamlit rerun、零逐词请求（音频走浏览器缓存 + 后端磁盘缓存）。
+CACHE_TTL = 600  # 词缓存 10 分钟后自动失效（其它页改了 mastery 等不至于长期脏读）
+
+# ── 顶栏 sticky：Unit | 自动播放器(宽) | 刷新 ──────────────
+# 播放器是纯客户端 JS：▶/⏮/⏭/推进全在浏览器端，零 Streamlit rerun、零逐词请求
+# （音频走浏览器缓存 + 后端磁盘缓存）。
 with st.container(key="wm_topbar"):
-    c_unit, c_player, c_ref = st.columns([1, 8, 1])
+    c_unit, c_player, c_ref = st.columns([2, 6, 1] if is_mobile else [1, 8, 1])
     with c_unit:
         selected = st.selectbox("选择 Unit", list(unit_options.keys()), label_visibility="collapsed")
     unit_id = unit_options[selected]
+    player_json_key = f"_wm_player_json_{unit_id}"
 
-    # 全量加载本单元单词并缓存（虚拟滚动足以承载数千词；浏览/播放纯客户端，无 rerun）
+    # 全量加载本单元单词并缓存（带 TTL）；过期/刷新/失效时连带重建播放器 JSON
     cache_key = f"_wm_all_{unit_id}"
     words = st.session_state.get(cache_key)
-    if words is None:
+    expired = (time.time() - st.session_state.get(cache_key + "_ts", 0)) > CACHE_TTL
+    if words is None or expired:
         resp = client.list_words(unit_id, page=1, page_size=5000)
         if resp["code"] != 200:
             st.error(resp["message"])
@@ -160,83 +248,32 @@ with st.container(key="wm_topbar"):
         total = resp["data"]["total"]
         st.session_state[cache_key] = words
         st.session_state[cache_key + "_total"] = total
+        st.session_state[cache_key + "_ts"] = time.time()
+        st.session_state.pop(player_json_key, None)   # 词变了，播放器 JSON 重建
     else:
         total = st.session_state.get(cache_key + "_total", len(words))
 
     words = sorted(words, key=_seq_key)
+    _phon = [phonetic(w["english"]) for w in words]   # 音标预算一次，表格与播放器复用
 
-    if total > 0:
+    if words:
         with c_player:
-            _ap_data = [
-                {"e": w["english"], "p": phonetic(w["english"]), "c": w["chinese"],
-                 "u": client.get_tts_url(w["english"], "en")}
-                for w in words
-            ]
-            components.html(
-                """<div style="display:flex;align-items:center;gap:6px;padding:2px 6px;font-family:-apple-system,Segoe UI,sans-serif;">
-                  <button id="ap_p"  style="min-width:42px;height:30px;font-size:15px;cursor:pointer;border-radius:6px;border:1px solid #ccc;background:#f3f3f3;">▶</button>
-                  <button id="ap_pv" style="height:30px;cursor:pointer;border-radius:6px;border:1px solid #ccc;background:#f3f3f3;">⏮</button>
-                  <button id="ap_nx" style="height:30px;cursor:pointer;border-radius:6px;border:1px solid #ccc;background:#f3f3f3;">⏭</button>
-                  <select id="ap_sp" style="height:30px;font-size:13px;border-radius:6px;border:1px solid #ccc;">
-                    <option value="0.8">0.8×</option><option value="1" selected>1×</option>
-                    <option value="1.25">1.25×</option><option value="1.5">1.5×</option>
-                  </select>
-                  <span id="ap_i" style="font-size:14px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">点 ▶ 开始连续播放发音（⏮⏭ 切换）</span>
-                  <audio id="ap_a" preload="auto"></audio>
-                </div>
-                <script>
-                (function () {
-                  const W = __WORDS__;
-                  const a = document.getElementById('ap_a'), info = document.getElementById('ap_i'), bp = document.getElementById('ap_p');
-                  let i = 0, playing = false;
-                  function esc(s) {
-                    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
-                      return {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c];
-                    });
-                  }
-                  function show() {
-                    const w = W[i] || {};
-                    info.innerHTML = '<b>' + (i + 1) + '/' + W.length + '</b> &nbsp; ' + esc(w.e) +
-                      (w.p ? ' <span style="color:#888">/' + esc(w.p) + '/</span>' : '') + ' &mdash; ' + esc(w.c);
-                  }
-                  function load(k) {
-                    i = Math.max(0, Math.min(W.length - 1, k));
-                    const w = W[i]; if (!w) return;
-                    a.src = w.u; a.playbackRate = parseFloat(document.getElementById('ap_sp').value) || 1; show();
-                  }
-                  function play()  { a.play().catch(function () {}); playing = true;  bp.textContent = '⏸'; }
-                  function pause() { a.pause();                       playing = false; bp.textContent = '▶'; }
-                  a.addEventListener('ended', function () {
-                    if (playing && i < W.length - 1) { load(i + 1); play(); } else { pause(); info.textContent = '播放完毕'; }
-                  });
-                  // 音频加载失败(后端 503/空体/解码失败)时 ended 不触发，靠 error 推进，避免连播卡死
-                  a.addEventListener('error', function () {
-                    if (playing && i < W.length - 1) {
-                      info.textContent = '（第 ' + (i + 1) + ' 个音频加载失败，跳过…）';
-                      setTimeout(function () { load(i + 1); play(); }, 500);
-                    } else if (playing) {
-                      pause(); info.textContent = '播放完毕（含加载失败的词）';
-                    } else {
-                      info.textContent = '（第 ' + (i + 1) + ' 个音频加载失败）';
-                    }
-                  });
-                  bp.addEventListener('click', function () {
-                    if (playing) { pause(); } else { if (!a.src) load(0); play(); }
-                  });
-                  document.getElementById('ap_pv').addEventListener('click', function () { load(i - 1); if (playing) play(); });
-                  document.getElementById('ap_nx').addEventListener('click', function () { load(i + 1); if (playing) play(); });
-                  document.getElementById('ap_sp').addEventListener('change', function () { a.playbackRate = parseFloat(this.value) || 1; });
-                  show();
-                })();
-                </script>""".replace("__WORDS__", _json_for_script(_ap_data)),
-                height=40,
-            )
+            words_json = st.session_state.get(player_json_key)
+            if words_json is None:
+                _ap_data = [
+                    {"e": w["english"], "p": ph, "c": w["chinese"]}
+                    for w, ph in zip(words, _phon)
+                ]
+                words_json = _json_for_script(_ap_data)
+                st.session_state[player_json_key] = words_json
+            components.html(_player_html(words_json, _TTS_PREFIX, unit_id), height=40)
     with c_ref:
-        if st.button("🔄", help="重新加载本单元单词"):
+        if st.button("🔄", help="重新加载本单元单词（会中断播放）"):
             st.session_state.pop(cache_key, None)
+            st.session_state.pop(player_json_key, None)
             st.rerun()
 
-if total == 0:
+if not words:
     st.info("这个 Unit 还没有单词。")
     st.stop()
 
@@ -244,7 +281,7 @@ if len(words) < total:
     st.warning(f"本单元共 {total} 词，单次最多加载 {len(words)} 词（后端上限 5000），未全部显示。")
 
 # ── 只读浏览表（滚动浏览；发音由顶栏 JS 播放器控制）──────
-df = pd.DataFrame([_row_dict(w) for w in words])
+df = pd.DataFrame([_row_dict(w, ph) for w, ph in zip(words, _phon)])
 if not is_mobile:
     df["序号"] = pd.to_numeric(df["序号"], errors="coerce").astype("Int64")
 st.dataframe(
