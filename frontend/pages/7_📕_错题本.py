@@ -80,6 +80,8 @@ MASTERY_LABEL = {
 }
 
 for it in items:
+    wid = it["word_id"]
+    play_flag = f"wb_play_{wid}"  # 仅作 session_state 标志，不能与任何 widget 的 key 重名
     with st.container(border=True):
         col_main, col_play, col_btn = st.columns([7, 1, 1])
         with col_main:
@@ -96,16 +98,15 @@ for it in items:
                 f"加入于 {(it.get('added_at') or '')[:16]}"
             )
         with col_play:
-            pk = f"wb_play_{it['word_id']}"
-            just_clicked = st.button("🔊", key=pk, help="播放发音", use_container_width=True)
+            just_clicked = st.button("🔊", key=f"wb_play_btn_{wid}", help="播放发音", use_container_width=True)
             if just_clicked:
-                st.session_state[pk] = True
+                st.session_state[play_flag] = True
         with col_btn:
-            if st.button("移除", key=f"rm_{it['word_id']}", use_container_width=True):
-                r = client.remove_wrong_word(it["word_id"], member_id=member_id)
+            if st.button("移除", key=f"rm_{wid}", use_container_width=True):
+                r = client.remove_wrong_word(wid, member_id=member_id)
                 if r["code"] == 200:
                     st.toast(f"已移除 {it['english']}")
-                    st.session_state.pop(pk, None)
+                    st.session_state.pop(play_flag, None)
                     # 若当前页删完，回到上一页避免空页
                     if len(items) == 1 and page > 1:
                         st.session_state["_wb_page"] = page - 1
@@ -113,8 +114,8 @@ for it in items:
                 else:
                     st.error(r["message"])
         # 懒播放：点过 🔊 才渲染音频条；autoplay 仅在点击当次触发，
-        # 避免翻页 / 删词等 rerun 时反复重播。音标与发音同源（见 components.phonetics）。
-        if st.session_state.get(pk):
+        # 避免翻页 / 删词等 rerun 时反复重播。
+        if st.session_state.get(play_flag):
             st.audio(client.get_tts_url(it["english"], "en"), format="audio/mpeg", autoplay=just_clicked)
 
 st.divider()

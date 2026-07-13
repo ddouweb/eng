@@ -23,8 +23,8 @@ def _json_for_script(obj):
         .replace("<", "\\u003c")
         .replace(">", "\\u003e")
         .replace("&", "\\u0026")
-        .replace(" ", "\\u2028")
-        .replace(" ", "\\u2029")
+        .replace(chr(0x2028), "\\u2028")
+        .replace(chr(0x2029), "\\u2029")
     )
 
 
