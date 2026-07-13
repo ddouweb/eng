@@ -3,8 +3,10 @@
 数据来源：练习中答错的题自动加入；本页只做展示与手动管理。
 答对错题本中的词不会自动移除 —— 必须在这里手动点击「移除」。
 """
-import streamlit as st
+import json
 
+import streamlit as st
+import streamlit.components.v1 as components
 from api_client import client
 from auth import require_auth
 from components.phonetics import phonetic
@@ -81,7 +83,6 @@ MASTERY_LABEL = {
 
 for it in items:
     wid = it["word_id"]
-    play_flag = f"wb_play_{wid}"  # 仅作 session_state 标志，不能与任何 widget 的 key 重名
     with st.container(border=True):
         col_main, col_play, col_btn = st.columns([7, 1, 1])
         with col_main:
@@ -98,25 +99,32 @@ for it in items:
                 f"加入于 {(it.get('added_at') or '')[:16]}"
             )
         with col_play:
-            just_clicked = st.button("🔊", key=f"wb_play_btn_{wid}", help="播放发音", use_container_width=True)
-            if just_clicked:
-                st.session_state[play_flag] = True
+            # 纯 JS 播放（components.html iframe 内）：点击不触发 Streamlit rerun，
+            # 也就不会重拉错题列表 API；audio preload=none，点前不请求。
+            _url = client.get_tts_url(it["english"], "en")
+            components.html(
+                """<button type="button" aria-label="播放发音" style="width:100%;height:30px;font-size:15px;cursor:pointer;border-radius:6px;border:1px solid #ccc;background:#f3f3f3;">🔊</button>
+                <audio preload="none"></audio>
+                <script>
+                  (function () {
+                    var a = document.querySelector('audio');
+                    a.src = __URL__;
+                    document.querySelector('button').addEventListener('click', function () { a.play(); });
+                  })();
+                </script>""".replace("__URL__", json.dumps(_url)),
+                height=32,
+            )
         with col_btn:
             if st.button("移除", key=f"rm_{wid}", use_container_width=True):
                 r = client.remove_wrong_word(wid, member_id=member_id)
                 if r["code"] == 200:
                     st.toast(f"已移除 {it['english']}")
-                    st.session_state.pop(play_flag, None)
                     # 若当前页删完，回到上一页避免空页
                     if len(items) == 1 and page > 1:
                         st.session_state["_wb_page"] = page - 1
                     st.rerun()
                 else:
                     st.error(r["message"])
-        # 懒播放：点过 🔊 才渲染音频条；autoplay 仅在点击当次触发，
-        # 避免翻页 / 删词等 rerun 时反复重播。
-        if st.session_state.get(play_flag):
-            st.audio(client.get_tts_url(it["english"], "en"), format="audio/mpeg", autoplay=just_clicked)
 
 st.divider()
 nav_l, nav_info, nav_r = st.columns([1, 6, 1])
