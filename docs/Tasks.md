@@ -134,6 +134,21 @@
 
 ---
 
+### Phase 9: 单词查询页 ✅ 已完成
+
+**目标：** 补齐「查词」入口——跨 Unit 搜已收录词并定位它属于哪个 Unit。
+
+- [x] 后端全局搜词：`WordRepo.search`（icontains + EXISTS 标签/掌握度，依赖 `uk_member_word_mastery`）→ `WordService.search`（带 unit_title/tags/mastery）→ `GET /words/search`
+- [x] 前端 api_client：`search_words`
+- [x] 前端页面 `8_📖_单词查询.py`：搜索 + 筛选（关键词/标签/掌握度/Unit）；每条带音标 + ▶ 播放（blob 缓存，重复播放零网络）
+- [x] 单元测试 + Review
+
+**交付物：** 搜词跨 Unit 定位；重复播放不重复请求。
+
+> 词典查词（AI / 免费 API）一度实现后已按需求移除，仅保留词库搜索。
+
+---
+
 ## 当前进度
 
 | 阶段 | 状态 |
@@ -147,6 +162,7 @@
 | Phase 6: 数据统计 | ✅ 已完成 |
 | Phase 7: AI 增强 | ✅ 已完成 |
 | Phase 8: 高级功能 | ✅ 已完成 |
+| Phase 9: 单词查询页 | ✅ 已完成 |
 
 ## 迭代规则
 

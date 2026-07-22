@@ -20,4 +20,8 @@ async def generate_tts(
     audio_bytes = await svc.generate(text, lang)
     if not audio_bytes:
         return Response(content=b"", media_type="audio/mpeg", status_code=503)
-    return Response(content=audio_bytes, media_type="audio/mpeg")
+    # 同一 (text,lang) 内容确定不变：让浏览器/中间件长期缓存，重复播放不再回源（含旧页面）。
+    return Response(
+        content=audio_bytes, media_type="audio/mpeg",
+        headers={"Cache-Control": "public, max-age=2592000, immutable"},
+    )

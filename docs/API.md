@@ -163,6 +163,36 @@ Query 参数：`page=1`, `page_size=50`, `type=word|sentence`（可选筛选）
 }
 ```
 
+### GET /api/v1/words/search — 全局搜词（跨所有 Unit）
+
+Query 参数（均可选）：`q`（英文/中文模糊匹配，自动转义 `%` `_`）、`member_id=1`、`tag=favorite|high_freq|exam_focus|excluded|memorized`、`level=unlearned|learning|familiar|permanent`（按该 member 的掌握度过滤；`unlearned` 含「无记录」）、`unit_id`、`type=word|sentence`、`page=1`、`page_size=50`
+
+```json
+// Response
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "items": [
+      {
+        "id": 12,
+        "unit_id": 3,
+        "unit_title": "Unit 3 - Fruits",
+        "english": "apple",
+        "chinese": "苹果",
+        "type": "word",
+        "seq": 1,
+        "tags": ["favorite"],
+        "mastery": { "level": "learning", "consecutive_correct": 1, "correct_count": 2, "wrong_count": 0 }
+      }
+    ],
+    "total": 1,
+    "page": 1,
+    "page_size": 50
+  }
+}
+```
+
 ### PUT /api/v1/words/{id} — 更新单词
 
 ```json

@@ -164,6 +164,27 @@ def list_words(unit_id: int, page: int = 1, page_size: int = 50, word_type: str 
     return _handle(_request("GET", _url(f"/words/units/{unit_id}/words"), params=params))
 
 
+def search_words(
+    q: str | None = None, member_id: int = 1, *,
+    tag: str | None = None, level: str | None = None,
+    unit_id: int | None = None, word_type: str | None = None,
+    page: int = 1, page_size: int = 50,
+) -> dict:
+    """跨 Unit 全局搜词（按关键词/标签/掌握度/Unit 过滤）。"""
+    params = {"member_id": member_id, "page": page, "page_size": page_size}
+    if q:
+        params["q"] = q
+    if tag:
+        params["tag"] = tag
+    if level:
+        params["level"] = level
+    if unit_id:
+        params["unit_id"] = unit_id
+    if word_type:
+        params["type"] = word_type
+    return _handle(_request("GET", _url("/words/search"), params=params))
+
+
 def batch_create_words(unit_id: int, words: list[dict]) -> dict:
     return _handle(_request("POST", _url(f"/words/units/{unit_id}/words"), json={"words": words}))
 

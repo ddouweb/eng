@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from app.models.enums import MasteryLevel, TagType
+from app.models.enums import MasteryLevel, TagType, WordType
 from app.schemas.exceptions import AppException
 from app.services.word_service import WordService
 
@@ -89,3 +89,73 @@ async def test_get_mastery_creates_default(service, mock_session):
     assert result["code"] == 200
     assert result["data"]["level"] == "unlearned"
     mock_session.commit.assert_awaited_once()
+
+
+def _make_search_word(
+    id=1, english="apple", chinese="苹果", unit_id=3, unit_title="Unit 3 - Fruits",
+):
+    """search() 会读 w.unit.title / w.tags / w.mastery_records，需补齐这些关系。"""
+    w = MagicMock(id=id, english=english, chinese=chinese, unit_id=unit_id, seq=None)
+    w.created_at = datetime(2026, 1, 1)
+    w.updated_at = datetime(2026, 1, 1)
+    w.type = MagicMock(value="word")
+    w.unit = MagicMock(title=unit_title)
+    tag = MagicMock()
+    tag.tag = TagType.favorite
+    w.tags = [tag]
+    w.mastery_records = [MagicMock(
+        member_id=1, level=MasteryLevel.learning,
+        consecutive_correct=1, correct_count=2, wrong_count=0,
+    )]
+    return w
+
+
+@pytest.mark.asyncio
+async def test_search_assembles_unit_title_tags_mastery(service):
+    service.repo.search = AsyncMock(return_value=([_make_search_word()], 1))
+    result = await service.search(q="app", member_id=1)
+    assert result["code"] == 200
+    assert result["data"]["total"] == 1
+    item = result["data"]["items"][0]
+    assert item["unit_title"] == "Unit 3 - Fruits"
+    assert item["tags"] == ["favorite"]
+    assert item["mastery"]["level"] == "learning"
+    # 透传给 repo 的参数
+    kwargs = service.repo.search.call_args.kwargs
+    assert kwargs["q"] == "app" and kwargs["member_id"] == 1
+
+
+@pytest.mark.asyncio
+async def test_search_mastery_none_when_no_record(service):
+    w = _make_search_word(id=2, english="banana", chinese="香蕉")
+    w.tags = []
+    w.mastery_records = []  # 无记录 -> mastery 为 None
+    service.repo.search = AsyncMock(return_value=([w], 1))
+    result = await service.search(q="ban", member_id=2)
+    assert result["data"]["items"][0]["mastery"] is None
+    assert service.repo.search.call_args.kwargs["member_id"] == 2
+
+
+@pytest.mark.asyncio
+async def test_search_mastery_none_when_record_is_other_member(service):
+    # 记录存在但属于 member 1；按 member 2 搜 -> mastery None（验证 _mastery_from_record 的 member 过滤）
+    w = _make_search_word()
+    w.mastery_records[0].member_id = 1
+    service.repo.search = AsyncMock(return_value=([w], 1))
+    result = await service.search(q="x", member_id=2)
+    assert result["data"]["items"][0]["mastery"] is None
+
+
+@pytest.mark.asyncio
+async def test_search_forwards_all_filters_to_repo(service):
+    service.repo.search = AsyncMock(return_value=([], 0))
+    await service.search(
+        q="x", member_id=7, level=MasteryLevel.familiar,
+        tag=TagType.exam_focus, unit_id=3, word_type=WordType.sentence,
+    )
+    kw = service.repo.search.call_args.kwargs
+    assert kw["level"] is MasteryLevel.familiar
+    assert kw["tag"] is TagType.exam_focus
+    assert kw["member_id"] == 7
+    assert kw["unit_id"] == 3
+    assert kw["word_type"] is WordType.sentence

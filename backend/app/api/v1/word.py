@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.models.enums import WordType
+from app.models.enums import MasteryLevel, TagType, WordType
 from app.schemas.word import TagOperation, WordBatchCreate, WordUpdate
 from app.services.word_service import WordService
 
@@ -39,6 +39,31 @@ async def list_words_by_unit(
     """
     svc = WordService(db)
     return await svc.get_by_unit(unit_id, page=page, page_size=page_size, word_type=type)
+
+
+@router.get("/search")
+async def search_words(
+    q: str | None = Query(None, max_length=200),
+    member_id: int = Query(1, ge=1),
+    tag: TagType | None = Query(None),
+    level: MasteryLevel | None = Query(None),
+    unit_id: int | None = Query(None, ge=1),
+    type: WordType | None = Query(None),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=5000),
+    db: AsyncSession = Depends(get_db),
+):
+    """全局搜词（跨所有 Unit，按关键词/标签/掌握度/Unit 过滤）。
+
+    Example:
+        curl 'http://localhost:8000/api/v1/words/search?q=apple&member_id=1'
+        curl 'http://localhost:8000/api/v1/words/search?tag=favorite&level=learning&member_id=1'
+    """
+    svc = WordService(db)
+    return await svc.search(
+        q=q, member_id=member_id, tag=tag, level=level,
+        unit_id=unit_id, word_type=type, page=page, page_size=page_size,
+    )
 
 
 @router.put("/{word_id}")

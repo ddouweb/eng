@@ -1,6 +1,6 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.enums import TagType, WordType
+from app.models.enums import MasteryLevel, TagType, WordType
 from app.models.word import Word
 from app.repositories.mastery_repo import MasteryRepo
 from app.repositories.word_repo import WordRepo
@@ -37,6 +37,31 @@ class WordService:
             d = self._to_dict(w)
             d["tags"] = [t.tag.value for t in w.tags]
             d["mastery"] = self._mastery_from_record(w.mastery_records)
+            items.append(d)
+        return success(data={"items": items, "total": total, "page": page, "page_size": page_size})
+
+    async def search(
+        self, *,
+        q: str | None = None,
+        member_id: int = 1,
+        tag: TagType | None = None,
+        level: MasteryLevel | None = None,
+        unit_id: int | None = None,
+        word_type: WordType | None = None,
+        page: int = 1,
+        page_size: int = 50,
+    ) -> dict:
+        """跨 Unit 全局搜词。返回 item 额外带 unit_title / tags / mastery(member 级)。"""
+        words, total = await self.repo.search(
+            q=q, member_id=member_id, tag=tag, level=level,
+            unit_id=unit_id, word_type=word_type, page=page, page_size=page_size,
+        )
+        items = []
+        for w in words:
+            d = self._to_dict(w)
+            d["unit_title"] = w.unit.title if w.unit else None
+            d["tags"] = [t.tag.value for t in w.tags]
+            d["mastery"] = self._mastery_from_record(w.mastery_records, member_id)
             items.append(d)
         return success(data={"items": items, "total": total, "page": page, "page_size": page_size})
 
