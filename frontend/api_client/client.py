@@ -165,13 +165,13 @@ def list_words(unit_id: int, page: int = 1, page_size: int = 50, word_type: str 
 
 
 def search_words(
-    q: str | None = None, member_id: int = 1, *,
+    q: str | None = None, *,
     tag: str | None = None, level: str | None = None,
     unit_id: int | None = None, word_type: str | None = None,
     page: int = 1, page_size: int = 50,
 ) -> dict:
-    """跨 Unit 全局搜词（按关键词/标签/掌握度/Unit 过滤）。"""
-    params = {"member_id": member_id, "page": page, "page_size": page_size}
+    """跨 Unit 全局搜词（按关键词/标签/掌握度/Unit 过滤）。单人模式 member_id 固定为 1。"""
+    params = {"member_id": 1, "page": page, "page_size": page_size}
     if q:
         params["q"] = q
     if tag:
@@ -208,11 +208,11 @@ def remove_tag(word_id: int, tag: str) -> dict:
 # ── Practice ───────────────────────────────────────────
 
 def start_practice(
-    member_id: int, mode: str, unit_ids: list[int],
+    mode: str, unit_ids: list[int],
     count: int = 10, task_type: str | None = None,
 ) -> dict:
     body: dict = {
-        "member_id": member_id, "mode": mode, "unit_ids": unit_ids, "count": count,
+        "member_id": 1, "mode": mode, "unit_ids": unit_ids, "count": count,
     }
     if task_type:
         body["task_type"] = task_type
@@ -227,6 +227,12 @@ def submit_answer(session_id: int, word_id: int, is_correct: bool, user_answer: 
 
 def finish_practice(session_id: int) -> dict:
     return _handle(_request("POST", _url(f"/practice/{session_id}/finish")))
+
+
+def rejudge_answer(session_id: int, word_id: int, is_correct: bool) -> dict:
+    return _handle(_request("POST", _url(f"/practice/{session_id}/rejudge"), json={
+        "word_id": word_id, "is_correct": is_correct,
+    }))
 
 
 def get_practice_session(session_id: int) -> dict:
@@ -283,31 +289,27 @@ def resume_plan(plan_id: int) -> dict:
 
 # ── Stats ──────────────────────────────────────────────
 
-def get_stats_overview(member_id: int = 1) -> dict:
-    return _handle(_request("GET", _url("/stats/overview"), params={"member_id": member_id}))
+def get_stats_overview() -> dict:
+    return _handle(_request("GET", _url("/stats/overview"), params={"member_id": 1}))
 
 
-def get_stats_unit(unit_id: int, member_id: int = 1) -> dict:
-    return _handle(_request("GET", _url(f"/stats/units/{unit_id}"), params={"member_id": member_id}))
+def get_stats_unit(unit_id: int) -> dict:
+    return _handle(_request("GET", _url(f"/stats/units/{unit_id}"), params={"member_id": 1}))
 
 
-def get_stats_trend(days: int = 30, member_id: int = 1) -> dict:
-    return _handle(_request("GET", _url("/stats/trend"), params={"days": days, "member_id": member_id}))
+def get_stats_trend(days: int = 30) -> dict:
+    return _handle(_request("GET", _url("/stats/trend"), params={"days": days, "member_id": 1}))
 
 
-def get_stats_profile(member_id: int = 1) -> dict:
-    return _handle(_request("GET", _url("/stats/profile"), params={"member_id": member_id}))
+def get_stats_profile() -> dict:
+    return _handle(_request("GET", _url("/stats/profile"), params={"member_id": 1}))
 
 
-def get_review_due(member_id: int = 1, unit_ids: list[int] | None = None, limit: int = 50) -> dict:
-    params: dict = {"member_id": member_id, "limit": limit}
+def get_review_due(unit_ids: list[int] | None = None, limit: int = 50) -> dict:
+    params: dict = {"member_id": 1, "limit": limit}
     if unit_ids:
         params["unit_ids"] = ",".join(str(u) for u in unit_ids)
     return _handle(_request("GET", _url("/review/due"), params=params))
-
-
-def get_leaderboard() -> dict:
-    return _handle(_request("GET", _url("/leaderboard")))
 
 
 # ── AI ──────────────────────────────────────────────────
@@ -335,26 +337,26 @@ def get_tts_url(text: str, lang: str = "en") -> str:
 
 # ── Wrong Book (错题本) ────────────────────────────────
 
-def list_wrong_book(member_id: int = 1, page: int = 1, page_size: int = 50) -> dict:
+def list_wrong_book(page: int = 1, page_size: int = 50) -> dict:
     return _handle(_request("GET", _url("/wrong-book"), params={
-        "member_id": member_id, "page": page, "page_size": page_size,
+        "member_id": 1, "page": page, "page_size": page_size,
     }))
 
 
-def count_wrong_book(member_id: int = 1) -> dict:
-    return _handle(_request("GET", _url("/wrong-book/count"), params={"member_id": member_id}))
+def count_wrong_book() -> dict:
+    return _handle(_request("GET", _url("/wrong-book/count"), params={"member_id": 1}))
 
 
-def remove_wrong_word(word_id: int, member_id: int = 1) -> dict:
-    return _handle(_request("DELETE", _url(f"/wrong-book/{word_id}"), params={"member_id": member_id}))
+def remove_wrong_word(word_id: int) -> dict:
+    return _handle(_request("DELETE", _url(f"/wrong-book/{word_id}"), params={"member_id": 1}))
 
 
-def clear_wrong_book(member_id: int = 1) -> dict:
-    return _handle(_request("DELETE", _url("/wrong-book"), params={"member_id": member_id}))
+def clear_wrong_book() -> dict:
+    return _handle(_request("DELETE", _url("/wrong-book"), params={"member_id": 1}))
 
 
-def add_wrong_word(word_id: int, member_id: int = 1) -> dict:
-    return _handle(_request("POST", _url(f"/wrong-book/{word_id}"), params={"member_id": member_id}))
+def add_wrong_word(word_id: int) -> dict:
+    return _handle(_request("POST", _url(f"/wrong-book/{word_id}"), params={"member_id": 1}))
 
 
 # ── Auth ─────────────────────────────────────────────────

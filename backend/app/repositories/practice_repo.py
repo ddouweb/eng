@@ -36,6 +36,23 @@ class PracticeRecordRepo(BaseRepo[PracticeRecord]):
         result = await self.session.execute(stmt)
         return result.scalar_one_or_none()
 
+    async def get_by_session_word_for_update(
+        self, session_id: int, word_id: int
+    ) -> PracticeRecord | None:
+        """同 get_by_session_word，但加 FOR UPDATE 行锁，供改判端点并发安全使用。
+        SQLite 下 with_for_update 为 no-op（单写者串行，测试安全）。
+        """
+        stmt = (
+            select(PracticeRecord)
+            .where(
+                PracticeRecord.session_id == session_id,
+                PracticeRecord.word_id == word_id,
+            )
+            .with_for_update()
+        )
+        result = await self.session.execute(stmt)
+        return result.scalar_one_or_none()
+
     async def get_word_ids_between(
         self, member_id: int, start_date: date, end_date: date,
     ) -> list[int]:

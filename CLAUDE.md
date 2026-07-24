@@ -6,6 +6,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **Family English Coach (家庭英语学习系统)** — helps family members learn English. Users create Units and add words manually or via AI-powered natural-language parsing (paste any text, the system extracts word/sentence entries), then drives practice via flashcards, spelling, dictation, and AI-generated scenario dialogues. Includes learning plans, daily goals, and mastery tracking.
 
+> **当前实现：单人模式** —— 单成员账户（member id=1），词库经 ECDICT 脚本/SQL 种子维护；多成员切换、`/members` API、家庭排行榜已移除（排行榜页改为「我的进步趋势」单人页）。加词入口（AI 文本解析/手动录入）保持只读是有意业务决策，不是 bug。member 表与各表 member_id 外键保留（外键根 + 迁移引用）。
+
 ## Tech Stack
 
 - **Backend**: Python 3.11+ / FastAPI

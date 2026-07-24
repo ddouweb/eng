@@ -186,6 +186,124 @@ class PracticeService:
             "ended_at": ps.ended_at.isoformat() if ps.ended_at else None,
         })
 
+    async def rejudge_answer(
+        self, session_id: int, word_id: int, is_correct: bool,
+    ) -> dict:
+        """结束页改判某题正误（人工覆盖）。绕过 submit 的 ended_at 拒绝、幂等去重
+        与客观题服务端复判，按目标值覆盖更新 record / 会话计数 / mastery / SRS /
+        错题本 / 每日任务 / XP。徽章正向补发、不回收。
+
+        - 幂等：record 已是目标态 → changed=False，不重复加减。
+        - 下溢保护：所有减法用 max(0, ...) 兜底。
+        - SRS 近似：wrong→correct 时历史 prev_interval 已丢失，按当前 ease 回补 +
+          新 consecutive_correct 重算 interval（接受近似），详见 srs.update_srs。
+        """
+        ps = await self.session_repo.get_by_id(session_id)
+        if not ps:
+            raise AppException(404, "Practice session not found")
+        # 不检查 ended_at —— 改判正发生在结束页（会话已 finish）
+        qset = ps.question_word_ids
+        if isinstance(qset, list) and qset and word_id not in qset:
+            raise AppException(400, "该单词不在本次练习题集中")
+
+        word = await self.session.get(Word, word_id)
+        if not word:
+            raise AppException(404, "Word not found")
+
+        # FOR UPDATE 行锁读取唯一 record，防并发改判撞车
+        record = await self.record_repo.get_by_session_word_for_update(session_id, word_id)
+        if record is None:
+            raise AppException(404, "该题尚未作答，无法改判")
+
+        # 幂等：已是目标态 → 不重复加减
+        if record.is_correct == is_correct:
+            mastery = await self.mastery_repo.get_by_member_word(ps.member_id, word_id)
+            return success(data={
+                "is_correct": is_correct, "changed": False,
+                "correct_count": ps.correct_count, "accuracy": self._accuracy(ps),
+                "mastery": self._mastery_dict(mastery),
+            })
+
+        record.is_correct = is_correct  # 人工覆盖，不走 _server_judge
+        today = date.today()
+
+        # ── 计数逆向 + SRS 重算 ──
+        mastery = await self.mastery_repo.get_or_create(ps.member_id, word_id)
+        if is_correct:
+            # wrong → correct
+            ps.correct_count += 1
+            mastery.correct_count += 1
+            mastery.consecutive_correct += 1
+            mastery.wrong_count = max(0, mastery.wrong_count - 1)
+            update_srs(mastery, True, today)
+            # 错题本回退：原 wrong 时 upsert 过 → wrong_count-1，到 0 则删除
+            wb = await self.wb_repo.get_by_member_word(ps.member_id, word_id)
+            if wb is not None:
+                if wb.wrong_count > 1:
+                    wb.wrong_count -= 1
+                else:
+                    await self.wb_repo.delete_by_member_word(ps.member_id, word_id)
+        else:
+            # correct → wrong
+            ps.correct_count = max(0, ps.correct_count - 1)
+            mastery.correct_count = max(0, mastery.correct_count - 1)
+            mastery.wrong_count += 1
+            mastery.consecutive_correct = 0
+            update_srs(mastery, False, today)
+            await self.wb_repo.upsert_on_wrong(ps.member_id, word_id)
+        mastery.last_reviewed_at = datetime.now(timezone.utc)
+        await self.session.flush()
+
+        # ── 每日任务：wrong→correct 补推进 review 槽；correct→wrong 回退 ──
+        # _classify_attempt 按历史记录数判定 is_new_word，与 is_correct 无关，改判后稳定
+        _, is_new_word = await self._classify_attempt(ps.member_id, word_id, today)
+        if is_correct:
+            await self._tick_daily_task(ps.member_id, word.unit_id, today, is_new_word=False)
+        else:
+            await self._untick_daily_task(ps.member_id, word.unit_id, today)
+
+        # ── XP：wrong→correct 保守补发 +2（不重建 is_new_word）；
+        #        correct→wrong 按 is_new_word 精确扣回，max(0) 防负 ──
+        member = await self.session.get(Member, ps.member_id)
+        xp_delta = 0
+        if is_correct:
+            xp_delta = 2
+            if member is not None:
+                member.total_xp = (member.total_xp or 0) + xp_delta
+        else:
+            xp_delta = 5 if is_new_word else 2
+            if member is not None:
+                member.total_xp = max(0, (member.total_xp or 0) - xp_delta)
+        await self.session.flush()
+
+        # streak 跳过（天然幂等，今日首次提交时已推进）
+
+        # 徽章：wrong→correct 可能升 permanent → first_permanent；correct→wrong 不回收
+        new_badges: list[str] = []
+        if is_correct and member is not None:
+            state = await self._get_or_create_streak(ps.member_id)
+            new_badges = await self._check_and_award_badges(
+                ps.member_id, state, member, mastery,
+            )
+
+        await self.session.commit()
+
+        return success(data={
+            "is_correct": is_correct, "changed": True,
+            "correct_count": ps.correct_count, "accuracy": self._accuracy(ps),
+            "xp_delta": xp_delta,
+            "total_xp": (member.total_xp if member else 0),
+            "mastery": self._mastery_dict(mastery),
+            "new_badges": new_badges,
+        })
+
+    @staticmethod
+    def _accuracy(ps: PracticeSession) -> float:
+        """复刻 finish_practice 的正确率口径：correct_count/total_count，钳制 [0,100]。"""
+        if ps.total_count > 0:
+            return round(min(100.0, ps.correct_count / ps.total_count * 100), 1)
+        return 0.0
+
     async def get_session(self, session_id: int) -> dict:
         ps = await self.session_repo.get_by_id(session_id)
         if not ps:
@@ -343,7 +461,7 @@ class PracticeService:
         """客观题服务端复判：忽略客户端 is_correct，按答案重新判定。
 
         - 英文输出型（拼写/听写/重排/中→英选择）：答案应等于 word.english
-        - 中文输出型（英→中默写/选择）：答案应等于 word.chinese
+        - 中文输出型（英→中默写/选择/限时挑战）：答案应等于 word.chinese
         - 主观型（闪卡/记忆/连线/对话等）：无客观答案，回退客户端判定
         缺少 user_answer 时也无法复判，回退客户端（避免误判为错）。
         """
@@ -351,7 +469,9 @@ class PracticeService:
             PracticeMode.spelling, PracticeMode.dictation,
             PracticeMode.scramble, PracticeMode.cn2en_choice,
         }
-        cn_modes = {PracticeMode.choice, PracticeMode.en2cn_write}
+        # timed_challenge 与 choice 同构（给英文选中文释义，答案=word.chinese），
+        # 纳入服务端复判以防伪造 is_correct 刷 XP/掌握度。
+        cn_modes = {PracticeMode.choice, PracticeMode.en2cn_write, PracticeMode.timed_challenge}
         if mode in en_modes:
             target = word.english
         elif mode in cn_modes:
@@ -484,6 +604,39 @@ class PracticeService:
 
             if task.completed_new >= task.new_count and task.completed_review >= task.review_count:
                 task.status = TaskStatus.completed
+
+    async def _untick_daily_task(
+        self, member_id: int, unit_id: int, today: date,
+    ) -> None:
+        """rejudge 从对改错时回退今日任务槽位（与 _tick_daily_task 对称）。
+
+        - review 槽 -1（max 0 兜底）；learn 的 new 槽不改（改判不改变 new/review 归类）。
+        - 回退后若槽位未满，把 status 从 completed 退回 in_progress。
+        - 不带 status != completed 过滤：需触达已 completed 的任务来回退。
+        - 盲区：无法精确得知原 correct 提交是否真 tick 过（is_first_today 已不可重建），
+          按「假设 tick 过」回退；最坏 completed_review 多减 1（下限 0），状态机不卡死。
+        """
+        stmt = (
+            select(DailyTask)
+            .join(LearningPlan, LearningPlan.id == DailyTask.plan_id)
+            .join(PlanUnit, PlanUnit.plan_id == LearningPlan.id)
+            .where(
+                LearningPlan.member_id == member_id,
+                LearningPlan.status == PlanStatus.active,
+                PlanUnit.unit_id == unit_id,
+                DailyTask.task_date == today,
+            )
+        )
+        tasks = (await self.session.execute(stmt)).scalars().all()
+        for task in tasks:
+            if task.completed_review > 0:
+                task.completed_review -= 1
+            if (
+                task.status == TaskStatus.completed
+                and (task.completed_new < task.new_count
+                     or task.completed_review < task.review_count)
+            ):
+                task.status = TaskStatus.in_progress
 
     # ─────────────────────────────────────────────────────
     # 坚持机制（streak / freeze / XP / 徽章）

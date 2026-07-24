@@ -288,7 +288,6 @@ if not in_practice and not practice_done:
         st.stop()
 
     # ── 今日计划快捷入口 ───────────────────────────────
-    member_id = st.session_state.get("member_id", 1)
     if "_today_plan_snapshot" not in st.session_state and client.get_token():
         snapshot = []
         plans_resp = client.list_plans(status="active")
@@ -375,7 +374,6 @@ if not in_practice and not practice_done:
                 """点击按钮启动对应 task_type 的练习。"""
                 tt = None if task_type_label == "learn" else task_type_label
                 resp = client.start_practice(
-                    member_id=member_id,
                     mode=today_mode,
                     unit_ids=list(agg_unit_ids),
                     count=max(count, 5),
@@ -399,7 +397,7 @@ if not in_practice and not practice_done:
                     st.error(resp["message"])
 
             # ── 今日到期复习（SRS，独立于具体 task 类型）──
-            _rd = client.get_review_due(member_id, list(agg_unit_ids))
+            _rd = client.get_review_due(list(agg_unit_ids))
             if _rd["code"] == 200 and _rd["data"]["due_today"] > 0:
                 _due_n = _rd["data"]["due_today"]
                 _over_txt = f"（{_rd['data']['overdue']} 个已逾期）" if _rd["data"]["overdue"] else ""
@@ -480,7 +478,7 @@ if not in_practice and not practice_done:
     WRONG_BOOK_VIRTUAL_UNIT_ID = 0
 
     # 错题本数量 badge（用于在标签上提示）
-    _wb_cnt_resp = client.count_wrong_book(member_id=member_id)
+    _wb_cnt_resp = client.count_wrong_book()
     _wb_total = _wb_cnt_resp["data"]["total"] if _wb_cnt_resp["code"] == 200 else 0
 
     # 构造选择列表：错题本 + 所有真实 Unit
@@ -534,9 +532,8 @@ if not in_practice and not practice_done:
             with cols[i]:
                 if st.button(MODES[key], key=f"mode_{key}",
                              use_container_width=True, disabled=not selected_ids):
-                    member_id = st.session_state.get("member_id", 1)
                     resp = client.start_practice(
-                        member_id=member_id, mode=key,
+                        mode=key,
                         unit_ids=selected_ids, count=count,
                     )
                     if resp["code"] == 200:
@@ -571,7 +568,7 @@ if not in_practice and not practice_done:
             all_words = []
             # 错题本：拉该 member 错题本里的所有词
             if WRONG_BOOK_VIRTUAL_UNIT_ID in selected_ids:
-                wb_resp = client.list_wrong_book(member_id=member_id, page_size=500)
+                wb_resp = client.list_wrong_book(page_size=500)
                 if wb_resp["code"] == 200:
                     for it in wb_resp["data"]["items"]:
                         all_words.append({
@@ -1024,6 +1021,8 @@ if in_practice:
 
     # ═══ 限时挑战 ══════════════════════════════════════
     elif p["mode"] == "timed_challenge":
+        if not _HAS_AUTOREFRESH:
+            st.caption("⚠️ 限时倒计时需 streamlit-autorefresh；未安装时请手动点选项作答")
         q = p["questions"][p["idx"]]
         st.progress(p["idx"] / total, text=f"第 {p['idx'] + 1} / {total} 题")
         TIME_LIMIT = 8
@@ -1036,16 +1035,23 @@ if in_practice:
             elapsed = time.time() - st.session_state.tc_start
             remaining = max(0, TIME_LIMIT - elapsed)
             st.progress(remaining / TIME_LIMIT, text=f"⏱️ {remaining:.1f}s")
-            if remaining > 0.5:
-                st.markdown(f'<meta http-equiv="refresh" content="{max(1, int(remaining) + 1)}">',
-                            unsafe_allow_html=True)
+            if remaining > 0:
+                # st_autorefresh 在剩余时间后触发一次 rerun（同 flashcard/preview 范式）；
+                # 浏览器会忽略 body 内注入的 <meta refresh>，旧实现超时分支永不触发。
+                st_autorefresh(
+                    interval=int(remaining * 1000) + 100,
+                    key=f"tc_ar_{p['idx']}_{int(st.session_state.tc_start * 1000)}",
+                )
             if remaining <= 0:
-                st.warning("⏰ 时间到！")
+                # 超时记错并自动跳下一题（限时模式保持节奏，不停在反馈页）
                 answers[p["idx"]] = {"answer": "(超时)", "correct": False}
                 _submit_answer(sid, q["word_id"], False, "")
                 p["results"].append(False)
+                p["idx"] += 1
+                for k in ("tc_start", "tc_opts"):
+                    st.session_state.pop(k, None)
                 st.rerun()
-            # 限时模式用整页刷新倒计时，强制不自动播放以免每秒重复响
+            # 不自动播放：st_autorefresh 到点会触发一次 rerun，避免每个 rerun 都重响
             _word_audio_inline(q["english"], autoplay=False)
             if "tc_opts" not in st.session_state:
                 st.session_state.tc_opts = _gen_cn_options(q, p["questions"])
@@ -1258,10 +1264,25 @@ elif practice_done:
             st.error(f"结束练习失败：{r['message']}")
 
     st.subheader("🎉 练习完成！")
-    member_id = st.session_state.get("member_id", 1)
     local_total = len(p["results"])
     local_correct = sum(p["results"])
     fd = p.get("_finish_data")
+
+    def _apply_rejudge(idx, word_id, target):
+        """调 rejudge 端点改判，按返回刷新本地结果与后端统计（fd），再 rerun。
+        fd 是 p["_finish_data"] 的同一引用，改 fd 即改会话权威统计。"""
+        r = client.rejudge_answer(sid, word_id, target)
+        if r["code"] != 200:
+            st.error(r["message"])
+            return
+        p["results"][idx] = target
+        if fd:
+            fd["correct_count"] = r["data"]["correct_count"]
+            fd["accuracy"] = r["data"]["accuracy"]
+        verb = "改判为对" if target else "改判为错"
+        st.toast(f"✅ 已{verb}（本次正确 {r['data']['correct_count']} 题）")
+        st.rerun()
+
     # 以后端记录为权威；拿不到则回退本地统计
     total = fd["total_count"] if fd else local_total
     correct = fd["correct_count"] if fd else local_correct
@@ -1287,9 +1308,9 @@ elif practice_done:
                 st.markdown(f"{icon} **{q['english']}** — {q['chinese']}")
             with col_btn:
                 if not is_correct and st.button("↩️ 改判为对", key=f"fix_{i}"):
-                    _submit_answer(sid, q["word_id"], True)
-                    p["results"][i] = True
-                    st.rerun()
+                    _apply_rejudge(i, q["word_id"], True)
+                elif is_correct and st.button("↩️ 改判为错", key=f"unfix_{i}"):
+                    _apply_rejudge(i, q["word_id"], False)
 
             current_tags = list(q.get("tags", []))
             selected = st.pills(
@@ -1322,7 +1343,7 @@ elif practice_done:
         cols = st.columns(UNIT_COLS)
         for i, uid in enumerate(unit_ids[row_start:row_start + UNIT_COLS]):
             with cols[i]:
-                stats = client.get_stats_unit(uid, member_id)
+                stats = client.get_stats_unit(uid)
                 if stats["code"] != 200:
                     st.caption(f"{unit_map.get(uid, f'Unit {uid}')} · 加载失败")
                     continue

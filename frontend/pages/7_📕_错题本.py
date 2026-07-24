@@ -16,10 +16,8 @@ require_auth()
 st.title("📕 错题本")
 st.caption("练习中答错的题会自动加入。答对不会自动移除，需在此手动管理。")
 
-member_id = st.session_state.get("member_id", 1)
-
 # 顶部摘要 + 清空
-cnt_resp = client.count_wrong_book(member_id=member_id)
+cnt_resp = client.count_wrong_book()
 if cnt_resp["code"] != 200:
     st.error(cnt_resp["message"])
     st.stop()
@@ -34,7 +32,7 @@ with col_clear:
         label = "⚠️ 再点一次确认" if confirm_flag else "🗑️ 清空错题本"
         if st.button(label, use_container_width=True, type="primary" if confirm_flag else "secondary"):
             if confirm_flag:
-                r = client.clear_wrong_book(member_id=member_id)
+                r = client.clear_wrong_book()
                 st.session_state["_wb_confirm_clear"] = False
                 if r["code"] == 200:
                     st.success(f"已清空 {r['data']['removed']} 条")
@@ -57,7 +55,7 @@ if "_wb_page" not in st.session_state:
     st.session_state["_wb_page"] = 1
 page = st.session_state["_wb_page"]
 
-resp = client.list_wrong_book(member_id=member_id, page=page, page_size=PAGE_SIZE)
+resp = client.list_wrong_book(page=page, page_size=PAGE_SIZE)
 if resp["code"] != 200:
     st.error(resp["message"])
     st.stop()
@@ -116,7 +114,7 @@ for it in items:
             )
         with col_btn:
             if st.button("移除", key=f"rm_{wid}", use_container_width=True):
-                r = client.remove_wrong_word(wid, member_id=member_id)
+                r = client.remove_wrong_word(wid)
                 if r["code"] == 200:
                     st.toast(f"已移除 {it['english']}")
                     # 若当前页删完，回到上一页避免空页

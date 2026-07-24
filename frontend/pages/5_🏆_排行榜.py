@@ -1,72 +1,138 @@
+"""个人进步趋势页（原「家庭排行榜」，单人模式后改为自我纵向趋势）。
+
+复用 stats 接口（profile / trend / overview）与统计页同款图表，零新后端。
+"""
+from datetime import date, timedelta
+
 import pandas as pd
 import streamlit as st
 from api_client import client
 from auth import require_auth
 
 require_auth()
-st.header("🏆 家庭排行榜")
+st.header("🏆 我的进步趋势")
+st.caption("单人模式 · 追踪你自己的坚持与进步（连续打卡 · 练习趋势 · 掌握分布 · 个人最佳）。")
 
-resp = client.get_leaderboard()
-if resp["code"] != 200:
-    st.error(resp["message"])
+# 徽章元数据须与后端 app/gamification.py 的 BADGES 保持一致（增改时同步）
+BADGES_META = {
+    "streak_7":        ("🔥", "一周坚持"),
+    "streak_30":       ("🌙", "月度达人"),
+    "streak_100":      ("💯", "百日不辍"),
+    "xp_100":          ("🌱", "初学乍练"),
+    "xp_1000":         ("⭐", "勤奋学子"),
+    "xp_5000":         ("🏆", "词汇大师"),
+    "first_permanent": ("🧠", "牢记在心"),
+}
+
+# ── 顶部：坚持指标（段位 / streak / XP / 徽章）──────────────
+profile = client.get_stats_profile()
+if profile["code"] != 200:
+    st.error(profile["message"])
     st.stop()
+p = profile["data"]
+lv = p["level"]
 
-members = resp["data"]["members"]
-if not members:
-    st.info("暂无成员数据。")
-    st.stop()
+c1, c2, c3, c4 = st.columns(4)
+c1.metric("🔥 连续学习", f"{p['current_streak']} 天")
+c2.metric("🏆 最长记录", f"{p['longest_streak']} 天")
+c3.metric("⭐ 累计 XP", p["total_xp"])
+c4.metric(f"{lv['level_icon']} 段位", lv["level_name"])
 
-# ── 排行表格 ────────────────────────────────────────────
-st.subheader("学习排行")
-table_data = []
-for i, m in enumerate(members):
-    table_data.append({
-        "排名": i + 1,
-        "成员": m["name"],
-        "已掌握": m["mastered_count"],
-        "掌握率": f"{m['mastery_rate']}%",
-        "正确率": f"{m['accuracy']}%",
-        "连续学习": f"{m['streak_days']} 天",
-        "练习次数": m["session_count"],
-    })
-st.dataframe(pd.DataFrame(table_data), use_container_width=True, hide_index=True)
+if lv["next_level_min_xp"] is not None:
+    st.progress(
+        max(0.0, min(1.0, lv["progress"])),
+        text=f"{lv['level_icon']} {lv['level_name']} → {lv['next_level_name']}",
+    )
+else:
+    st.progress(1.0, text=f"{lv['level_icon']} {lv['level_name']}（满级）")
 
-# ── 掌握进度对比 ─────────────────────────────────────────
-st.subheader("掌握进度对比")
-total_words = members[0]["total_words"] or 1
-progress_data = []
-for m in members:
-    progress_data.append({
-        "成员": m["name"],
-        "已掌握": m["mastered_count"],
-        "未掌握": max(m["total_words"] - m["mastered_count"], 0),
-    })
-progress_df = pd.DataFrame(progress_data)
-st.bar_chart(progress_df.set_index("成员"), use_container_width=True)
+badges = p.get("badges") or []
+if badges:
+    chips = "  ".join(
+        f"{BADGES_META.get(b, ('🏅', b))[0]} {BADGES_META.get(b, ('🏅', b))[1]}" for b in badges
+    )
+    st.markdown(f"**已获徽章：** {chips}")
+else:
+    st.caption("还没有徽章——连续学习 7 天、累计 100 XP 即可解锁第一个！")
 
-# ── 正确率对比 ───────────────────────────────────────────
-st.subheader("正确率对比 (%)")
-acc_data = [{"成员": m["name"], "正确率": m["accuracy"]} for m in members if m["total_questions"] > 0]
-if acc_data:
-    st.bar_chart(pd.DataFrame(acc_data).set_index("成员"), use_container_width=True)
+st.divider()
+
+# ── 12 周贡献热力图 ────────────────────────────────────
+st.subheader("贡献热力图（最近 12 周）")
+try:
+    import altair as alt
+    heat = client.get_stats_trend(days=84)
+    if heat["code"] == 200 and heat["data"]["daily"]:
+        cnt = {row["date"]: int(row["total"]) for row in heat["data"]["daily"]}
+        today = date.today()
+        rows = []
+        for i in range(83, -1, -1):
+            d = today - timedelta(days=i)
+            ds = d.isoformat()
+            rows.append({
+                "date": ds, "count": cnt.get(ds, 0),
+                "week": 11 - (i // 7),   # 左旧右新（0..11）
+                "weekday": d.weekday(),  # 0=周一 .. 6=周日
+            })
+        hdf = pd.DataFrame(rows)
+        chart = (
+            alt.Chart(hdf)
+            .mark_rect(stroke="white", strokeWidth=2)
+            .encode(
+                x=alt.X("week:O", title=None, axis=None),
+                y=alt.Y("weekday:O", title=None, axis=None),
+                color=alt.Color(
+                    "count:Q",
+                    scale=alt.Scale(domain=[0, max(10, int(hdf["count"].max()))],
+                                    range=["#ebedf0", "#2da44e"]),
+                    legend=None,
+                ),
+                tooltip=["date", "count"],
+            )
+            .properties(height=150)
+        )
+        st.altair_chart(chart, use_container_width=True)
+        st.caption("色块越绿＝当天练习量越大；空白＝当天未练习。")
+    else:
+        st.info("暂无练习记录，无法生成热力图。")
+except ImportError:
+    st.caption("（贡献热力图需 altair，当前环境未安装）")
+
+# ── 练习趋势 ──────────────────────────────────────────
+st.subheader("练习趋势")
+days_option = st.selectbox(
+    "时间范围", [7, 14, 30], format_func=lambda d: f"最近 {d} 天", key="trend_days_lb",
+)
+trend = client.get_stats_trend(days=days_option)
+if trend["code"] == 200 and trend["data"]["daily"]:
+    trend_df = pd.DataFrame(trend["data"]["daily"])
+    trend_df["accuracy"] = (trend_df["correct"] / trend_df["total"].replace(0, 1) * 100).round(1)
+    col_chart1, col_chart2 = st.columns(2)
+    with col_chart1:
+        st.caption("每日练习量")
+        st.bar_chart(trend_df, x="date", y="total", use_container_width=True)
+    with col_chart2:
+        st.caption("每日正确率 (%)")
+        st.line_chart(trend_df, x="date", y="accuracy", use_container_width=True)
 else:
     st.info("暂无练习记录。")
 
-# ── 连续学习天数对比 ──────────────────────────────────────
-st.subheader("连续学习天数")
-streak_data = [{"成员": m["name"], "连续天数": m["streak_days"]} for m in members]
-st.bar_chart(pd.DataFrame(streak_data).set_index("成员"), use_container_width=True)
+st.divider()
 
-# ── 掌握分布详情 ─────────────────────────────────────────
-st.subheader("掌握分布详情")
-level_labels = {"unlearned": "未学习", "learning": "学习中", "familiar": "熟悉", "permanent": "永久"}
-for m in members:
-    with st.container(border=True):
-        col1, col2 = st.columns([1, 3])
-        with col1:
-            st.markdown(f"**{m['name']}**")
-        with col2:
-            dist = m["mastery_distribution"]
-            cols = st.columns(4)
-            for i, (lv, label) in enumerate(level_labels.items()):
-                cols[i].metric(label, dist.get(lv, 0))
+# ── 掌握分布 + 个人最佳 ────────────────────────────────
+overview = client.get_stats_overview()
+if overview["code"] == 200:
+    data = overview["data"]
+    col_a, col_b, col_c = st.columns(3)
+    col_a.metric("累计答题", data["total_questions"])
+    col_b.metric("总正确率", f"{data['accuracy']}%")
+    col_c.metric("已掌握", data["mastered_count"])
+
+    st.subheader("掌握分布")
+    level_colors = {"unlearned": "⚪ 未学习", "learning": "🟠 学习中", "familiar": "🔵 熟悉", "permanent": "🟢 永久"}
+    dist_df = pd.DataFrame([
+        {"level": level_colors[k], "count": v} for k, v in data["mastery_distribution"].items()
+    ])
+    st.bar_chart(dist_df, x="level", y="count", use_container_width=True)
+else:
+    st.caption(f"统计数据加载失败：{overview.get('message')}")

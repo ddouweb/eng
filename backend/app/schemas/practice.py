@@ -18,3 +18,9 @@ class SubmitAnswer(BaseModel):
     word_id: int = Field(..., ge=1)
     is_correct: bool
     user_answer: str | None = None
+
+
+class Rejudge(BaseModel):
+    """结束页改判某题正误（人工覆盖，绕过客观题服务端复判与 submit 的幂等去重）。"""
+    word_id: int = Field(..., ge=1)
+    is_correct: bool

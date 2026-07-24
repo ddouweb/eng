@@ -18,26 +18,6 @@ require_auth()
 st.title("📚 Family English Coach")
 st.markdown("上传教材图片 → 自动生成单词库 → 练习 → 追踪掌握进度")
 
-# 用户切换
-if "member_id" not in st.session_state:
-    st.session_state.member_id = 1
-
-MEMBERS = [
-    {"id": 1, "name": "默认用户"},
-    {"id": 2, "name": "家庭成员 2"},
-    {"id": 3, "name": "家庭成员 3"},
-]
-
-st.sidebar.markdown("### 👤 用户")
-member_names = [m["name"] for m in MEMBERS]
-current_idx = next((i for i, m in enumerate(MEMBERS) if m["id"] == st.session_state.member_id), 0)
-
-selected = st.sidebar.selectbox("选择用户", member_names, index=current_idx)
-new_id = MEMBERS[member_names.index(selected)]["id"]
-if new_id != st.session_state.member_id:
-    st.session_state.member_id = new_id
-    st.rerun()
-
 # 退出登录
 st.sidebar.markdown("---")
 if st.sidebar.button("🚪 退出登录"):
@@ -59,7 +39,7 @@ BADGES_META = {
     "first_permanent": ("🧠", "牢记在心"),
 }
 
-profile = client.get_stats_profile(st.session_state.member_id)
+profile = client.get_stats_profile()
 if profile["code"] == 200:
     p = profile["data"]
     lv = p["level"]
@@ -110,7 +90,7 @@ else:
     st.caption(f"坚持数据加载失败：{profile.get('message')}")
 
 # ── 今日到期复习提示（SRS）──
-_rd = client.get_review_due(st.session_state.member_id)
+_rd = client.get_review_due()
 if _rd["code"] == 200:
     _d = _rd["data"]
     if _d["due_today"] > 0:

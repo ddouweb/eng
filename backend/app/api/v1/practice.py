@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.schemas.practice import PracticeStart, SubmitAnswer
+from app.schemas.practice import PracticeStart, Rejudge, SubmitAnswer
 from app.services.practice_service import PracticeService
 
 router = APIRouter(prefix="/practice", tags=["practice"])
@@ -56,6 +56,27 @@ async def finish_practice(session_id: int, db: AsyncSession = Depends(get_db)):
     """
     svc = PracticeService(db)
     return await svc.finish_practice(session_id)
+
+
+@router.post("/{session_id}/rejudge")
+async def rejudge_answer(
+    session_id: int, body: Rejudge, db: AsyncSession = Depends(get_db)
+):
+    """改判某题正误（结束页「改判为对/错」用）。允许在会话结束后调用；
+    绕过 submit 的幂等去重与客观题服务端复判，按人工判定覆盖更新
+    PracticeRecord / mastery / SRS / 错题本 / XP / 每日任务。
+
+    Example:
+        curl -X POST http://localhost:8000/api/v1/practice/1/rejudge \\
+             -H 'Content-Type: application/json' \\
+             -d '{"word_id":5,"is_correct":true}'
+    """
+    svc = PracticeService(db)
+    return await svc.rejudge_answer(
+        session_id=session_id,
+        word_id=body.word_id,
+        is_correct=body.is_correct,
+    )
 
 
 @router.get("/{session_id}")

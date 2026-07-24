@@ -16,8 +16,6 @@ require_auth()
 st.title("📖 单词查询")
 st.caption("🔎 跨所有 Unit 搜已收录单词，按关键词/标签/掌握度/Unit 过滤，定位它属于哪个 Unit。每条都带音标与播放，重复播放不重复请求。")
 
-member_id = st.session_state.get("member_id", 1)
-
 TAG_OPTIONS = {
     "（不限）": None,
     "⭐ 收藏 favorite": "favorite",
@@ -105,7 +103,7 @@ if submitted:
 if st.session_state.get("_wq_submitted"):
     page = st.session_state.get("_wq_page", 1)
     resp = client.search_words(
-        q or None, member_id,
+        q or None,
         tag=TAG_OPTIONS[tag_sel], level=LEVEL_OPTIONS[level_sel],
         unit_id=UNIT_OPTIONS[unit_sel], page=page, page_size=PAGE_SIZE,
     )

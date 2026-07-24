@@ -135,7 +135,7 @@ class TestUpdateTask:
         service.task_repo.get_by_id = AsyncMock(return_value=task)
         mock_session.commit = AsyncMock()
 
-        result = await service.update_task(1, 1, 5, 2)
+        await service.update_task(1, 1, 5, 2)
         assert task.status == TaskStatus.in_progress
 
 

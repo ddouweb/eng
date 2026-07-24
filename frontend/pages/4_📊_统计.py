@@ -8,10 +8,8 @@ from auth import require_auth
 require_auth()
 st.header("📊 学习统计")
 
-member_id = st.session_state.get("member_id", 1)
-
 # ── 全局概览 ─────────────────────────────────────────
-overview = client.get_stats_overview(member_id)
+overview = client.get_stats_overview()
 if overview["code"] != 200:
     st.error(overview["message"])
     st.stop()
@@ -31,7 +29,7 @@ col2.metric("正确率", f"{data['accuracy']}%")
 col3.metric("总答题数", data["total_questions"])
 
 # SRS 到期复习压力
-_rd = client.get_review_due(member_id)
+_rd = client.get_review_due()
 if _rd["code"] == 200:
     _d = _rd["data"]
     _c1, _c2 = st.columns(2)
@@ -58,7 +56,7 @@ st.subheader("按 Unit 统计")
 units_resp = client.list_all_units()
 if units_resp["code"] == 200:
     for u in units_resp["data"]["items"]:
-        stats = client.get_stats_unit(u["id"], member_id)
+        stats = client.get_stats_unit(u["id"])
         if stats["code"] != 200:
             continue
         s = stats["data"]
@@ -79,7 +77,7 @@ if units_resp["code"] == 200:
 # ── 练习趋势 ─────────────────────────────────────────
 st.subheader("练习趋势")
 days_option = st.selectbox("时间范围", [7, 14, 30], format_func=lambda d: f"最近 {d} 天", key="trend_days")
-trend = client.get_stats_trend(days=days_option, member_id=member_id)
+trend = client.get_stats_trend(days=days_option)
 if trend["code"] == 200 and trend["data"]["daily"]:
     trend_data = trend["data"]["daily"]
     trend_df = pd.DataFrame(trend_data)
@@ -99,7 +97,7 @@ else:
 st.subheader("贡献热力图（最近 12 周）")
 try:
     import altair as alt
-    heat = client.get_stats_trend(days=84, member_id=member_id)
+    heat = client.get_stats_trend(days=84)
     if heat["code"] == 200 and heat["data"]["daily"]:
         cnt = {row["date"]: int(row["total"]) for row in heat["data"]["daily"]}
         today = date.today()
