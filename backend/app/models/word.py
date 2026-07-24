@@ -1,4 +1,4 @@
-from sqlalchemy import Integer, Enum, ForeignKey, String
+from sqlalchemy import Integer, Enum, ForeignKey, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TimestampMixin
@@ -14,6 +14,13 @@ class Word(TimestampMixin, Base):
     chinese: Mapped[str] = mapped_column(String(500), nullable=False)
     type: Mapped[WordType] = mapped_column(Enum(WordType), nullable=False, default=WordType.word)
     seq: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # 富字段：让词条从「英中对译」升级为可学的语言单位（音标 / 英文释义 / 词性 / 例句）。
+    # 全部 nullable —— 旧数据与手动录入无需提供；ECDICT 导入与 AI 解析按可用性回填。
+    # 前端音标优先读 phonetic，缺省再回退 eng_to_ipa 运行时计算（保持旧行为）。
+    phonetic: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    definition: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    pos: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    example: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     unit: Mapped["Unit"] = relationship(back_populates="words")  # noqa: F821
     tags: Mapped[list["WordTag"]] = relationship(back_populates="word", cascade="all, delete-orphan")

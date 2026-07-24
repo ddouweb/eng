@@ -8,6 +8,7 @@ from app.api.v1.leaderboard import router as leaderboard_router
 from app.api.v1.member import router as member_router
 from app.api.v1.plan import router as plan_router
 from app.api.v1.practice import router as practice_router
+from app.api.v1.review import router as review_router
 from app.api.v1.stats import router as stats_router
 from app.api.v1.tts import router as tts_router
 from app.api.v1.unit import router as unit_router
@@ -26,7 +27,7 @@ api_router.include_router(tts_router)
 _auth = Depends(get_current_user)
 for r in [
     member_router, unit_router, word_router,
-    practice_router, plan_router, stats_router, leaderboard_router,
+    practice_router, review_router, plan_router, stats_router, leaderboard_router,
     ai_router, wrong_book_router,
 ]:
     api_router.include_router(r, dependencies=[_auth])

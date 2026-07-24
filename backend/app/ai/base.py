@@ -34,6 +34,9 @@ class ParseNLWordItem:
     english: str
     chinese: str
     word_type: str = "word"
+    phonetic: str = ""
+    pos: str = ""
+    example: str = ""
 
 
 @dataclass

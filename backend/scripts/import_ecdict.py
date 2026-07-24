@@ -25,6 +25,10 @@ ECDICT — https://github.com/skywind3000/ECDICT  (MIT/CC)
 标签:
     - 全部考研词                    -> exam_focus   (📚)
     - collins>=4 或 oxford=1        -> 额外 high_freq (🔥)
+富字段回填: 一并写入 ECDICT 自带的 phonetic(音标) / definition(英文释义) /
+    pos(词性)，让词条从「英中对译」升级为可学的语言单位。ECDICT 无可靠例句，
+    example 留空，后续由 AI 解析/生成补齐。音标统一存裸 IPA（去包裹斜杠），
+    前端展示时统一加 /.../。
 权重对接: weighting.py 已置 high_freq/exam_focus = 1.5，高频词练习自动优先
 幂等: 按 (unit_id, english) 去重，可重复运行
 """
@@ -60,6 +64,9 @@ UNIT_DEFS = [
 ]
 
 CHINESE_MAX_LEN = 500  # Word.chinese 字段长度上限
+PHONETIC_MAX_LEN = 200
+DEFINITION_MAX_LEN = 1000
+POS_MAX_LEN = 100
 BATCH_SIZE = 500
 
 
@@ -70,12 +77,27 @@ def _parse_int(v):
         return None
 
 
+def _clean(s) -> str:
+    """去首尾空白；并去掉音标两侧的包裹斜杠，统一成裸 IPA（前端展示统一加 /.../）。"""
+    return (s or "").strip().strip("/").strip()
+
+
+def _truncate(s, limit: int):
+    """截断到字段长度上限；空或纯空白归一为 None（保持 nullable 语义，避免存空白音标）。"""
+    if not s or not s.strip():
+        return None
+    return s[:limit] or None
+
+
 def _normalize(row: dict) -> dict:
     return {
         "word": (row.get("word") or "").strip(),
         "translation": (row.get("translation") or "").strip(),
         "collins": _parse_int(row.get("collins")),
         "oxford": _parse_int(row.get("oxford")),
+        "phonetic": _clean(row.get("phonetic")),
+        "definition": _clean(row.get("definition")),
+        "pos": _clean(row.get("pos")),
     }
 
 
@@ -93,16 +115,14 @@ def load_ky_words(source: str) -> list[dict]:
         conn = sqlite3.connect(source)
         conn.row_factory = sqlite3.Row
         cur = conn.execute(
-            "SELECT word, translation, collins, oxford, tag "
+            "SELECT word, translation, collins, oxford, tag, phonetic, definition, pos "
             "FROM stardict WHERE tag LIKE '%ky%'"
         )
         for r in cur:
             rows.append(_normalize({
-                "word": r["word"],
-                "translation": r["translation"],
-                "collins": r["collins"],
-                "oxford": r["oxford"],
-                "tag": r["tag"],
+                "word": r["word"], "translation": r["translation"],
+                "collins": r["collins"], "oxford": r["oxford"], "tag": r["tag"],
+                "phonetic": r["phonetic"], "definition": r["definition"], "pos": r["pos"],
             }))
         conn.close()
     else:
@@ -145,7 +165,10 @@ async def run(source: str, dry_run: bool) -> None:
         print(f"  · {t}: {len(groups[t])} 个")
 
     hf_total = sum(1 for r in rows if is_high_freq(r))
+    ph_total = sum(1 for r in rows if r["phonetic"])
+    df_total = sum(1 for r in rows if r["definition"])
     print(f"  其中高频词 (将打 🔥): {hf_total} 个")
+    print(f"  含音标(phonetic): {ph_total} 个 | 含英释(definition): {df_total} 个")
 
     if dry_run:
         print("\n[dry-run] 未写入数据库。去掉 --dry-run 执行实际导入。")
@@ -189,6 +212,9 @@ async def run(source: str, dry_run: bool) -> None:
                     chinese=cn,
                     type=WordType.word,
                     seq=seq,
+                    phonetic=_truncate(r["phonetic"], PHONETIC_MAX_LEN),
+                    definition=_truncate(r["definition"], DEFINITION_MAX_LEN),
+                    pos=_truncate(r["pos"], POS_MAX_LEN),
                 ))
                 metas.append(is_high_freq(r))
 

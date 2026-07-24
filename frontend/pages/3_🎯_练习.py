@@ -115,11 +115,11 @@ def _audio_compact(english: str, autoplay: bool | None = None, container=st):
     c_a.audio(client.get_tts_url(english, "en"), format="audio/mpeg", autoplay=autoplay)
 
 
-def _word_audio_inline(english: str, autoplay: bool | None = None, container=st, word_md: str = "###"):
-    """一行内联：单词 + 音标 + 短播放条。音标词典未命中时只显示单词+播放条。"""
+def _word_audio_inline(english: str, autoplay: bool | None = None, container=st, word_md: str = "###", stored: str | None = None):
+    """一行内联：单词 + 音标 + 短播放条。音标优先用 stored（Word.phonetic），缺省回退词典。"""
     if autoplay is None:
         autoplay = st.session_state.get("auto_pron_global", False)
-    phon = _phonetic(english)
+    phon = _phonetic(english, stored)
     c_w, c_a = container.columns([5, 3])
     if phon:
         c_w.markdown(
@@ -132,17 +132,30 @@ def _word_audio_inline(english: str, autoplay: bool | None = None, container=st,
     c_a.audio(client.get_tts_url(english, "en"), format="audio/mpeg", autoplay=autoplay)
 
 
-def _phonetic_audio_inline(english: str, autoplay: bool | None = None, container=st):
-    """一行内联：音标 + 短播放条（不显示单词，用于答题后揭示）。"""
+def _phonetic_audio_inline(q: dict, autoplay: bool | None = None, container=st):
+    """答题后揭示：音标（存储优先）+ 词性/英释/例句（仅有则展示）+ 短播放条。
+
+    接收题目 dict q（含 english / phonetic / pos / definition / example），把
+    「答错只看到正确答案」升级为「顺便看音标、词性、英释和例句」，帮学习者把词用起来。
+    """
     if autoplay is None:
         autoplay = st.session_state.get("auto_pron_global", False)
-    phon = _phonetic(english)
+    english = q["english"]
+    phon = _phonetic(english, q.get("phonetic"))
     if phon:
         c_p, c_a = container.columns([5, 3])
         c_p.markdown(f"#### `/ {phon} /`")
     else:
         _, c_a = container.columns([2, 3])
     c_a.audio(client.get_tts_url(english, "en"), format="audio/mpeg", autoplay=autoplay)
+    # 用法揭示：词性 / 英文释义 / 例句（仅有则展示）
+    pos = q.get("pos")
+    definition = q.get("definition")
+    example = q.get("example")
+    if pos or definition:
+        container.caption(f"词性：{pos or '-'}　·　英释：{definition or '-'}")
+    if example:
+        container.markdown(f"💬 {example}")
 
 
 _hdr_l, _hdr_r = st.columns([5, 4])
@@ -385,6 +398,19 @@ if not in_practice and not practice_done:
                 else:
                     st.error(resp["message"])
 
+            # ── 今日到期复习（SRS，独立于具体 task 类型）──
+            _rd = client.get_review_due(member_id, list(agg_unit_ids))
+            if _rd["code"] == 200 and _rd["data"]["due_today"] > 0:
+                _due_n = _rd["data"]["due_today"]
+                _over_txt = f"（{_rd['data']['overdue']} 个已逾期）" if _rd["data"]["overdue"] else ""
+                st.markdown(f"#### 🔁 今日到期复习（{_due_n} 个{_over_txt}）")
+                if st.button(
+                    f"🔁 开始到期复习（{_due_n} 题）",
+                    use_container_width=True, type="primary",
+                    key="today_due_btn",
+                ):
+                    _launch("learn", _due_n)   # tt=None → 默认 due-first 分支，到期优先
+
             # ── 学习日 ──────────────────────────────────
             if has_learn:
                 learn_total = learn_remain_new + learn_remain_review
@@ -402,7 +428,7 @@ if not in_practice and not practice_done:
 
             # ── 周复习日 ─────────────────────────────────
             if has_weekly:
-                st.markdown("#### 🔁 周复习（本周练过的词）")
+                st.markdown("#### 🔁 周复习（到期复习）")
                 if weekly_done:
                     st.success("🎉 周复习已完成", icon="🎉")
                 else:
@@ -416,7 +442,7 @@ if not in_practice and not practice_done:
 
             # ── 月复习日 ─────────────────────────────────
             if has_monthly:
-                st.markdown("#### 📚 月复习（本月练过的词）")
+                st.markdown("#### 📚 月复习（到期复习）")
                 if monthly_done:
                     st.success("🎉 月复习已完成", icon="🎉")
                 else:
@@ -829,7 +855,7 @@ if in_practice:
                 st.success("✅ 正确！")
             else:
                 st.error(f"❌ 你的答案: {cur['answer']}　|　正确答案: **{q['english']}**")
-            _phonetic_audio_inline(q["english"], autoplay=False)
+            _phonetic_audio_inline(q, autoplay=False)
             col_prev, col_next = st.columns([1, 1])
             with col_prev:
                 if st.button("⬅️ 上一题", use_container_width=True,
@@ -869,7 +895,7 @@ if in_practice:
                 st.success("✅ 正确！")
             else:
                 st.error(f"❌ 你的拼写: {cur['answer']}　|　正确答案: **{q['english']}**")
-            _phonetic_audio_inline(q["english"], autoplay=False)
+            _phonetic_audio_inline(q, autoplay=False)
             btn_label = "➡️ 下一题" if p["idx"] < total - 1 else "✅ 完成练习"
             if st.button(btn_label, key=f"sp_next_{q['word_id']}", type="primary",
                          use_container_width=True):
@@ -880,7 +906,7 @@ if in_practice:
     elif p["mode"] == "en2cn_write":
         q = p["questions"][p["idx"]]
         st.progress(p["idx"] / total, text=f"第 {p['idx'] + 1} / {total} 题")
-        _word_audio_inline(q["english"])
+        _word_audio_inline(q["english"], stored=q.get("phonetic"))
         answers = p.setdefault("answers", {})
         cur = answers.get(p["idx"])
         answered = cur is not None
@@ -933,7 +959,7 @@ if in_practice:
                 st.success("✅ 正确！")
             else:
                 st.error(f"❌ 你的答案: {cur['answer']}　|　正确答案: **{q['english']}**")
-            _phonetic_audio_inline(q["english"], autoplay=False)
+            _phonetic_audio_inline(q, autoplay=False)
             btn_label = "➡️ 下一题" if p["idx"] < total - 1 else "✅ 完成练习"
             if st.button(btn_label, key=f"dt_next_{q['word_id']}", type="primary", use_container_width=True):
                 p["idx"] += 1
@@ -1075,7 +1101,7 @@ if in_practice:
                 st.success("✅ 正确！")
             else:
                 st.error(f"❌ 你的答案: {cur['answer']}　|　正确答案: **{q['english']}**")
-            _phonetic_audio_inline(q["english"], autoplay=False)
+            _phonetic_audio_inline(q, autoplay=False)
             btn_label = "➡️ 下一题" if p["idx"] < total - 1 else "✅ 完成练习"
             if st.button(btn_label, key=f"scr_next_{q['word_id']}", type="primary",
                          use_container_width=True):
@@ -1098,7 +1124,7 @@ if in_practice:
             q = batch[mf["idx"]]
             st.info(f"📚 记住这些单词！({mf['idx'] + 1}/{len(batch)})")
             col1, col2 = st.columns(2)
-            _word_audio_inline(q["english"], container=col1)
+            _word_audio_inline(q["english"], container=col1, stored=q.get("phonetic"))
             col2.markdown(f"### {q['chinese']}")
             if st.button("下一张 ➡️", use_container_width=True):
                 mf["idx"] += 1

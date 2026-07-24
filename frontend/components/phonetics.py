@@ -1,10 +1,10 @@
 """音标查询的共享工具（发音音频见 api_client.get_tts_url）。
 
-音标用 ``eng_to_ipa`` 本地词典查询（零网络请求）；词典未收录的
-（句子、专有名词、OOV 词，结果末尾会带 ``*`` 标记）返回空串，
-由调用方决定是否展示。
+音标优先用词条已存储的 ``phonetic``（来自 ECDICT 导入或 AI 解析，已规整为裸 IPA）；
+缺省时回退 ``eng_to_ipa`` 本地词典实时计算（零网络）。两者都返回**裸 IPA**（不含
+包裹斜杠），由调用方在展示时统一加 /.../。
 
-单词管理 / 错题本 / 练习页统一用这里的 ``phonetic``，避免重复实现与多份缓存。
+单词管理 / 错题本 / 练习页 / 查询页统一用这里的 ``phonetic``，避免重复实现与多份缓存。
 """
 from __future__ import annotations
 
@@ -19,8 +19,15 @@ except ImportError:
 _CACHE: dict[str, str] = {}
 
 
-def phonetic(english: str) -> str:
-    """返回 IPA 音标；词典未命中（含 OOV 推测，末尾带 ``*``）返回空串。"""
+def phonetic(english: str, stored: str | None = None) -> str:
+    """返回裸 IPA 音标（不含包裹斜杠；展示方各自包 /.../）；无音标返回空串。
+
+    - ``stored`` 非空（来自 Word.phonetic）优先返回，跳过本地词典计算；
+    - 否则回退 ``eng_to_ipa`` 实时转换（OOV / 句子等未命中返回空串）。
+    """
+    if stored:
+        # 入库时已规整为裸 IPA，这里再去一次斜杠做双保险
+        return stored.strip().strip("/")
     if not english or not _HAS_IPA:
         return ""
     s = english.strip()

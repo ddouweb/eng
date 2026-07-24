@@ -88,7 +88,7 @@ for it in items:
         with col_main:
             mlevel = it.get("mastery_level") or "unlearned"
             icon = MASTERY_EMOJI.get(mlevel, "⚪")
-            phon = phonetic(it["english"])
+            phon = phonetic(it["english"], it.get("phonetic"))
             ipa_md = f"　/{phon}/" if phon else ""
             st.markdown(f"### {it['english']}{ipa_md}")
             st.caption(

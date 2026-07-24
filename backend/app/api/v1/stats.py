@@ -49,3 +49,17 @@ async def get_trend(
     """
     svc = StatsService(db)
     return await svc.get_trend(member_id, days)
+
+
+@router.get("/profile")
+async def get_profile(
+    member_id: int = Query(1, ge=1),
+    db: AsyncSession = Depends(get_db),
+):
+    """坚持机制画像：连续学习/最长/freeze 余额/XP 段位/徽章（首页卡片用）。
+
+    Example:
+        curl http://localhost:8000/api/v1/stats/profile?member_id=1
+    """
+    svc = StatsService(db)
+    return await svc.get_profile(member_id)

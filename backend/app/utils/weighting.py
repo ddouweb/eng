@@ -2,11 +2,13 @@ import random
 
 from app.models.enums import MasteryLevel, TagType
 
+# permanent 不再归零：低频回炉（到期时以低权重出现，而非永不出现）。
+# 原先 permanent=0.0 会把「永久掌握」的词彻底踢出练习池，与遗忘曲线冲突。
 MASTERY_WEIGHT = {
     MasteryLevel.unlearned: 1.5,
     MasteryLevel.learning: 1.3,
     MasteryLevel.familiar: 1.0,
-    MasteryLevel.permanent: 0.0,  # 永久掌握默认不进入主动练习（CLAUDE.md 展示策略）
+    MasteryLevel.permanent: 0.3,
 }
 
 TAG_WEIGHT = {
@@ -21,13 +23,19 @@ TAG_WEIGHT = {
 def compute_weight(
     mastery_level: MasteryLevel | None,
     tags: list[TagType] | None,
+    next_review_date=None,
+    today=None,
 ) -> float:
-    """计算单个单词的出题权重。"""
+    """计算单个单词的出题权重（含 SM-2 到期因子）。
+
+    - excluded 标签 → 0（永不出现）。
+    - permanent 不再短路归零：走 MASTERY_WEIGHT=0.3（低频回炉）。
+    - 到期因子（仅当 next_review_date 与 today 都提供时叠加）：
+      · None（新词 / 未排期）→ 正常权重（可学）；
+      · 未到期（>today）→ ×0.05（几乎不出，允许微量预热）；
+      · 到期 / 逾期（<=today）→ ×(1 + min(overdue,14)/7)（逾期越久权重越高，封顶约 ×3）。
+    """
     if tags and TagType.excluded in tags:
-        return 0.0
-    # 永久掌握的词默认不进入主动练习（与 excluded 同等短路归零）。
-    # 显式短路而非仅靠权重表，避免后续 tag 乘子把它"救回"非零。
-    if mastery_level == MasteryLevel.permanent:
         return 0.0
 
     w = MASTERY_WEIGHT.get(mastery_level or MasteryLevel.unlearned, 1.0)
@@ -35,6 +43,13 @@ def compute_weight(
     if tags:
         for tag in tags:
             w *= TAG_WEIGHT.get(tag, 1.0)
+
+    if next_review_date is not None and today is not None:
+        if next_review_date > today:
+            w *= 0.05                                   # 未到期：几乎不出
+        else:
+            overdue = (today - next_review_date).days
+            w *= 1.0 + min(max(overdue, 0), 14) / 7.0    # 到期/逾期：封顶 ~3x
 
     return w
 

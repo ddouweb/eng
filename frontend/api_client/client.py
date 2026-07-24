@@ -295,6 +295,17 @@ def get_stats_trend(days: int = 30, member_id: int = 1) -> dict:
     return _handle(_request("GET", _url("/stats/trend"), params={"days": days, "member_id": member_id}))
 
 
+def get_stats_profile(member_id: int = 1) -> dict:
+    return _handle(_request("GET", _url("/stats/profile"), params={"member_id": member_id}))
+
+
+def get_review_due(member_id: int = 1, unit_ids: list[int] | None = None, limit: int = 50) -> dict:
+    params: dict = {"member_id": member_id, "limit": limit}
+    if unit_ids:
+        params["unit_ids"] = ",".join(str(u) for u in unit_ids)
+    return _handle(_request("GET", _url("/review/due"), params=params))
+
+
 def get_leaderboard() -> dict:
     return _handle(_request("GET", _url("/leaderboard")))
 

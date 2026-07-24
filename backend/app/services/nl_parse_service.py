@@ -19,7 +19,14 @@ class NLParseService:
             raise AppException(500, f"AI 解析失败: {e}") from e
 
         draft_words = [
-            {"english": w.english, "chinese": w.chinese, "type": w.word_type}
+            {
+                "english": w.english,
+                "chinese": w.chinese,
+                "type": w.word_type,
+                "phonetic": w.phonetic or None,
+                "pos": w.pos or None,
+                "example": w.example or None,
+            }
             for w in result.words
         ]
         return success(data={"draft_words": draft_words, "parsed_count": len(draft_words)})

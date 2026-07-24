@@ -127,17 +127,24 @@ if st.session_state.get("_wq_submitted"):
             with st.container(border=True):
                 cm, cp = st.columns([9, 1])
                 with cm:
-                    phon = phonetic(it["english"])
+                    phon = phonetic(it["english"], it.get("phonetic"))
                     ipa = f"　/{phon}/" if phon else ""
                     lvl = (it.get("mastery") or {}).get("level")
                     icon = MASTERY_EMOJI.get(lvl, "⚪")
                     label = MASTERY_LABEL.get(lvl, "未学习")
                     tags = ", ".join(it.get("tags") or []) or "-"
+                    pos = it.get("pos")
+                    definition = it.get("definition")
+                    example = it.get("example")
                     st.markdown(f"**{it['english']}**{ipa}")
                     st.caption(
                         f"中文：{it['chinese']}　·　Unit：{it.get('unit_title') or '-'}　"
                         f"·　{icon} {label}　·　标签：{tags}"
                     )
+                    if pos or definition:
+                        st.caption(f"词性：{pos or '-'}　·　英释：{definition or '-'}")
+                    if example:
+                        st.markdown(f"💬 {example}")
                 with cp:
                     _play_button(it["english"])
         nav_l, _, nav_r = st.columns([1, 6, 1])

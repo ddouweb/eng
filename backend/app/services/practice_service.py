@@ -4,10 +4,14 @@ from datetime import date, datetime, time, timedelta, timezone
 from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.gamification import MAX_FREEZE_BALANCE, STREAK_BADGE_THRESHOLDS, XP_BADGE_THRESHOLDS
+from app.srs import update_srs
 from app.models.enums import MasteryLevel, PlanStatus, PracticeMode, TagType, TaskStatus, TaskType
 from app.models.mastery import MasteryRecord
+from app.models.member import Member
 from app.models.plan import DailyTask, LearningPlan, PlanUnit
 from app.models.practice import PracticeRecord, PracticeSession
+from app.models.streak import MemberBadge, MemberStreak
 from app.models.word import Word, WordTag
 from app.repositories.mastery_repo import MasteryRepo
 from app.repositories.practice_repo import PracticeRecordRepo, PracticeSessionRepo
@@ -40,9 +44,9 @@ class PracticeService:
         )
         if not questions:
             if task_type == TaskType.weekly_review:
-                raise AppException(400, "本周暂无可复习词")
+                raise AppException(400, "暂无到期复习词（周）")
             elif task_type == TaskType.monthly_review:
-                raise AppException(400, "本月暂无可复习词")
+                raise AppException(400, "暂无到期复习词（月）")
             elif task_type == TaskType.wrong_word_drill:
                 raise AppException(400, "暂无错题可刷")
             raise AppException(400, "没有可练习的单词")
@@ -137,12 +141,21 @@ class PracticeService:
         if is_correct and is_first_today:
             await self._tick_daily_task(ps.member_id, word.unit_id, today, is_new_word)
 
+        # 坚持机制：streak / XP / 徽章（同事务更新，失败随业务一起回滚）
+        gamified = await self._apply_gamification(
+            ps.member_id, is_correct, is_new_word, mastery,
+        )
+
         await self.session.commit()
 
         return success(data={
             "is_correct": is_correct,
             "correct_answer": word.english,
             "mastery": self._mastery_dict(mastery),
+            "streak": gamified["streak"],
+            "xp_delta": gamified["xp_delta"],
+            "total_xp": gamified["total_xp"],
+            "new_badges": gamified["new_badges"],
         })
 
     async def finish_practice(self, session_id: int) -> dict:
@@ -200,37 +213,21 @@ class PracticeService:
         task_type: TaskType | None = None,
     ) -> list[dict]:
         today = date.today()
-        word_filter = None
-        if task_type == TaskType.weekly_review:
-            monday = today - timedelta(days=today.weekday())
-            word_ids = await self.record_repo.get_word_ids_between(member_id, monday, today)
-            if not word_ids:
-                return []
-            word_filter = Word.id.in_(word_ids)
-        elif task_type == TaskType.monthly_review:
-            month_start = today.replace(day=1)
-            word_ids = await self.record_repo.get_word_ids_between(member_id, month_start, today)
-            if not word_ids:
-                return []
-            word_filter = Word.id.in_(word_ids)
-        elif task_type == TaskType.wrong_word_drill:
-            # 三轮错题刷：候选限定为 unit 内、有错题记录且未到 permanent 的词
-            word_filter = Word.unit_id.in_(unit_ids)
-        else:
-            # 普通模式：支持虚拟错题本单元（id=0）与真实 Unit 混合多选
-            has_wrong_book = WRONG_BOOK_VIRTUAL_UNIT_ID in unit_ids
-            real_unit_ids = [u for u in unit_ids if u != WRONG_BOOK_VIRTUAL_UNIT_ID]
-            conditions = []
-            wb_word_ids: list[int] = []
-            if has_wrong_book:
-                wb_word_ids = await self.wb_repo.list_word_ids_by_member(member_id)
-                if wb_word_ids:
-                    conditions.append(Word.id.in_(wb_word_ids))
-            if real_unit_ids:
-                conditions.append(Word.unit_id.in_(real_unit_ids))
-            if not conditions:
-                return []
-            word_filter = conditions[0] if len(conditions) == 1 else or_(*conditions)
+
+        # 候选词范围：统一按 unit_ids + 虚拟错题本（weekly/monthly 不再用时间窗，
+        # 改为范围内「到期优先」，见 _select_questions）。
+        has_wrong_book = WRONG_BOOK_VIRTUAL_UNIT_ID in unit_ids
+        real_unit_ids = [u for u in unit_ids if u != WRONG_BOOK_VIRTUAL_UNIT_ID]
+        conditions = []
+        if has_wrong_book:
+            wb_word_ids = await self.wb_repo.list_word_ids_by_member(member_id)
+            if wb_word_ids:
+                conditions.append(Word.id.in_(wb_word_ids))
+        if real_unit_ids:
+            conditions.append(Word.unit_id.in_(real_unit_ids))
+        if not conditions:
+            return []
+        word_filter = conditions[0] if len(conditions) == 1 else or_(*conditions)
 
         stmt = (
             select(Word, WordTag.tag)
@@ -252,24 +249,17 @@ class PracticeService:
         result_m = await self.session.execute(stmt_m)
         mastery_map: dict[int, MasteryRecord] = {r.word_id: r for r in result_m.scalars().all()}
 
-        # 三轮模式：在 mastery 维度做候选筛选
-        if task_type == TaskType.wrong_word_drill:
-            filtered = {
-                wid: wt for wid, wt in word_tags.items()
-                if (mastery_map.get(wid) is not None
-                    and mastery_map[wid].wrong_count > 0
-                    and mastery_map[wid].level != MasteryLevel.permanent)
-            }
-            if not filtered:
-                return []
-            word_tags = filtered
-
+        # 构造候选：compute_weight 带 SM-2 到期因子；三轮错题刷限定 wrong_count>0 且非 permanent
         candidates = []
         for wid, (word, tags) in word_tags.items():
             mastery = mastery_map.get(wid)
             level = mastery.level if mastery else MasteryLevel.unlearned
-            w = compute_weight(level, tags)
-            # 三轮加权：错得越多权重越高（每个 wrong_count +0.5 倍）
+            if task_type == TaskType.wrong_word_drill:
+                if mastery is None or mastery.wrong_count <= 0 or level == MasteryLevel.permanent:
+                    continue
+            nrd = mastery.next_review_date if mastery else None
+            is_due = nrd is not None and nrd <= today
+            w = compute_weight(level, tags, nrd, today)
             if task_type == TaskType.wrong_word_drill and mastery:
                 w *= (1.0 + mastery.wrong_count * 0.5)
             if w > 0:
@@ -281,9 +271,61 @@ class PracticeService:
                     "weight": w,
                     "tags": [t.value for t in tags],
                     "mastery_level": level.value,
+                    "is_due": is_due,
+                    "is_new": mastery is None,
+                    "overdue_days": (today - nrd).days if is_due else 0,
+                    "wrong_count": mastery.wrong_count if mastery else 0,
+                    # 富字段透传给前端：练习答错揭示时展示音标/词性/英释/例句
+                    "phonetic": word.phonetic,
+                    "definition": word.definition,
+                    "pos": word.pos,
+                    "example": word.example,
                 })
 
-        return weighted_sample(candidates, count)
+        if not candidates:
+            return []
+        return self._select_questions(candidates, count, task_type)
+
+    @staticmethod
+    def _select_questions(
+        candidates: list[dict], count: int, task_type: TaskType | None,
+    ) -> list[dict]:
+        """按模式选 count 题：到期优先（逾期多、错得多优先），新词/其他加权补量。
+
+        - 到期池 due_all 含 permanent 的到期词（「永久掌握」到期也低频回炉，不再永不出现）。
+        - weekly/monthly：到期队列，不足回填未到期 learning/familiar（排除新词，避免混入）。
+        - wrong_word_drill：候选已筛 wrong_count>0，按 (overdue, wrong) 排序（仍排除 permanent）。
+        - 普通/learn：到期优先 → 新词加权 → 未到期兜底，三桶互斥并按 chosen_ids 去重。
+        """
+        def due_first(arr: list[dict]) -> list[dict]:
+            return sorted(arr, key=lambda c: (-c["overdue_days"], -c["wrong_count"]))
+
+        due_all = [c for c in candidates if c["is_due"]]
+        non_perm = [c for c in candidates if c["mastery_level"] != "permanent"]
+
+        if task_type in (TaskType.weekly_review, TaskType.monthly_review):
+            chosen = due_first(due_all)[:count]
+            if len(chosen) < count:
+                chosen_ids = {x["word_id"] for x in chosen}
+                rest = [c for c in non_perm if c["word_id"] not in chosen_ids and not c["is_new"]]
+                chosen += weighted_sample(rest, count - len(chosen))
+            return chosen[:count]
+
+        if task_type == TaskType.wrong_word_drill:
+            return due_first(non_perm)[:count]
+
+        # 普通 / learn
+        chosen = due_first(due_all)[:count]
+        if len(chosen) < count:
+            chosen_ids = {x["word_id"] for x in chosen}
+            new = [c for c in candidates if c["is_new"] and c["word_id"] not in chosen_ids]
+            chosen += weighted_sample(new, count - len(chosen))
+        if len(chosen) < count:
+            chosen_ids = {x["word_id"] for x in chosen}
+            other = [c for c in non_perm if not c["is_due"] and not c["is_new"]
+                     and c["word_id"] not in chosen_ids]
+            chosen += weighted_sample(other, count - len(chosen))
+        return chosen[:count]
 
     async def _generate_options(self, correct: dict, all_questions: list[dict]) -> list[str]:
         candidates = [q["chinese"] for q in all_questions if q["word_id"] != correct["word_id"]]
@@ -344,39 +386,18 @@ class PracticeService:
 
     async def _update_mastery(self, member_id: int, word_id: int, is_correct: bool) -> MasteryRecord:
         record = await self.mastery_repo.get_or_create(member_id, word_id)
+        today = date.today()
 
         if is_correct:
             record.correct_count += 1
             record.consecutive_correct += 1
-            record = self._try_upgrade(record)
         else:
             record.wrong_count += 1
-            record.consecutive_correct = 0
-            record = self._try_downgrade(record)
+        # SM-2 间隔重复：原地更新 interval/ease/next_review_date/level（答错时 cc 归 0）
+        update_srs(record, is_correct, today)
+        record.last_reviewed_at = datetime.now(timezone.utc)
 
         await self.session.flush()
-        return record
-
-    @staticmethod
-    def _try_upgrade(record: MasteryRecord) -> MasteryRecord:
-        if record.level == MasteryLevel.unlearned:
-            record.level = MasteryLevel.learning
-        elif record.level == MasteryLevel.learning and record.consecutive_correct >= 3:
-            record.level = MasteryLevel.familiar
-        elif (
-            record.level == MasteryLevel.familiar
-            and record.consecutive_correct >= 5
-            and record.correct_count >= 8
-        ):
-            record.level = MasteryLevel.permanent
-        return record
-
-    @staticmethod
-    def _try_downgrade(record: MasteryRecord) -> MasteryRecord:
-        if record.level == MasteryLevel.familiar:
-            record.level = MasteryLevel.learning
-        elif record.level == MasteryLevel.permanent and record.wrong_count >= 2:
-            record.level = MasteryLevel.familiar
         return record
 
     async def _classify_attempt(
@@ -442,6 +463,11 @@ class PracticeService:
         if not tasks:
             return
 
+        # review_count 保持 plan 建表时的静态槽位（不在此动态覆盖）。due-first 在选词层
+        # _build_questions 生效（出题优先到期词），与 task 完成判定解耦：曾尝试用 member 全量
+        # due 膨胀 review_count，会在多 plan / 存在 plan 外到期词时让任务永远完不成（且手动
+        # update_task 也被堵），已回退为静态槽位。
+        #
         # 同一 unit 可能被多个 active plan 选中（如 forward + review_only），
         # 一次答对应推进所有匹配的当日任务，而非仅首个（原先 limit(1) 会漏推进）。
         for task in tasks:
@@ -458,3 +484,139 @@ class PracticeService:
 
             if task.completed_new >= task.new_count and task.completed_review >= task.review_count:
                 task.status = TaskStatus.completed
+
+    # ─────────────────────────────────────────────────────
+    # 坚持机制（streak / freeze / XP / 徽章）
+    # ─────────────────────────────────────────────────────
+    async def _apply_gamification(
+        self, member_id: int, is_correct: bool, is_new_word: bool,
+        mastery: MasteryRecord | None,
+    ) -> dict:
+        """每次提交后更新 XP / streak / 徽章，返回快照供前端即时反馈。
+
+        - XP：每次答对累加（新词 +5 / 复习 +2）。
+        - streak：仅「今天首次该成员练习」推进一次（由 last_active_date 判定，天然幂等）；
+          断签时优先消耗 freeze 把缺口补上，补不满才重置为 1。
+        - 徽章：达阈值即发放（幂等，uq_member_badge 兜底）。
+        """
+        member = await self.session.get(Member, member_id)
+        state = await self._get_or_create_streak(member_id)
+        today = date.today()
+
+        # 1) XP
+        xp_delta = 0
+        if is_correct and member is not None:
+            xp_delta = 5 if is_new_word else 2
+            member.total_xp = (member.total_xp or 0) + xp_delta
+
+        # 2) 月度 freeze 补充（跨月首次访问 +1，上限 MAX_FREEZE_BALANCE）
+        self._maybe_grant_monthly_freeze(state, today)
+
+        # 3) streak 推进（纯计算抽到 _advance_streak，便于单测）
+        self._advance_streak(state, today)
+
+        await self.session.flush()
+
+        # 4) 徽章
+        new_badges = await self._check_and_award_badges(member_id, state, member, mastery)
+
+        return {
+            "streak": self._streak_dict(state),
+            "xp_delta": xp_delta,
+            "total_xp": (member.total_xp if member else 0),
+            "new_badges": new_badges,
+        }
+
+    async def _get_or_create_streak(self, member_id: int) -> MemberStreak:
+        state = await self.session.get(MemberStreak, member_id)
+        if state is None:
+            state = MemberStreak(member_id=member_id)
+            self.session.add(state)
+            await self.session.flush()
+        return state
+
+    @staticmethod
+    def _maybe_grant_monthly_freeze(state: MemberStreak, today: date) -> None:
+        """每月首次访问补 1 个 freeze（上限 MAX_FREEZE_BALANCE）；首月只登记不补。"""
+        month = today.strftime("%Y-%m")
+        if state.freeze_grant_month == month:
+            return
+        if state.freeze_grant_month is not None:
+            state.freeze_balance = min(state.freeze_balance + 1, MAX_FREEZE_BALANCE)
+        state.freeze_grant_month = month
+
+    @staticmethod
+    def _advance_streak(state: MemberStreak, today: date) -> None:
+        """推进一次连续天数（调用方保证仅在「今天首次」调用），原地修改 state。
+
+        - 上次活跃 == 今天：保持不变（幂等）。
+        - 首次（last 为空）：current = 1。
+        - 否则：中间缺失天数 gap = (today - last).days - 1；用 freeze 优先补 gap，
+          补满则 streak 接续 +1，补不满则重置为 1（freeze 是稀缺资源，只补最近缺口）。
+        """
+        if state.last_active_date == today:
+            return
+        if state.last_active_date is None:
+            state.current_streak = 1
+        else:
+            gap = (today - state.last_active_date).days - 1
+            if gap > 0:
+                used = min(gap, state.freeze_balance)
+                state.freeze_balance -= used
+                gap -= used
+            state.current_streak = state.current_streak + 1 if gap <= 0 else 1
+        state.last_active_date = today
+        if state.current_streak > state.longest_streak:
+            state.longest_streak = state.current_streak
+
+    async def _check_and_award_badges(
+        self, member_id: int, state: MemberStreak,
+        member: Member | None, mastery: MasteryRecord | None,
+    ) -> list[str]:
+        xp = member.total_xp if member else 0
+        candidates: list[str] = []
+        for days, key in STREAK_BADGE_THRESHOLDS:
+            if state.current_streak >= days:
+                candidates.append(key)
+        for x, key in XP_BADGE_THRESHOLDS:
+            if xp >= x:
+                candidates.append(key)
+        # first_permanent：该词刚升到 permanent，且该 member 此前（含本次）只有 ≤1 条 permanent
+        if mastery is not None and mastery.level == MasteryLevel.permanent:
+            cnt = await self.session.scalar(
+                select(func.count()).select_from(MasteryRecord).where(
+                    MasteryRecord.member_id == member_id,
+                    MasteryRecord.level == MasteryLevel.permanent,
+                )
+            )
+            if cnt is not None and cnt <= 1:
+                candidates.append("first_permanent")
+
+        new_badges: list[str] = []
+        for key in candidates:
+            if await self._award_badge_if_new(member_id, key):
+                new_badges.append(key)
+        return new_badges
+
+    async def _award_badge_if_new(self, member_id: int, key: str) -> bool:
+        existing = await self.session.scalar(
+            select(MemberBadge).where(
+                MemberBadge.member_id == member_id, MemberBadge.badge_key == key,
+            )
+        )
+        if existing:
+            return False
+        self.session.add(MemberBadge(member_id=member_id, badge_key=key))
+        await self.session.flush()
+        return True
+
+    @staticmethod
+    def _streak_dict(state: MemberStreak) -> dict:
+        return {
+            "current_streak": state.current_streak,
+            "longest_streak": state.longest_streak,
+            "freeze_balance": state.freeze_balance,
+            "last_active_date": (
+                state.last_active_date.isoformat() if state.last_active_date else None
+            ),
+        }

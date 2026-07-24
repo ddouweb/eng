@@ -1,3 +1,5 @@
+from datetime import date, timedelta
+
 import pandas as pd
 import streamlit as st
 from api_client import client
@@ -27,6 +29,14 @@ col1, col2, col3 = st.columns(3)
 col1.metric("掌握率", f"{data['mastery_rate']}%")
 col2.metric("正确率", f"{data['accuracy']}%")
 col3.metric("总答题数", data["total_questions"])
+
+# SRS 到期复习压力
+_rd = client.get_review_due(member_id)
+if _rd["code"] == 200:
+    _d = _rd["data"]
+    _c1, _c2 = st.columns(2)
+    _c1.metric("🔁 今日到期", _d["due_today"])
+    _c2.metric("⚠️ 已逾期", _d["overdue"])
 
 if data["total_words"] > 0:
     st.progress(
@@ -84,3 +94,44 @@ if trend["code"] == 200 and trend["data"]["daily"]:
         st.line_chart(trend_df, x="date", y="accuracy", use_container_width=True)
 else:
     st.info("暂无练习记录。")
+
+# ── 贡献热力图（最近 12 周）─────────────────────────────
+st.subheader("贡献热力图（最近 12 周）")
+try:
+    import altair as alt
+    heat = client.get_stats_trend(days=84, member_id=member_id)
+    if heat["code"] == 200 and heat["data"]["daily"]:
+        cnt = {row["date"]: int(row["total"]) for row in heat["data"]["daily"]}
+        today = date.today()
+        rows = []
+        for i in range(83, -1, -1):
+            d = today - timedelta(days=i)
+            ds = d.isoformat()
+            rows.append({
+                "date": ds, "count": cnt.get(ds, 0),
+                "week": 11 - (i // 7),   # 左旧右新（0..11）
+                "weekday": d.weekday(),  # 0=周一 .. 6=周日
+            })
+        hdf = pd.DataFrame(rows)
+        chart = (
+            alt.Chart(hdf)
+            .mark_rect(stroke="white", strokeWidth=2)
+            .encode(
+                x=alt.X("week:O", title=None, axis=None),
+                y=alt.Y("weekday:O", title=None, axis=None),
+                color=alt.Color(
+                    "count:Q",
+                    scale=alt.Scale(domain=[0, max(10, int(hdf["count"].max()))],
+                                    range=["#ebedf0", "#2da44e"]),
+                    legend=None,
+                ),
+                tooltip=["date", "count"],
+            )
+            .properties(height=150)
+        )
+        st.altair_chart(chart, use_container_width=True)
+        st.caption("色块越绿＝当天练习量越大；空白＝当天未练习。")
+    else:
+        st.info("暂无练习记录，无法生成热力图。")
+except ImportError:
+    st.caption("（贡献热力图需 altair，当前环境未安装）")

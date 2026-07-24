@@ -20,8 +20,10 @@ def service(mock_session):
     return WordService(mock_session)
 
 
-def _make_word(id=1, english="hello", chinese="你好", type="word", unit_id=1):
-    w = MagicMock(id=id, english=english, chinese=chinese, unit_id=unit_id)
+def _make_word(id=1, english="hello", chinese="你好", type="word", unit_id=1,
+               phonetic=None, definition=None, pos=None, example=None):
+    w = MagicMock(id=id, english=english, chinese=chinese, unit_id=unit_id,
+                  phonetic=phonetic, definition=definition, pos=pos, example=example)
     w.created_at = datetime(2026, 1, 1)
     w.updated_at = datetime(2026, 1, 1)
     # word.type 是 WordType 枚举，业务代码访问 word.type.value
@@ -95,7 +97,8 @@ def _make_search_word(
     id=1, english="apple", chinese="苹果", unit_id=3, unit_title="Unit 3 - Fruits",
 ):
     """search() 会读 w.unit.title / w.tags / w.mastery_records，需补齐这些关系。"""
-    w = MagicMock(id=id, english=english, chinese=chinese, unit_id=unit_id, seq=None)
+    w = MagicMock(id=id, english=english, chinese=chinese, unit_id=unit_id, seq=None,
+                  phonetic=None, definition=None, pos=None, example=None)
     w.created_at = datetime(2026, 1, 1)
     w.updated_at = datetime(2026, 1, 1)
     w.type = MagicMock(value="word")
@@ -159,3 +162,35 @@ async def test_search_forwards_all_filters_to_repo(service):
     assert kw["member_id"] == 7
     assert kw["unit_id"] == 3
     assert kw["word_type"] is WordType.sentence
+
+
+@pytest.mark.asyncio
+async def test_to_dict_includes_rich_fields(service):
+    """_to_dict 必须输出 phonetic/definition/pos/example 富字段（新加列）。"""
+    rich = _make_word(
+        phonetic="həˈloʊ", definition="used as a greeting",
+        pos="int.", example="Hello! 你好！",
+    )
+    service.repo.get_by_id = AsyncMock(return_value=_make_word())
+    service.repo.update = AsyncMock(return_value=rich)
+    result = await service.update_word(1, {"english": "hello"})
+    d = result["data"]
+    assert d["phonetic"] == "həˈloʊ"
+    assert d["definition"] == "used as a greeting"
+    assert d["pos"] == "int."
+    assert d["example"] == "Hello! 你好！"   # example 原样透传
+
+
+@pytest.mark.asyncio
+async def test_batch_create_passes_rich_fields_through(service, mock_session):
+    """batch_create 用 **d 透传，富字段应原样进入 Word 构造。"""
+    service.repo.batch_create = AsyncMock(return_value=[_make_word()])
+    await service.batch_create(1, [{
+        "english": "hello", "chinese": "你好", "type": "word",
+        "phonetic": "həˈloʊ", "definition": "greeting",
+        "pos": "int.", "example": "Hi!",
+    }])
+    # repo.batch_create 收到的是 Word 实例列表（由 service 用 **d 构造）
+    created = service.repo.batch_create.call_args.args[0]
+    assert created[0].phonetic == "həˈloʊ"
+    assert created[0].pos == "int."

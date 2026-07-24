@@ -1,9 +1,9 @@
 from datetime import date
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from app.models.enums import MasteryLevel, PlanStatus, PracticeMode, TaskStatus, TaskType
+from app.models.enums import MasteryLevel, PracticeMode, TaskStatus, TaskType
 from app.schemas.exceptions import AppException
 from app.services.practice_service import PracticeService
 
@@ -24,53 +24,8 @@ def _make_word(word_id=1, english="hello", chinese="你好"):
     return w
 
 
-class TestMasteryUpgrade:
-    def test_unlearned_to_learning(self):
-        record = MagicMock(level=MasteryLevel.unlearned, consecutive_correct=1, correct_count=1)
-        PracticeService._try_upgrade(record)
-        assert record.level == MasteryLevel.learning
-
-    def test_learning_to_familiar(self):
-        record = MagicMock(level=MasteryLevel.learning, consecutive_correct=3, correct_count=3)
-        PracticeService._try_upgrade(record)
-        assert record.level == MasteryLevel.familiar
-
-    def test_learning_not_enough_consecutive(self):
-        record = MagicMock(level=MasteryLevel.learning, consecutive_correct=2, correct_count=2)
-        PracticeService._try_upgrade(record)
-        assert record.level == MasteryLevel.learning
-
-    def test_familiar_to_permanent(self):
-        record = MagicMock(level=MasteryLevel.familiar, consecutive_correct=5, correct_count=8)
-        PracticeService._try_upgrade(record)
-        assert record.level == MasteryLevel.permanent
-
-    def test_familiar_not_enough_total(self):
-        record = MagicMock(level=MasteryLevel.familiar, consecutive_correct=5, correct_count=7)
-        PracticeService._try_upgrade(record)
-        assert record.level == MasteryLevel.familiar
-
-
-class TestMasteryDowngrade:
-    def test_familiar_to_learning(self):
-        record = MagicMock(level=MasteryLevel.familiar, wrong_count=1)
-        PracticeService._try_downgrade(record)
-        assert record.level == MasteryLevel.learning
-
-    def test_permanent_to_familiar(self):
-        record = MagicMock(level=MasteryLevel.permanent, wrong_count=2)
-        PracticeService._try_downgrade(record)
-        assert record.level == MasteryLevel.familiar
-
-    def test_permanent_stays_on_first_wrong(self):
-        record = MagicMock(level=MasteryLevel.permanent, wrong_count=1)
-        PracticeService._try_downgrade(record)
-        assert record.level == MasteryLevel.permanent
-
-    def test_learning_no_downgrade(self):
-        record = MagicMock(level=MasteryLevel.learning, wrong_count=5)
-        PracticeService._try_downgrade(record)
-        assert record.level == MasteryLevel.learning
+# _try_upgrade / _try_downgrade（计数式升降级）已由 SM-2 update_srs 替换，
+# 相关算法测试见 tests/unit/test_srs.py（update_srs / interval_to_level）。
 
 
 @pytest.mark.asyncio
@@ -236,6 +191,9 @@ class TestTickDailyTask:
         # 不应抛异常
         await service._tick_daily_task(member_id=1, unit_id=999, today=date(2026, 6, 16), is_new_word=True)
 
+    # 注：曾有的 test_review_count_inflated_to_member_due 已删除——动态膨胀 review_count 的
+    # 方案会破坏 daily_task 完成闭环（见回归审查），已回退为静态 review_count 槽位。
+
 
 @pytest.mark.asyncio
 async def test_submit_answer_reflows_to_daily_task(service, mock_session):
@@ -257,6 +215,9 @@ async def test_submit_answer_reflows_to_daily_task(service, mock_session):
     # _classify_attempt → (True, True) 首次今日 + 新词
     service._classify_attempt = AsyncMock(return_value=(True, True))
     service._tick_daily_task = AsyncMock()
+    service._apply_gamification = AsyncMock(return_value={
+        "streak": {}, "xp_delta": 0, "total_xp": 0, "new_badges": [],
+    })
 
     result = await service.submit_answer(session_id=1, word_id=42, is_correct=True)
 
@@ -286,6 +247,9 @@ async def test_submit_answer_wrong_answer_does_not_tick(service, mock_session):
     service._classify_attempt = AsyncMock(return_value=(True, True))
     service._tick_daily_task = AsyncMock()
     service.wb_repo.upsert_on_wrong = AsyncMock()  # 隔离错题本副作用
+    service._apply_gamification = AsyncMock(return_value={
+        "streak": {}, "xp_delta": 0, "total_xp": 0, "new_badges": [],
+    })
 
     await service.submit_answer(session_id=1, word_id=42, is_correct=False)
 
@@ -311,7 +275,63 @@ async def test_submit_answer_second_attempt_today_does_not_tick(service, mock_se
 
     service._classify_attempt = AsyncMock(return_value=(False, False))  # 今天已练过
     service._tick_daily_task = AsyncMock()
+    service._apply_gamification = AsyncMock(return_value={
+        "streak": {}, "xp_delta": 0, "total_xp": 0, "new_badges": [],
+    })
 
     await service.submit_answer(session_id=1, word_id=42, is_correct=True)
 
     service._tick_daily_task.assert_not_awaited()
+
+
+# ────────────────────────────────────────────────────────────
+# _select_questions（due-first 选词）
+# ────────────────────────────────────────────────────────────
+
+
+class TestSelectQuestions:
+    def _c(self, wid, is_due=False, is_new=False, overdue=0, wrong=0, level="learning"):
+        return {
+            "word_id": wid, "weight": 1.0, "mastery_level": level,
+            "is_due": is_due, "is_new": is_new, "overdue_days": overdue, "wrong_count": wrong,
+        }
+
+    def test_normal_due_first(self):
+        cands = [self._c(1, is_due=True, overdue=3), self._c(2, is_new=True), self._c(3)]
+        out = PracticeService._select_questions(cands, 2, None)
+        ids = [c["word_id"] for c in out]
+        assert 1 in ids            # 到期词必出
+        assert len(out) == 2
+
+    def test_weekly_uses_due_queue_with_backfill(self):
+        cands = [self._c(1, is_due=True), self._c(2), self._c(3)]
+        out = PracticeService._select_questions(cands, 3, TaskType.weekly_review)
+        assert len(out) == 3       # due 不足时回填非到期词
+
+    def test_wrong_drill_sorted_by_overdue_then_wrong(self):
+        cands = [self._c(1, overdue=0, wrong=5), self._c(2, overdue=2, wrong=1)]
+        out = PracticeService._select_questions(cands, 2, TaskType.wrong_word_drill)
+        assert out[0]["word_id"] == 2   # overdue 多的在前
+
+    def test_permanent_due_recycles(self):
+        # 「永久掌握」到期也低频回炉（进到期池，不再永不出现）
+        cands = [self._c(1, is_due=True, level="permanent", overdue=5)]
+        out = PracticeService._select_questions(cands, 5, None)
+        assert out and out[0]["word_id"] == 1
+
+    def test_wrong_drill_excludes_permanent(self):
+        # wrong_word_drill 仍排除 permanent（错题刷不碰永久词）
+        cands = [self._c(1, is_due=True, level="permanent"), self._c(2, is_due=True)]
+        out = PracticeService._select_questions(cands, 5, TaskType.wrong_word_drill)
+        assert all(c["word_id"] != 1 for c in out)
+
+    def test_normal_no_duplicate_word_ids(self):
+        # due+新词 < count 触发兜底时，三桶间不得重复同一 word_id
+        cands = [
+            self._c(1, is_due=True),
+            self._c(2, is_new=True), self._c(3, is_new=True),
+            self._c(4), self._c(5),   # 未到期 learning 兜底
+        ]
+        out = PracticeService._select_questions(cands, 5, None)
+        ids = [c["word_id"] for c in out]
+        assert len(ids) == len(set(ids))   # 无重复

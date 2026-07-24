@@ -53,8 +53,8 @@ SYSTEM_PROMPT_PARSE_NL = """你是一个英语学习材料解析助手。用户�
 请从文本中提取所有英语词条，返回严格 JSON 格式：
 {
   "words": [
-    {"english": "hello", "chinese": "你好", "type": "word"},
-    {"english": "How are you?", "chinese": "你好吗？", "type": "sentence"}
+    {"english": "hello", "chinese": "你好", "type": "word", "phonetic": "/həˈloʊ/", "pos": "int.", "example": "Hello, how are you? 你好，你好吗？"},
+    {"english": "How are you?", "chinese": "你好吗？", "type": "sentence", "phonetic": "", "pos": "", "example": ""}
   ]
 }
 
@@ -66,6 +66,9 @@ SYSTEM_PROMPT_PARSE_NL = """你是一个英语学习材料解析助手。用户�
 - 如果文本中同时包含单词和句子，都要提取
 - 如果中文释义不明确，根据上下文合理推断
 - 忽略与英语学习无关的内容（如页码、章节标题等）
+- phonetic：单词/短语尽量给出 IPA 音标（如 /həˈloʊ/）；原文未提供且无把握时给空串 ""；句子一律给 ""
+- pos：单词的词性缩写（如 n. v. adj. adv. prep. int.）；短语/句子给空串 ""
+- example：若原文含该词的例句则原样填入；否则尽量造一个简短、适合家庭学习的例句并附中文译文；无把握时给空串 ""
 - 只返回 JSON，不要其他内容"""
 
 
@@ -116,6 +119,9 @@ class BaseAIProvider:
             ParseNLWordItem(
                 english=item["english"], chinese=item["chinese"],
                 word_type=item.get("type", "word"),
+                phonetic=(item.get("phonetic") or "").strip().strip("/"),
+                pos=(item.get("pos") or "").strip(),
+                example=(item.get("example") or "").strip(),
             )
             for item in data.get("words", [])
         ]

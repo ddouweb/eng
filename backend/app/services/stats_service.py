@@ -1,5 +1,9 @@
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.gamification import xp_to_level
+from app.models.member import Member
+from app.models.streak import MemberBadge, MemberStreak
 from app.repositories.stats_repo import StatsRepo
 from app.schemas.common import success
 
@@ -7,6 +11,7 @@ from app.schemas.common import success
 class StatsService:
     def __init__(self, session: AsyncSession):
         self.repo = StatsRepo(session)
+        self.session = session
 
     async def get_overview(self, member_id: int) -> dict:
         dist = await self.repo.get_mastery_distribution(member_id)
@@ -48,4 +53,23 @@ class StatsService:
         return success(data={
             "days": days,
             "daily": daily,
+        })
+
+    async def get_profile(self, member_id: int) -> dict:
+        """首页坚持机制卡片：streak / freeze / XP 段位 / 徽章。"""
+        state = await self.session.get(MemberStreak, member_id)
+        member = await self.session.get(Member, member_id)
+        xp = member.total_xp if member else 0
+        stmt = select(MemberBadge.badge_key).where(MemberBadge.member_id == member_id)
+        badges = [r[0] for r in (await self.session.execute(stmt)).all()]
+        return success(data={
+            "current_streak": state.current_streak if state else 0,
+            "longest_streak": state.longest_streak if state else 0,
+            "freeze_balance": state.freeze_balance if state else 2,
+            "last_active_date": (
+                state.last_active_date.isoformat() if state and state.last_active_date else None
+            ),
+            "total_xp": xp,
+            "level": xp_to_level(xp),
+            "badges": badges,
         })

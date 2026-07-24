@@ -6,6 +6,7 @@ from app.models.mastery import MasteryRecord
 from app.models.practice import PracticeSession, PracticeRecord
 from app.models.plan import DailyTask, LearningPlan, PlanUnit
 from app.models.wrong_book import WrongWordBook
+from app.models.streak import MemberBadge, MemberStreak
 from app.models.enums import (
     MasteryLevel,
     PlanStatus,
@@ -28,6 +29,8 @@ __all__ = [
     "PlanUnit",
     "DailyTask",
     "WrongWordBook",
+    "MemberStreak",
+    "MemberBadge",
     "MasteryLevel",
     "PlanStatus",
     "PracticeMode",

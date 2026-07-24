@@ -254,7 +254,7 @@ with st.container(key="wm_topbar"):
         total = st.session_state.get(cache_key + "_total", len(words))
 
     words = sorted(words, key=_seq_key)
-    _phon = [phonetic(w["english"]) for w in words]   # 音标预算一次，表格与播放器复用
+    _phon = [phonetic(w["english"], w.get("phonetic")) for w in words]   # 存储音标优先，缺省回退词典
 
     if words:
         with c_player:

@@ -141,6 +141,10 @@ class WordService:
             "chinese": word.chinese,
             "type": word.type.value,
             "seq": word.seq,
+            "phonetic": word.phonetic,
+            "definition": word.definition,
+            "pos": word.pos,
+            "example": word.example,
             "created_at": word.created_at.isoformat() if word.created_at else None,
             "updated_at": word.updated_at.isoformat() if word.updated_at else None,
         }
