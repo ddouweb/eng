@@ -76,18 +76,20 @@ function exitPractice() {
       </NButton>
     </div>
 
-    <!-- 提交失败重试横幅 -->
-    <NAlert v-if="store.submitFailures.length" type="error" class="retry-banner">
-      <span>⚠️ 有 {{ store.submitFailures.length }} 次答题提交失败（已本地记录，后端幂等可重试）。</span>
-      <div class="retry-actions">
-        <NButton size="small" type="primary" @click="store.retryAllSubmits()">🔄 重试全部</NButton>
-        <NButton size="small" @click="store.clearSubmits()">🗑️ 忽略</NButton>
-      </div>
-    </NAlert>
-
     <PracticeConfig v-if="phase === 'config'" />
-    <component :is="modeComp" v-else-if="phase === 'playing' && modeComp" />
-    <PracticeSummary v-else-if="phase === 'done'" />
+    <div v-else class="stage">
+      <!-- 提交失败重试横幅 -->
+      <NAlert v-if="store.submitFailures.length" type="error" class="retry-banner">
+        <span>⚠️ 有 {{ store.submitFailures.length }} 次答题提交失败（已本地记录，后端幂等可重试）。</span>
+        <div class="retry-actions">
+          <NButton size="small" type="primary" @click="store.retryAllSubmits()">🔄 重试全部</NButton>
+          <NButton size="small" @click="store.clearSubmits()">🗑️ 忽略</NButton>
+        </div>
+      </NAlert>
+
+      <component :is="modeComp" v-if="phase === 'playing' && modeComp" />
+      <PracticeSummary v-else-if="phase === 'done'" />
+    </div>
   </div>
 </template>
 
@@ -124,5 +126,9 @@ function exitPractice() {
   margin-top: 8px;
   display: flex;
   gap: 8px;
+}
+.stage {
+  max-width: 860px;
+  margin: 0 auto;
 }
 </style>

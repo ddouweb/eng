@@ -33,6 +33,12 @@ const unitOptions = computed<SelectOption[]>(() => [
   ...units.value.map((u) => ({ label: u.title, value: u.id })),
 ])
 
+// ── 练习模式（全页唯一选择处：顶部卡片选中式，统一驱动今日任务入口 + 自由练习）
+const selectedMode = ref('flashcard')
+const selectedModeMeta = computed(
+  () => PRACTICE_MODES.find((m) => m.value === selectedMode.value) ?? PRACTICE_MODES[0],
+)
+
 // 需要干扰项的选择类模式：session 词数 <2 时退化为单选项（点唯一即对），启动前拦截。
 const OPTIONS_MODES = new Set(['cn2en_choice', 'timed_challenge', 'memory_flash'])
 function ensureEnoughForMode(mode: string): boolean {
@@ -44,17 +50,18 @@ function ensureEnoughForMode(mode: string): boolean {
   return true
 }
 
-async function startMode(mode: string) {
+/** 自由练习：用顶部选中的模式 + 所选 Unit/数量启动。 */
+async function startFree() {
   if (!selectedIds.value.length) {
     message.warning('请至少选择一个 Unit（或错题本）')
     return
   }
-  const r = await store.start(mode, [...selectedIds.value], resolvedCount.value)
+  const r = await store.start(selectedMode.value, [...selectedIds.value], resolvedCount.value)
   if (r.code !== 200) {
     message.error(r.message)
     return
   }
-  if (!ensureEnoughForMode(mode)) return
+  if (!ensureEnoughForMode(selectedMode.value)) return
   emit('started')
 }
 
@@ -66,16 +73,11 @@ interface PlanSnap {
   tasks: Record<string, DailyTask>
 }
 const snapshot = ref<PlanSnap[]>([])
-const todayMode = ref('flashcard')
 // 本地时区日期（YYYY-MM-DD），与后端 date.today() 服务端本地口径对齐。
 // 切勿用 toISOString()——它取 UTC 日期，UTC+8 零点后 8 小时会与后端 task_date 错配漏掉今日任务。
 const todayStr = new Date().toLocaleDateString('sv-SE')
 const dueN = ref(0)
 const overdue = ref(0)
-
-const modeOptions = computed<SelectOption[]>(() =>
-  PRACTICE_MODES.map((m) => ({ label: `${m.icon} ${m.label}`, value: m.value })),
-)
 
 const agg = computed(() => {
   const aggUnitIds = new Set<number>()
@@ -134,18 +136,19 @@ const agg = computed(() => {
   }
 })
 
+/** 今日任务快捷入口：用顶部选中的模式启动。 */
 async function launch(taskType: string | undefined, count: number, label: string) {
   const ids = agg.value.aggUnitIds
   if (!ids.length) {
     message.warning('今日没有可练习的计划任务')
     return
   }
-  const r = await store.start(todayMode.value, ids, Math.max(count, 5), taskType)
+  const r = await store.start(selectedMode.value, ids, Math.max(count, 5), taskType)
   if (r.code !== 200) {
     message.error(r.message)
     return
   }
-  if (!ensureEnoughForMode(todayMode.value)) return
+  if (!ensureEnoughForMode(selectedMode.value)) return
   message.info(`开始：${label}`)
   emit('started')
 }
@@ -182,12 +185,28 @@ onMounted(async () => {
   <div class="prac-config">
     <h2 style="margin-top: 0">🎯 练习</h2>
 
-    <!-- 今日任务快捷入口 -->
+    <!-- 练习模式（全页唯一选择处）：选中式，驱动下方今日任务 + 自由练习 -->
+    <NCard size="small" class="block">
+      <template #header>
+        <span>🎮 练习模式</span>
+        <span class="cur-mode">当前：{{ selectedModeMeta.icon }} {{ selectedModeMeta.label }}</span>
+      </template>
+      <div class="mode-grid">
+        <div
+          v-for="m in PRACTICE_MODES"
+          :key="m.value"
+          class="mode-card"
+          :class="{ active: selectedMode === m.value }"
+          @click="selectedMode = m.value"
+        >
+          <div class="mode-icon">{{ m.icon }}</div>
+          <div class="mode-label">{{ m.label }}</div>
+        </div>
+      </div>
+    </NCard>
+
+    <!-- 今日任务快捷入口（模式由顶部选择，无重复选择器）-->
     <NCard v-if="snapshot.length" size="small" title="📌 今日任务" class="block">
-      <NSpace align="center" wrap style="margin-bottom: 12px">
-        <span class="field">练习模式</span>
-        <NSelect v-model:value="todayMode" :options="modeOptions" style="width: 220px" />
-      </NSpace>
       <NSpace wrap>
         <NButton
           v-if="dueN > 0"
@@ -222,6 +241,7 @@ onMounted(async () => {
           🎯 错题冲刺（剩 {{ agg.drill }}）
         </NButton>
       </NSpace>
+      <p class="hint">以上入口将以「{{ selectedModeMeta.icon }} {{ selectedModeMeta.label }}」模式练习</p>
     </NCard>
 
     <!-- 自由练习配置 -->
@@ -262,19 +282,15 @@ onMounted(async () => {
           </template>
         </NSpace>
 
-        <div class="mode-grid">
-          <div
-            v-for="m in PRACTICE_MODES"
-            :key="m.value"
-            class="mode-card"
-            :class="{ disabled: !selectedIds.length }"
-            @click="startMode(m.value)"
-          >
-            <div class="mode-icon">{{ m.icon }}</div>
-            <div class="mode-label">{{ m.label }}</div>
-          </div>
-        </div>
-        <p v-if="!selectedIds.length" class="hint">请先选择至少一个 Unit（或错题本）</p>
+        <NButton
+          type="primary"
+          size="large"
+          :disabled="!selectedIds.length"
+          @click="startFree"
+        >
+          🚀 开始练习（{{ selectedModeMeta.icon }} {{ selectedModeMeta.label }}）
+        </NButton>
+        <p v-if="!selectedIds.length" class="warn">请先选择至少一个 Unit（或错题本）</p>
       </NSpace>
     </NCard>
 
@@ -287,9 +303,16 @@ onMounted(async () => {
 <style scoped>
 .prac-config {
   max-width: 860px;
+  margin: 0 auto;
 }
 .block {
   margin-bottom: 16px;
+}
+.cur-mode {
+  margin-left: 12px;
+  font-size: 13px;
+  font-weight: 400;
+  color: #18a058;
 }
 .field {
   display: inline-block;
@@ -314,13 +337,14 @@ onMounted(async () => {
   border-color: #18a058;
   background: #f0faf3;
 }
-.mode-card.disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
+.mode-card.active {
+  border-color: #18a058;
+  background: #e8f7ee;
+  box-shadow: 0 0 0 1px #18a058 inset;
 }
-.mode-card.disabled:hover {
-  border-color: #e0e0e0;
-  background: transparent;
+.mode-card.active .mode-label {
+  color: #18a058;
+  font-weight: 600;
 }
 .mode-icon {
   font-size: 26px;
@@ -331,7 +355,13 @@ onMounted(async () => {
   color: #444;
 }
 .hint {
+  color: #888;
+  font-size: 13px;
+  margin: 8px 0 0;
+}
+.warn {
   color: #d03050;
   font-size: 13px;
+  margin: 0;
 }
 </style>

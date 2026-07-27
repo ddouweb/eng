@@ -124,6 +124,8 @@ function goNext() {
 
 <style scoped>
 .dictation-mode {
+  max-width: 640px;
+  margin: 0 auto;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
