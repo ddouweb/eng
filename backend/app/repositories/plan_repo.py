@@ -1,7 +1,9 @@
-from sqlalchemy import select
+from datetime import date
+
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.enums import PlanStatus
+from app.models.enums import PlanStatus, TaskStatus, TaskType
 from app.models.plan import DailyTask, LearningPlan
 from app.repositories.base import BaseRepo
 
@@ -48,3 +50,20 @@ class DailyTaskRepo(BaseRepo[DailyTask]):
         )
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
+
+    async def delete_future_pending_learn(self, plan_id: int, today: date) -> int:
+        """删除某计划「未来、pending、learn 类型」的每日任务，返回删除行数。
+
+        谓词三重保护（手动重平衡计划的关键不变量）：
+        - task_date > today：不动今天及历史任务（保留进度与记录）；
+        - status == pending：保护用户手动置为 in_progress / completed / skipped 的任务；
+        - task_type == learn：只重排新词槽，weekly/monthly_review 复习任务原样保留。
+        """
+        stmt = delete(DailyTask).where(
+            DailyTask.plan_id == plan_id,
+            DailyTask.task_date > today,
+            DailyTask.status == TaskStatus.pending,
+            DailyTask.task_type == TaskType.learn,
+        )
+        result = await self.session.execute(stmt)
+        return int(result.rowcount or 0)

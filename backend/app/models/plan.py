@@ -1,6 +1,6 @@
-from datetime import date
+from datetime import date, datetime
 
-from sqlalchemy import Integer, Date, Enum, ForeignKey, String, UniqueConstraint, func
+from sqlalchemy import Integer, Date, DateTime, Enum, ForeignKey, String, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TimestampMixin
@@ -34,6 +34,8 @@ class LearningPlan(TimestampMixin, Base):
     plan_type: Mapped[PlanType] = mapped_column(
         Enum(PlanType), nullable=False, default=PlanType.forward, server_default="forward"
     )
+    # 最近一次「重新平衡计划」时间（手动把剩余未掌握词重新摊到 deadline 前的未来学习日）
+    last_rebalanced_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     plan_units: Mapped[list["PlanUnit"]] = relationship(
         back_populates="plan", cascade="all, delete-orphan"

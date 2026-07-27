@@ -1,8 +1,10 @@
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 import calendar
+import logging
 import math
 
 from sqlalchemy import select, func
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.enums import MasteryLevel, PlanStatus, PlanType, TaskStatus, TaskType
@@ -13,6 +15,8 @@ from app.repositories.plan_repo import DailyTaskRepo, PlanRepo
 from app.schemas.common import success
 from app.schemas.exceptions import AppException
 from app.schemas.plan import dump_learn_weekdays, parse_learn_weekdays
+
+logger = logging.getLogger(__name__)
 
 
 class PlanService:
@@ -107,6 +111,167 @@ class PlanService:
         plan.status = PlanStatus.active
         await self.session.commit()
         return success(message="Plan resumed")
+
+    async def rebalance_plan(self, plan_id: int) -> dict:
+        """手动重新平衡计划：把剩余未掌握词重新摊到 deadline 前的未来学习日。
+
+        只对 active forward 计划生效（review_only/wrong_word_drill/paused 无新词可重排）。
+        单日新词硬上限 cap = round(daily_goal×1.5)（Python round 为银行家舍入：奇数 daily_goal
+        如 3→4、15→22；过载护栏，偏保守）。
+        全部短路（feasible=False 且不动任何任务，均在写操作之前判定）：
+        - reason=not_rebalanceable：非 forward / 非 active；
+        - reason=no_deadline：无 deadline；
+        - reason=nothing_to_rebalance：已无未掌握词；
+        - reason=deadline_passed：deadline 已过或其前无学习日；
+        - reason=no_free_learn_days：未来学习日全被手动占用（in_progress/completed/skipped）。
+        重建路径：reason=infeasible 时即便 cap 也救不回（仍按 cap 重建，不越界，只告警）；
+        reason=conflict 为并发 rebalance 撞唯一约束（已回滚，可重试）。
+
+        needed 基于「有效学习日」= 未来学习日 − 已被手动占用的学习日，故 feasible 不会因
+        occupied 占用而虚高（否则词会被静默丢弃却报 feasible=True）。删除未来 pending learn
+        任务（保护今天/历史/手动进度/复习任务），按有效学习日重建新词槽，剩余词用尽即停
+        （与 _generate_tasks 同口径）。写 last_rebalanced_at。
+        """
+        plan = await self.plan_repo.get_by_id(plan_id)
+        if plan is None:
+            raise AppException(404, "Plan not found")
+
+        cap = round(plan.daily_goal * 1.5)
+
+        # 短路：非 forward / 非 active 无新词进度可重排
+        if plan.plan_type != PlanType.forward or plan.status != PlanStatus.active:
+            return success(data=self._rebalance_noop(plan, cap, "not_rebalanceable"))
+
+        today = date.today()
+        deadline = plan.deadline
+
+        # 无 deadline 无法定义"剩余学习日"，重平衡无意义
+        if deadline is None:
+            return success(data=self._rebalance_noop(plan, cap, "no_deadline"))
+
+        remaining_unmastered = await self._remaining_unmastered(plan)
+
+        # 已无未掌握词 → 无可重排，不动任何任务
+        if remaining_unmastered == 0:
+            return success(data=self._rebalance_noop(
+                plan, cap, "nothing_to_rebalance", remaining_unmastered=0))
+
+        weekdays = parse_learn_weekdays(plan.learn_weekdays)
+        remaining_learn_days = _count_learn_days(today + timedelta(days=1), deadline, weekdays)
+
+        # deadline 已过或其前无学习日 → 救不回，不重建
+        if remaining_learn_days <= 0:
+            return success(data=self._rebalance_noop(
+                plan, cap, "deadline_passed", remaining_unmastered=remaining_unmastered))
+
+        # 先（只读）收集未来已被手动占用（非 pending）的 learn 任务日期——这些日子不可重排。
+        # 有效学习日 = 全部未来学习日 − 被占用日；据此算 needed/feasible，避免「feasible=True
+        # 实则词被静默丢弃」的误导。
+        occupied = {
+            r[0] for r in (
+                await self.session.execute(
+                    select(DailyTask.task_date).where(
+                        DailyTask.plan_id == plan.id,
+                        DailyTask.task_type == TaskType.learn,
+                        DailyTask.task_date > today,
+                        DailyTask.status != TaskStatus.pending,
+                    )
+                )
+            ).all()
+        }
+        occupied_in_window = {
+            d for d in occupied if today < d <= deadline and d.weekday() in weekdays
+        }
+        effective_learn_days = max(remaining_learn_days - len(occupied_in_window), 0)
+
+        # 所有未来学习日都已被手动占用 → 无可重排日，不动任务
+        if effective_learn_days <= 0:
+            return success(data=self._rebalance_noop(
+                plan, cap, "no_free_learn_days", remaining_unmastered=remaining_unmastered))
+
+        needed = math.ceil(remaining_unmastered / effective_learn_days)
+        new_per_day = min(cap, needed)
+        feasible = needed <= cap
+        reason = None if feasible else "infeasible"
+
+        # 删未来 pending learn 任务 + 按有效学习日重建（跳过 occupied，既不撞 uk_plan_date_type
+        # 唯一约束，也不覆盖手动进度）。整体 try：并发 rebalance 撞唯一约束则回滚、返回 conflict。
+        try:
+            await self.task_repo.delete_future_pending_learn(plan.id, today)
+            remaining = remaining_unmastered
+            d = today + timedelta(days=1)
+            while d <= deadline and remaining > 0:
+                if d.weekday() in weekdays and d not in occupied:
+                    new_words = min(new_per_day, remaining)
+                    review_words = int(new_words * 0.3) if new_words > 0 else 0
+                    self.session.add(DailyTask(
+                        plan_id=plan.id, task_date=d, task_type=TaskType.learn,
+                        new_count=new_words, review_count=review_words,
+                    ))
+                    remaining -= new_words
+                d += timedelta(days=1)
+            plan.last_rebalanced_at = datetime.now()
+            await self.session.commit()
+        except IntegrityError:
+            await self.session.rollback()
+            logger.info("rebalance race: plan=%s concurrently rebalanced, skipping", plan.id)
+            return success(data=self._rebalance_noop(plan, cap, "conflict"))
+
+        return success(data={
+            "plan_id": plan.id,
+            "feasible": feasible,
+            "reason": reason,
+            "remaining_unmastered": remaining_unmastered,
+            "remaining_learn_days": remaining_learn_days,
+            "effective_learn_days": effective_learn_days,
+            "new_per_day": new_per_day,
+            "daily_goal": plan.daily_goal,
+            "cap": cap,
+            "deadline": str(deadline),
+            "last_rebalanced_at": plan.last_rebalanced_at.isoformat(),
+        })
+
+    async def _remaining_unmastered(self, plan: LearningPlan) -> int:
+        """与 _generate_tasks 同口径：plan_units 总词数 − 已掌握(level∈{familiar,permanent})。"""
+        unit_ids_stmt = select(PlanUnit.unit_id).where(PlanUnit.plan_id == plan.id)
+        unit_ids = [r[0] for r in (await self.session.execute(unit_ids_stmt)).all()]
+        if not unit_ids:
+            return 0
+        total = int((await self.session.execute(
+            select(func.count()).where(Word.unit_id.in_(unit_ids))
+        )).scalar_one())
+        mastered = int((await self.session.execute(
+            select(func.count())
+            .select_from(MasteryRecord)
+            .join(Word, Word.id == MasteryRecord.word_id)
+            .where(
+                Word.unit_id.in_(unit_ids),
+                MasteryRecord.member_id == plan.member_id,
+                MasteryRecord.level.in_([MasteryLevel.familiar, MasteryLevel.permanent]),
+            )
+        )).scalar_one())
+        return max(total - mastered, 0)
+
+    @staticmethod
+    def _rebalance_noop(
+        plan: LearningPlan, cap: int, reason: str, remaining_unmastered: int | None = None,
+    ) -> dict:
+        """重平衡短路时的统一响应（feasible=False，不动任何任务）。"""
+        return {
+            "plan_id": plan.id,
+            "feasible": False,
+            "reason": reason,
+            "remaining_unmastered": remaining_unmastered,
+            "remaining_learn_days": None,
+            "effective_learn_days": None,
+            "new_per_day": None,
+            "daily_goal": plan.daily_goal,
+            "cap": cap,
+            "deadline": str(plan.deadline) if plan.deadline else None,
+            "last_rebalanced_at": (
+                plan.last_rebalanced_at.isoformat() if plan.last_rebalanced_at else None
+            ),
+        }
 
     async def _generate_tasks(self, plan: LearningPlan) -> None:
         """按日轮询 [start_date, deadline] 生成 daily_task。

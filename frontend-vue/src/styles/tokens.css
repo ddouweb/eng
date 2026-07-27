@@ -1,0 +1,33 @@
+/* 设计令牌：掌握度四色（与 CLAUDE.md / 后端 MasteryLevel 一致，全应用同色）。 */
+:root {
+  --mastery-unlearned: #909399; /* 灰 */
+  --mastery-learning: #e6a23c; /* 橙 */
+  --mastery-familiar: #409eff; /* 蓝 */
+  --mastery-permanent: #67c23a; /* 绿 */
+
+  --app-bg: #f5f7fa;
+  --app-radius: 10px;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', 'PingFang SC',
+    'Microsoft YaHei', sans-serif;
+  background: var(--app-bg);
+  color: #1f2329;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+* {
+  box-sizing: border-box;
+}

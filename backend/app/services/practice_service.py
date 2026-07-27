@@ -4,7 +4,7 @@ from datetime import date, datetime, time, timedelta, timezone
 from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.gamification import MAX_FREEZE_BALANCE, STREAK_BADGE_THRESHOLDS, XP_BADGE_THRESHOLDS
+from app.gamification import MAX_FREEZE_BALANCE, STREAK_BADGE_THRESHOLDS, XP_BADGE_THRESHOLDS, difficulty_mult
 from app.srs import update_srs
 from app.models.enums import MasteryLevel, PlanStatus, PracticeMode, TagType, TaskStatus, TaskType
 from app.models.mastery import MasteryRecord
@@ -262,12 +262,13 @@ class PracticeService:
         else:
             await self._untick_daily_task(ps.member_id, word.unit_id, today)
 
-        # ── XP：wrong→correct 保守补发 +2（不重建 is_new_word）；
-        #        correct→wrong 按 is_new_word 精确扣回，max(0) 防负 ──
+        # ── XP：wrong→correct 按当前难度系数补发（加法，不会过度）；
+        #        correct→wrong 保持 flat 5/2 扣回——历史 XP 可能按 flat 发放，
+        #        若按系数会过度扣回损伤用户（max(0) 防负）。不对称是有意为之 ──
         member = await self.session.get(Member, ps.member_id)
         xp_delta = 0
         if is_correct:
-            xp_delta = 2
+            xp_delta = round(2 * difficulty_mult(mastery))
             if member is not None:
                 member.total_xp = (member.total_xp or 0) + xp_delta
         else:
@@ -647,7 +648,7 @@ class PracticeService:
     ) -> dict:
         """每次提交后更新 XP / streak / 徽章，返回快照供前端即时反馈。
 
-        - XP：每次答对累加（新词 +5 / 复习 +2）。
+        - XP：每次答对累加（新词 5 / 复习 2 × 难度系数，见 gamification.difficulty_mult）。
         - streak：仅「今天首次该成员练习」推进一次（由 last_active_date 判定，天然幂等）；
           断签时优先消耗 freeze 把缺口补上，补不满才重置为 1。
         - 徽章：达阈值即发放（幂等，uq_member_badge 兜底）。
@@ -656,10 +657,10 @@ class PracticeService:
         state = await self._get_or_create_streak(member_id)
         today = date.today()
 
-        # 1) XP
+        # 1) XP：基础（新词 5 / 复习 2）× 难度系数（见 gamification.difficulty_mult）
         xp_delta = 0
         if is_correct and member is not None:
-            xp_delta = 5 if is_new_word else 2
+            xp_delta = round((5 if is_new_word else 2) * difficulty_mult(mastery))
             member.total_xp = (member.total_xp or 0) + xp_delta
 
         # 2) 月度 freeze 补充（跨月首次访问 +1，上限 MAX_FREEZE_BALANCE）

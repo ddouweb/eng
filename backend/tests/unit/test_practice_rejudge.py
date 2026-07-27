@@ -26,6 +26,7 @@ def service(mock_session):
 def _setup_rejudge(
     service, *, record_is_correct, ps_correct_count=3, ps_ended=True,
     mastery_correct=1, mastery_wrong=1, mastery_consec=0,
+    mastery_ease=2.5, mastery_level="learning",
     member_xp=10, word_id=42, qset=None, is_new_word=False,
 ):
     """统一构造 rejudge 的 mock 上下文，返回 (ps, record, mastery, member) 供断言。"""
@@ -39,6 +40,7 @@ def _setup_rejudge(
     mastery = MagicMock(
         correct_count=mastery_correct, wrong_count=mastery_wrong,
         consecutive_correct=mastery_consec,
+        ease_factor=mastery_ease, level=mastery_level,
     )
     member = MagicMock(total_xp=member_xp)
     word = MagicMock(id=word_id, unit_id=10, english="hello", chinese="你好")
@@ -83,8 +85,10 @@ async def test_rejudge_wrong_to_correct(service):
     service.wb_repo.upsert_on_wrong.assert_not_awaited()
     service._tick_daily_task.assert_awaited_once()
     service._untick_daily_task.assert_not_awaited()
-    assert result["data"]["xp_delta"] == 2    # 保守补发 +2
-    assert member.total_xp == 12              # 10 + 2
+    # 补发按难度系数：mastery 经 update_srs 后 ease≈2.6 / level=learning / wrong=0
+    # → difficulty_mult=1.3 → round(2*1.3)=round(2.6)=3
+    assert result["data"]["xp_delta"] == 3
+    assert member.total_xp == 13              # 10 + 3
 
 
 @pytest.mark.asyncio
@@ -120,6 +124,25 @@ async def test_rejudge_correct_to_wrong_new_word_claws_back_5(service):
 
     assert result["data"]["xp_delta"] == 5
     assert member.total_xp == 5               # max(0, 10-5)
+
+
+@pytest.mark.asyncio
+async def test_rejudge_correct_to_wrong_no_overclaw(service):
+    """correct→wrong 扣回保持 flat 5/2——即便 mastery 很难(high mult)也不乘系数。
+
+    防 over-claw：历史 XP 可能按 flat 发放，若按当前难度系数扣回会过度损伤用户。
+    此处 mastery 极难（wrong=3/ease=1.3 → mult≈2.0），若误乘会扣 round(2*2.0)=4，
+    但正确实现仍 flat 扣 2。
+    """
+    _ps, _r, _m, member, _ = _setup_rejudge(
+        service, record_is_correct=True, is_new_word=False,
+        mastery_wrong=3, mastery_ease=1.3, mastery_level="learning",
+    )
+
+    result = await service.rejudge_answer(session_id=1, word_id=42, is_correct=False)
+
+    assert result["data"]["xp_delta"] == 2    # flat 扣回，不乘难度系数
+    assert member.total_xp == 8               # max(0, 10-2)
 
 
 @pytest.mark.asyncio

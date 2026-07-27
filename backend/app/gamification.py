@@ -13,6 +13,8 @@ BADGES = {
     "xp_1000":        {"name": "勤奋学子", "icon": "⭐", "desc": "累计 1000 XP"},
     "xp_5000":        {"name": "词汇大师", "icon": "🏆", "desc": "累计 5000 XP"},
     "first_permanent": {"name": "牢记在心", "icon": "🧠", "desc": "首个单词达到永久掌握"},
+    "week_full_score": {"name": "满分周", "icon": "🌟", "desc": "单周结算满分 100"},
+    "week_login_7":    {"name": "全勤周", "icon": "📅", "desc": "单周 7 天全部学习"},
 }
 
 # (阈值, badge_key) —— 达到阈值即发放（幂等）
@@ -58,3 +60,27 @@ def xp_to_level(total_xp: int) -> dict:
         "next_level_name": next_name,
         "progress": progress,
     }
+
+
+def difficulty_mult(mastery) -> float:
+    """根据掌握度算逐题 XP 难度乘数 ∈ [0.5, 2.0]。
+
+    纯函数，仅读 mastery 现有字段（零额外查询）。难度信号均为答题后状态
+    （PracticeService 在调用前已完成 _update_mastery / update_srs）：
+    - wrong_count：反复遗忘→难（0.4 × min(wrong/3, 1)，3 次封顶）；
+    - level∈{unlearned,learning}：尚未驯服→难（+0.3）；
+    - ease_factor<2.5：SM-2 已下调难度→难（+0.3 × max(0, 2.5-ease)，基准 2.5）。
+    下界实际 1.0（已 familiar/permanent 且无错的词），clamp[0.5,2.0] 仅作兜底。
+    mastery 为 None（无记录）→ 1.0。
+    """
+    if mastery is None:
+        return 1.0
+    wrong = int(getattr(mastery, "wrong_count", 0) or 0)
+    level = getattr(mastery, "level", None)
+    ease = float(getattr(mastery, "ease_factor", 2.5) or 2.5)
+    m = 1.0
+    m += 0.4 * min(wrong / 3.0, 1.0)
+    if level in ("unlearned", "learning"):
+        m += 0.3
+    m += 0.3 * max(0.0, 2.5 - ease)
+    return max(0.5, min(2.0, m))

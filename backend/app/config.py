@@ -32,7 +32,7 @@ class Settings(BaseSettings):
     AI_API_KEY: str = ""
     AI_MODEL: str = ""
     REDIS_URL: str = "redis://localhost:6379/0"
-    CORS_ORIGINS: str = "http://localhost:8501,http://127.0.0.1:8501"
+    CORS_ORIGINS: str = "http://localhost:8501,http://127.0.0.1:8501,http://localhost:5173"
 
     # 部署环境：dev（默认，允许兜底弱配置 + 告警）| production（拒绝弱配置启动）
     APP_ENV: str = "dev"

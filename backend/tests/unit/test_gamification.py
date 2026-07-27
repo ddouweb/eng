@@ -5,8 +5,9 @@ _advance_streak / _maybe_grant_monthly_freeze 是 staticmethod，xp_to_level 是
 首次、连续、同日幂等、断 1 天靠 freeze 补、断多天补不满重置、月度发放与上限。
 """
 from datetime import date
+from types import SimpleNamespace
 
-from app.gamification import xp_to_level
+from app.gamification import difficulty_mult, xp_to_level
 from app.models.streak import MemberStreak
 from app.services.practice_service import PracticeService
 
@@ -97,3 +98,38 @@ def test_monthly_freeze_capped_and_idempotent():
     assert s.freeze_balance == 5                  # 上限 5
     PracticeService._maybe_grant_monthly_freeze(s, date(2026, 7, 15))
     assert s.freeze_balance == 5                  # 同月不重复发
+
+
+# ── difficulty_mult（逐题 XP 难度乘数，纯函数）──
+def _mastery(wrong=0, ease=2.5, level="familiar"):
+    return SimpleNamespace(wrong_count=wrong, ease_factor=ease, level=level)
+
+
+def test_difficulty_mult_none():
+    assert difficulty_mult(None) == 1.0
+
+
+def test_difficulty_mult_easy_mastered_is_one():
+    # familiar、无错、ease=2.5 → 无任何加成，下界 1.0
+    assert difficulty_mult(_mastery(wrong=0, ease=2.5, level="familiar")) == 1.0
+
+
+def test_difficulty_mult_new_word_learning():
+    # 新词首答后 level=learning、ease=2.6 → 仅 +0.3
+    assert abs(difficulty_mult(_mastery(wrong=0, ease=2.6, level="learning")) - 1.3) < 1e-9
+
+
+def test_difficulty_mult_hard_clamped_to_two():
+    # wrong=5、ease=1.3、learning：1.0+0.4+0.3+0.36=2.06 → 封顶 2.0
+    assert difficulty_mult(_mastery(wrong=5, ease=1.3, level="learning")) == 2.0
+
+
+def test_difficulty_mult_xp_rounding_is_bankers():
+    """锁定 Python round 银行家舍入：mult=1.3 → round(5*1.3)=round(6.5)=6（非 7）。
+
+    _apply_gamification 用 round(base*mult)，.5 边界走 round-half-to-even，
+    写死此断言以防日后误改成 int() 或普通四舍五入。
+    """
+    mult = difficulty_mult(_mastery(wrong=0, ease=2.6, level="learning"))
+    assert abs(mult - 1.3) < 1e-9
+    assert round(5 * mult) == 6   # round(6.5) → 6（round-half-to-even）

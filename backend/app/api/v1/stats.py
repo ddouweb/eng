@@ -63,3 +63,19 @@ async def get_profile(
     """
     svc = StatsService(db)
     return await svc.get_profile(member_id)
+
+
+@router.get("/weekly-settlement")
+async def get_weekly_settlement(
+    member_id: int = Query(1, ge=1),
+    db: AsyncSession = Depends(get_db),
+):
+    """每周奖励结算：周分四维（坚持/难度/新词/计划）+ 星 + bonus + plan_health + 历史。
+
+    打开即懒结算上周（若到期）。单人模式 member_id 恒为 1。
+
+    Example:
+        curl http://localhost:8000/api/v1/stats/weekly-settlement?member_id=1
+    """
+    svc = StatsService(db)
+    return await svc.get_weekly_settlement(member_id)

@@ -88,3 +88,17 @@ async def resume_plan(plan_id: int, db: AsyncSession = Depends(get_db)):
     """
     svc = PlanService(db)
     return await svc.resume_plan(plan_id)
+
+
+@router.post("/{plan_id}/rebalance")
+async def rebalance_plan(plan_id: int, db: AsyncSession = Depends(get_db)):
+    """手动重新平衡计划：把剩余未掌握词重新摊到 deadline 前的未来学习日。
+
+    单日新词上限 daily_goal×1.5（过载护栏）；救不回 deadline 时 feasible=false 告警但不越界。
+    单人模式 member_id 从计划本身取（恒为 1）。
+
+    Example:
+        curl -X POST http://localhost:8000/api/v1/plans/1/rebalance
+    """
+    svc = PlanService(db)
+    return await svc.rebalance_plan(plan_id)
