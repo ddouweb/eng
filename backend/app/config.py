@@ -41,6 +41,30 @@ class Settings(BaseSettings):
     JWT_SECRET_KEY: str = ""  # 必须显式配置；不再默认占位密钥
     JWT_EXPIRE_MINUTES: int = 1440
 
+    # ── 现金激励（Cash Incentive）── 默认关，.env 显式 CASH_ENABLED=true 开启 ──
+    # 周学习现金 + 里程碑奖金两层；金额累计进 member.cash_balance 虚拟钱包，线下兑现。
+    # 防通胀：周现金奖「每周质量」、里程碑奖「离散成就」，不重复支付；详见 docs/Settlement.md。
+    CASH_ENABLED: bool = False
+    CASH_CURRENCY: str = "CNY"            # 展示符号
+    CASH_WEEKLY_CAP: float = 50.0         # 周现金硬上限（元）
+    # 周现金分档（星数 + 计划完成度 → 元）；档位结构见 app/cash.py _WEEKLY_TIER_SPEC
+    CASH_TIER_5_FULL: float = 50.0        # 5★ 且 ≥100% 完成
+    CASH_TIER_5: float = 40.0             # 5★
+    CASH_TIER_4_FULL: float = 30.0        # 4★ 且 ≥100% 完成
+    CASH_TIER_4: float = 20.0             # 4★
+    CASH_TIER_3: float = 10.0             # 3★
+    # 里程碑奖金（达标即发，幂等；每里程碑终身一次）
+    CASH_MS_UNIT_BIG: float = 100.0       # 背完 ≥200 词的 Unit
+    CASH_MS_UNIT_MID: float = 50.0        # 100~199 词
+    CASH_MS_UNIT_SMALL: float = 30.0      # <100 词
+    CASH_MS_WORDS_100: float = 10.0       # 累计掌握 100 词
+    CASH_MS_WORDS_500: float = 20.0
+    CASH_MS_WORDS_1000: float = 50.0
+    CASH_MS_WORDS_2000: float = 100.0
+    CASH_MS_STREAK_4: float = 20.0        # 连续 4 周全勤
+    CASH_MS_STREAK_8: float = 50.0
+    CASH_MS_STREAK_12: float = 100.0
+
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
     @property

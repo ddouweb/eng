@@ -5,7 +5,10 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
+from app.cash import build_milestone_candidates
 from app.gamification import MAX_FREEZE_BALANCE, xp_to_level
+from app.models.cash_milestone import CashMilestone
 from app.models.member import Member
 from app.models.settlement import WeeklySettlement
 from app.models.streak import MemberBadge, MemberStreak
@@ -14,6 +17,7 @@ from app.schemas.common import success
 from app.settlement_score import (
     compute_bonus,
     compute_stars,
+    compute_weekly_cash,
     expected_learn_days,
     plan_health,
     score_difficulty,
@@ -99,12 +103,15 @@ class StatsService:
         })
 
     async def get_weekly_settlement(self, member_id: int) -> dict:
-        """每周结算：周分四维 + 星 + bonus + plan_health + 历史快照（近 20 周）。
+        """每周结算：周分四维 + 星 + bonus + cash + plan_health + 历史快照（近 20 周）。
 
-        打开即懒结算上周。snapshot 语义：不保证与并发 rejudge 强一致；
-        首启回算最多 4 周可能延迟 1~2 秒。
+        打开即懒结算上周，随后（CASH_ENABLED 时）懒发放里程碑奖金。snapshot 语义：不保证与
+        并发 rejudge 强一致；首启回算最多 4 周可能延迟 1~2 秒。响应另含 cash_balance /
+        cash_enabled / milestones 供前端现金卡展示。
         """
         await self._maybe_settle_week(member_id)
+        if settings.CASH_ENABLED:
+            await self._maybe_grant_milestones(member_id)
         rows = (
             await self.session.execute(
                 select(WeeklySettlement)
@@ -114,10 +121,34 @@ class StatsService:
             )
         ).scalars().all()
         history = [self._settlement_to_dict(r) for r in rows]
+
+        member = await self.session.get(Member, member_id)
+        milestones = (
+            await self.session.execute(
+                select(CashMilestone)
+                .where(CashMilestone.member_id == member_id)
+                .order_by(CashMilestone.granted_at.desc())
+                .limit(50)
+            )
+        ).scalars().all()
         return success(data={
             "history": history,
             "latest": history[0] if history else None,
+            "cash_balance": round((member.cash_balance if member else 0.0) or 0.0, 2),
+            "cash_enabled": bool(settings.CASH_ENABLED),
+            "milestones": [self._milestone_to_dict(m) for m in milestones],
         })
+
+    @staticmethod
+    def _milestone_to_dict(m: CashMilestone) -> dict:
+        return {
+            "milestone_key": m.milestone_key,
+            "milestone_type": m.milestone_type,
+            "threshold": m.threshold,
+            "amount": round(m.amount or 0.0, 2),
+            "snapshot": m.snapshot,
+            "granted_at": m.granted_at.isoformat() if m.granted_at else None,
+        }
 
     # ─────────────────────────────────────────────────────
     # 每周懒结算
@@ -226,6 +257,12 @@ class StatsService:
             round(task_stats["completed_slots"] / task_stats["planned_slots"], 3)
             if task_stats["planned_slots"] > 0 else 0.0
         )
+        # 周学习现金：CASH_ENABLED 关闭时为 (0.0, None)（行照写，不累加钱包）。
+        # 与 bonus_xp 独立的阶跃分档（见 settlement_score.compute_weekly_cash），不回收 bonus。
+        cash_reward, cash_tier = (
+            compute_weekly_cash(stars, plan_completion)
+            if settings.CASH_ENABLED else (0.0, None)
+        )
         row = WeeklySettlement(
             member_id=member_id, week_key=week_key, week_start=ws, week_end=we,
             login_score=login_score, difficulty_score=difficulty_score,
@@ -233,17 +270,24 @@ class StatsService:
             real_days=active_days, new_words_learned=new_words, plan_completion=plan_completion,
             bonus_xp=bonus, freeze_granted=freeze_granted,
             badges_granted=new_badges or None, plan_health=health,
+            cash_reward=cash_reward, cash_tier_label=cash_tier,
         )
 
-        # 一个原子提交：row + bonus + freeze + 徽章 同 savepoint。
+        # 一个原子提交：row + bonus + cash + freeze + 徽章 同 savepoint。
         # 命中周唯一约束 OR 徽章唯一约束都会整体回滚——后者极罕见（首获徽章的并发竞态），
         # 且自愈：下次打开时该周仍未结算、徽章已被 pre-filter 跳过，干净补结。
+        # ⚠️ 条件须含 cash_reward：只发现金不发 XP 时也要加载 member 累加 cash_balance。
         try:
             async with self.session.begin_nested():
-                if bonus > 0:
+                if bonus > 0 or cash_reward > 0:
                     member = await self.session.get(Member, member_id)
                     if member is not None:
-                        member.total_xp = (member.total_xp or 0) + bonus
+                        if bonus > 0:
+                            member.total_xp = (member.total_xp or 0) + bonus
+                        if cash_reward > 0:
+                            member.cash_balance = round(
+                                (member.cash_balance or 0.0) + cash_reward, 2
+                            )
                 if freeze_granted and state is not None:
                     state.freeze_balance = min(freeze_balance + 1, MAX_FREEZE_BALANCE)
                 for key in new_badges:
@@ -256,10 +300,63 @@ class StatsService:
             )
             return False
         logger.info(
-            "settled member=%s week=%s total=%s bonus=%s freeze=%s",
-            member_id, week_key, total, bonus, freeze_granted,
+            "settled member=%s week=%s total=%s bonus=%s cash=%s freeze=%s",
+            member_id, week_key, total, bonus, cash_reward, freeze_granted,
         )
         return True
+
+    # ─────────────────────────────────────────────────────
+    # 现金里程碑懒发放
+    # ─────────────────────────────────────────────────────
+    async def _maybe_grant_milestones(self, member_id: int) -> None:
+        """检测三类里程碑并幂等发放（unit_complete / cumulative_words / attendance_streak）。
+
+        每条独立 savepoint（单条竞态不影响其他条）；幂等预过滤先 SELECT，未命中才 INSERT。
+        snapshot 语义：发放后词/周回退不回扣（同 bonus_xp）。里程碑=「首达」非「持续」，
+        故 CASH_ENABLED 首次开启后，打开页面会一次性补发所有当下已达成的历史里程碑。
+        """
+        units_status = await self.repo.get_all_units_mastery_status(member_id)
+        mastered_total = sum(u["mastered"] for u in units_status)
+        att_streak = await self.repo.get_full_attendance_week_streak(member_id)
+        candidates = build_milestone_candidates(units_status, att_streak, mastered_total)
+
+        granted_any = False
+        for cand in candidates:
+            existing = await self.session.scalar(
+                select(CashMilestone).where(
+                    CashMilestone.member_id == member_id,
+                    CashMilestone.milestone_key == cand.key,
+                )
+            )
+            if existing is not None:
+                continue
+            try:
+                async with self.session.begin_nested():
+                    member = await self.session.get(Member, member_id)
+                    if member is not None:
+                        member.cash_balance = round(
+                            (member.cash_balance or 0.0) + cand.amount, 2
+                        )
+                    self.session.add(CashMilestone(
+                        member_id=member_id,
+                        milestone_key=cand.key,
+                        milestone_type=cand.type,
+                        threshold=cand.threshold,
+                        amount=cand.amount,
+                        snapshot=cand.snapshot,
+                    ))
+                granted_any = True
+            except IntegrityError:
+                # 极罕见：SELECT 与 INSERT 之间另一次并发刚插了同一 key。
+                # savepoint 已回滚该次 cash_balance 累加 → 自愈：下次打开被 SELECT 跳过。
+                logger.info("milestone race: member=%s key=%s", member_id, cand.key)
+                continue
+        if granted_any:
+            try:
+                await self.session.commit()
+            except IntegrityError:
+                await self.session.rollback()
+                raise
 
     @staticmethod
     def _settlement_to_dict(r: WeeklySettlement) -> dict:
@@ -278,6 +375,8 @@ class StatsService:
             "plan_completion": r.plan_completion,
             "bonus_xp": r.bonus_xp,
             "freeze_granted": r.freeze_granted,
+            "cash_reward": round(r.cash_reward or 0.0, 2),
+            "cash_tier_label": r.cash_tier_label,
             "badges_granted": r.badges_granted or [],
             "plan_health": r.plan_health,
             "settled_at": r.settled_at.isoformat() if r.settled_at else None,

@@ -7,6 +7,8 @@ from app.models.enums import MasteryLevel, PlanStatus, PlanType, TaskStatus
 from app.models.mastery import MasteryRecord
 from app.models.plan import DailyTask, LearningPlan, PlanUnit
 from app.models.practice import PracticeRecord, PracticeSession
+from app.models.settlement import WeeklySettlement
+from app.models.unit import Unit
 from app.models.word import Word
 
 
@@ -314,3 +316,77 @@ class StatsRepo:
             "total_words": total_words,
             "mastered": mastered,
         }
+
+    # ─────────────────────────────────────────────────────
+    # 现金里程碑检测查询
+    # ─────────────────────────────────────────────────────
+    async def get_full_attendance_week_streak(self, member_id: int) -> int:
+        """连续「全勤周」数：从最近一张 weekly_settlement 往回，仅当相邻周恰好相差 7 天
+        且 real_days>=7 才累计；遇缺失周或非全勤周即停。
+
+        ⚠️ 必须校验 week_start 连续性：完全没练习的周不造 settlement 行（_settle_one_week
+        对 active_days==0 返回 False，不落表）。若只看 real_days>=7 而不校验相邻性，会
+        跳过缺失周继续累加 → 虚高 streak → 多付里程碑现金。故用 week_start 做 7 天步进校验。
+
+        仅基于已落表行（懒结算只回算最近 SETTLE_BACKFILL_WEEKS 周，超窗历史全勤周不计入）。
+        """
+        stmt = (
+            select(WeeklySettlement.week_start, WeeklySettlement.real_days)
+            .where(WeeklySettlement.member_id == member_id)
+            .order_by(WeeklySettlement.week_start.desc())
+            .limit(60)
+        )
+        rows = (await self.session.execute(stmt)).all()
+        streak = 0
+        expected: date | None = None
+        for week_start, real_days in rows:
+            if expected is None:
+                expected = week_start      # 锚定最近一周
+            if week_start == expected and real_days >= 7:
+                streak += 1
+                expected = week_start - timedelta(days=7)
+            else:
+                break   # 缺失周（≠expected）或非全勤 → 当前连续段结束
+        return streak
+
+    async def get_all_units_mastery_status(self, member_id: int) -> list[dict]:
+        """批量返回各 unit 的 {unit_id, total_words, mastered}，避免逐 unit N 次查询。
+
+        单 SQL：LEFT JOIN Unit→Word→MasteryRecord 按 unit group。mastered 口径与
+        get_active_forward_plan_with_remaining 完全一致：MasteryRecord.level∈{familiar,permanent}。
+        供 cash.build_milestone_candidates 判定 unit_complete。
+        """
+        stmt = (
+            select(
+                Unit.id.label("unit_id"),
+                func.count(Word.id).label("total_words"),
+                func.coalesce(
+                    func.sum(
+                        case(
+                            (
+                                MasteryRecord.level.in_(
+                                    [MasteryLevel.familiar, MasteryLevel.permanent]
+                                ),
+                                1,
+                            ),
+                            else_=0,
+                        )
+                    ),
+                    0,
+                ).label("mastered"),
+            )
+            .select_from(Unit)
+            .outerjoin(Word, Word.unit_id == Unit.id)
+            .outerjoin(
+                MasteryRecord,
+                (MasteryRecord.word_id == Word.id)
+                & (MasteryRecord.member_id == member_id),
+            )
+            .group_by(Unit.id)
+            .order_by(Unit.sequence)
+        )
+        rows = (await self.session.execute(stmt)).all()
+        return [
+            {"unit_id": r[0], "total_words": int(r[1] or 0), "mastered": int(r[2] or 0)}
+            for r in rows
+        ]

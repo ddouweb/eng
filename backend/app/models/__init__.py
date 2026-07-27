@@ -8,6 +8,7 @@ from app.models.plan import DailyTask, LearningPlan, PlanUnit
 from app.models.wrong_book import WrongWordBook
 from app.models.streak import MemberBadge, MemberStreak
 from app.models.settlement import WeeklySettlement
+from app.models.cash_milestone import CashMilestone
 from app.models.enums import (
     MasteryLevel,
     PlanStatus,
@@ -33,6 +34,7 @@ __all__ = [
     "MemberStreak",
     "MemberBadge",
     "WeeklySettlement",
+    "CashMilestone",
     "MasteryLevel",
     "PlanStatus",
     "PracticeMode",

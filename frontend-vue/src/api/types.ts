@@ -241,7 +241,7 @@ export interface RebalanceResult {
   last_rebalanced_at: string | null
 }
 
-// ── Weekly settlement (Phase A)
+// ── Weekly settlement (Phase A) + 现金激励（Cash Incentive）
 export interface PlanHealth {
   remaining_unmastered: number
   remaining_learn_days: number | null
@@ -265,9 +265,31 @@ export interface WeeklySettlement {
   plan_completion: number
   bonus_xp: number
   freeze_granted: number
+  // 现金激励（CASH_ENABLED 开启时）；未启用/≤2星 → cash_reward=0、cash_tier_label=null
+  cash_reward: number
+  cash_tier_label: string | null
   badges_granted: string[]
   plan_health: PlanHealth | null
   settled_at: string | null
+}
+
+// 现金里程碑发放记录（unit_complete / cumulative_words / attendance_streak 三类）
+export interface CashMilestone {
+  milestone_key: string
+  milestone_type: 'unit_complete' | 'cumulative_words' | 'attendance_streak'
+  threshold: number
+  amount: number
+  snapshot: Record<string, unknown> | null
+  granted_at: string | null
+}
+
+// GET /stats/weekly-settlement 响应 data
+export interface WeeklySettlementData {
+  history: WeeklySettlement[]
+  latest: WeeklySettlement | null
+  cash_balance: number
+  cash_enabled: boolean
+  milestones: CashMilestone[]
 }
 
 // ── Wrong book

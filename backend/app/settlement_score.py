@@ -9,6 +9,7 @@ bonus 只来自坚持+计划（与逐题难度 XP 不重叠），封顶 30/周�
 import math
 from datetime import date, timedelta
 
+from app.cash import CASH_WEEKLY_CAP, WEEKLY_CASH_TIERS, CashTier
 from app.schemas.plan import parse_learn_weekdays
 from app.services.plan_service import _count_learn_days
 
@@ -66,6 +67,27 @@ def compute_bonus(login_score: int, plan_score: int) -> int:
     bonus = int(round((login_score + plan_score) / (LOGIN_FULL + PLAN_FULL) * BONUS_XP_CAP))
     bonus = int(_clamp(bonus, 0, BONUS_XP_CAP))
     return 0 if bonus < BONUS_XP_MIN else bonus
+
+
+def compute_weekly_cash(
+    stars: int,
+    plan_completion: float,
+    tiers: list[CashTier] | None = None,
+    cap: float = CASH_WEEKLY_CAP,
+) -> tuple[float, str | None]:
+    """周学习现金（分档制）。返回 (round(amount,2), tier_label)。
+
+    按 tiers 顺序找第一条 (stars>=min_stars AND plan_completion>=min_completion) 命中档；
+    都不命中（≤2星）→ (0.0, None)。amount 再 clamp 到 cap（双保险），round(2) 防浮点漂移。
+
+    刻意不与 compute_bonus 共用公式：cash 是阶跃分档、bonus 是线性比例，两套规则独立可调
+    （运维改一档不影响 XP 曲线）。tiers 默认取 cash.WEEKLY_CASH_TIERS（settings 驱动），测试可传 override。
+    """
+    use = tiers if tiers is not None else WEEKLY_CASH_TIERS
+    for t in use:
+        if stars >= t.min_stars and plan_completion >= t.min_completion:
+            return (round(min(t.amount, cap), 2), t.label)
+    return (0.0, None)
 
 
 def compute_stars(total_score: int) -> int:

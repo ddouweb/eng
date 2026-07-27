@@ -19,7 +19,7 @@ import type {
   StatsProfile,
   SubmitResp,
   Unit,
-  WeeklySettlement,
+  WeeklySettlementData,
   Word,
   WrongWordItem,
 } from './types'
@@ -204,7 +204,7 @@ export const api = {
   getStatsProfile: () =>
     request<StatsProfile>('get', '/stats/profile', { params: { member_id: MEMBER_ID } }),
   getWeeklySettlement: () =>
-    request<{ history: WeeklySettlement[]; latest: WeeklySettlement | null }>(
+    request<WeeklySettlementData>(
       'get',
       '/stats/weekly-settlement',
       { params: { member_id: MEMBER_ID } },

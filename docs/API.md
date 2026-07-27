@@ -569,6 +569,38 @@ Query 参数：`days=30`（1-365）
 }
 ```
 
+### GET /api/v1/stats/weekly-settlement — 每周结算（含现金激励）
+
+打开即懒结算上周 +（`CASH_ENABLED` 时）发放里程碑奖金。返回周报历史 + 虚拟钱包 + 里程碑。
+评分公式 / 周现金分档 / 里程碑清单 / 防通胀设计 / `.env` 配置 **详见 [Settlement.md](./Settlement.md)**。
+
+```json
+// Response（节选关键字段）
+{
+  "code": 200,
+  "data": {
+    "history": [
+      {
+        "week_key": "2026-W29", "total_score": 68, "stars": 3,
+        "login_score": 25, "difficulty_score": 12, "new_score": 1, "plan_score": 30,
+        "bonus_xp": 30, "freeze_granted": 1,
+        "cash_reward": 10.0, "cash_tier_label": "3star",
+        "badges_granted": ["week_login_7"], "plan_health": null
+      }
+    ],
+    "latest": { "...": "同上" },
+    "cash_balance": 60.0,
+    "cash_enabled": true,
+    "milestones": [
+      { "milestone_key": "unit_complete:5", "milestone_type": "unit_complete",
+        "threshold": 5, "amount": 50.0,
+        "snapshot": { "unit_id": 5, "total_words": 120, "mastered": 120 },
+        "granted_at": "2026-07-15T08:00:00" }
+    ]
+  }
+}
+```
+
 ---
 
 ## AI API

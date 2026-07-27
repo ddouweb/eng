@@ -1,9 +1,11 @@
-"""settlement_score 纯函数测试（无 DB）：四维评分 + bonus + stars + plan_health。"""
+"""settlement_score 纯函数测试（无 DB）：四维评分 + bonus + stars + plan_health + 周现金。"""
 from datetime import date
 
+from app.cash import CashTier
 from app.settlement_score import (
     compute_bonus,
     compute_stars,
+    compute_weekly_cash,
     expected_learn_days,
     plan_health,
     score_difficulty,
@@ -132,3 +134,51 @@ def test_plan_health_with_deadline_fields():
     assert isinstance(h["projected_finish"], str)
     assert isinstance(h["on_track"], bool)
     assert h["suggested_daily_goal"] is not None and h["suggested_daily_goal"] > 0
+
+
+# ── compute_weekly_cash（分档制；显式 tiers 不依赖 settings）──
+_TIERS = [
+    CashTier(5, 1.0, 50.0, "5star_full"),
+    CashTier(5, 0.0, 40.0, "5star"),
+    CashTier(4, 1.0, 30.0, "4star_full"),
+    CashTier(4, 0.0, 20.0, "4star"),
+    CashTier(3, 0.0, 10.0, "3star"),
+]
+
+
+def test_cash_5star_full_completion():
+    assert compute_weekly_cash(5, 1.0, _TIERS) == (50.0, "5star_full")
+
+
+def test_cash_5star_below_full():
+    # 0.99 < 1.0 → 落普通 5 星档（plan_completion 是浮点，边界敏感）
+    assert compute_weekly_cash(5, 0.99, _TIERS) == (40.0, "5star")
+
+
+def test_cash_4star_full():
+    assert compute_weekly_cash(4, 1.0, _TIERS) == (30.0, "4star_full")
+
+
+def test_cash_4star_plain():
+    assert compute_weekly_cash(4, 0.5, _TIERS) == (20.0, "4star")
+
+
+def test_cash_3star():
+    assert compute_weekly_cash(3, 0.0, _TIERS) == (10.0, "3star")
+
+
+def test_cash_below_3star_zero():
+    assert compute_weekly_cash(2, 1.0, _TIERS) == (0.0, None)
+    assert compute_weekly_cash(0, 0.0, _TIERS) == (0.0, None)
+
+
+def test_cash_cap_clamp():
+    # 档金额超过 cap → 截断到 cap（双保险）
+    big = [CashTier(5, 1.0, 999.0, "x")]
+    assert compute_weekly_cash(5, 1.0, big, cap=50.0) == (50.0, "x")
+
+
+def test_cash_default_tiers_match_settings_defaults():
+    # 不传 tiers → 用 cash.WEEKLY_CASH_TIERS（settings 默认 50/40/30/20/10）
+    assert compute_weekly_cash(5, 1.0) == (50.0, "5star_full")
+    assert compute_weekly_cash(3, 0.0) == (10.0, "3star")

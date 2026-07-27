@@ -51,6 +51,11 @@ class WeeklySettlement(TimestampMixin, Base):
     # 奖励发放审计
     bonus_xp: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     freeze_granted: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    # 现金激励（CASH_ENABLED 开启时）：本周学习现金 + 命中档位标签。
+    # cash_reward 与 bonus_xp 同 savepoint 原子累加进 member.cash_balance；命中周唯一约束回滚则同生共死。
+    # CASH_ENABLED=false 或 ≤2 星 → cash_reward=0.0、cash_tier_label=None（保留"未参评"语义）。
+    cash_reward: Mapped[float] = mapped_column(Float, nullable=False, default=0.0, server_default="0.0")
+    cash_tier_label: Mapped[str | None] = mapped_column(String(40), nullable=True)
     badges_granted: Mapped[list | None] = mapped_column(JSON, nullable=True)
     plan_health: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     settled_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, server_default=func.now())

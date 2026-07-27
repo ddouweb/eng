@@ -352,6 +352,34 @@ Phase 5 实现：`learning_plan`, `plan_units`, `daily_task`
 
 Phase 6 实现：`learning_streak`
 
+Phase A 实现：`weekly_settlement`（每周结算快照，详见 [Settlement.md](./Settlement.md)）、`member_badge`、`member_streak`
+
+Phase E 实现：`cash_milestone`（现金里程碑台账）；并在 `member` 加 `cash_balance`、`weekly_settlement` 加 `cash_reward`/`cash_tier_label`
+
+### cash_milestone（现金里程碑发放台账，Phase E）
+
+```sql
+CREATE TABLE `cash_milestone` (
+  `id`             BIGINT NOT NULL AUTO_INCREMENT,
+  `member_id`      BIGINT NOT NULL,
+  `milestone_key`  VARCHAR(80)  NOT NULL,   -- unit_complete:5 / cumulative_words:500 / attendance_streak:8
+  `milestone_type` VARCHAR(40)  NOT NULL,   -- unit_complete / cumulative_words / attendance_streak
+  `threshold`      INT          NOT NULL DEFAULT 0,
+  `amount`         FLOAT        NOT NULL DEFAULT 0.0,
+  `snapshot`       JSON         NULL,        -- 发放时刻证据（审计）
+  `granted_at`     DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `created_at`     DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at`     DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_member_milestone_key` (`member_id`, `milestone_key`),
+  KEY `ix_cash_milestone_member_id` (`member_id`),
+  CONSTRAINT `fk_cash_milestone_member` FOREIGN KEY (`member_id`) REFERENCES `member`(`id`) ON DELETE CASCADE
+);
+```
+
+**说明：** 现金里程碑幂等台账（一人一里程碑一行）。达标即发、终身一次；snapshot 语义不回扣。
+`member.cash_balance` FLOAT 累计虚拟钱包（周学习现金 + 里程碑奖金）。完整规则见 [Settlement.md](./Settlement.md)。
+
 ---
 
 ## 索引策略
