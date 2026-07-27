@@ -17,6 +17,8 @@ const { play } = useTtsAudio()
 const q = computed(() => store.currentQuestion)
 
 const answered = ref(false)
+// 答前「显示答案」翻面（偷看中文释义，不等于作答；对齐老版 fc_show）。
+const peeked = ref(false)
 // manual 路径下的待定判定：true=认识 / false=不认识 / null=未选。
 const pending = ref<boolean | null>(null)
 // auto 路径倒计时剩余秒数（用于「⏱️ Xs 后自动下一题」展示）。
@@ -67,7 +69,7 @@ function startAutoCountdown() {
 
 function replay() {
   const cur = store.currentQuestion
-  if (cur) void play(cur.english)
+  if (cur) void play(cur.english, store.fcSpeed)
 }
 
 function onAnswer(recognized: boolean) {
@@ -106,11 +108,12 @@ watch(
   () => {
     clearTimers()
     answered.value = false
+    peeked.value = false
     pending.value = null
     autoRemaining.value = 0
     advanced.value = false
     const cur = store.currentQuestion
-    if (cur) void play(cur.english)
+    if (cur && store.autoPlay) void play(cur.english, store.fcSpeed)
   },
   { immediate: true },
 )
@@ -131,9 +134,16 @@ onBeforeUnmount(() => {
     <NSpace v-if="!answered" :size="12">
       <NButton size="large" type="primary" @click="onAnswer(true)">✅ 认识</NButton>
       <NButton size="large" @click="onAnswer(false)">❌ 不认识</NButton>
+      <NButton size="large" quaternary @click="peeked = !peeked">
+        {{ peeked ? '隐藏答案' : '显示答案' }}
+      </NButton>
     </NSpace>
 
-    <div v-else class="reveal">
+    <NAlert v-if="!answered && peeked" type="info" :show-icon="false">
+      <b>{{ q.chinese }}</b>
+    </NAlert>
+
+    <div v-if="answered" class="reveal">
       <NAlert type="info">
         <b>{{ q.chinese }}</b>
       </NAlert>

@@ -64,7 +64,7 @@ watch(
   () => [currentQ.value?.word_id, phase.value],
   () => {
     refreshOpts()
-    void playCurrent()
+    if (store.autoPlay) void playCurrent()
   },
   { immediate: true },
 )
@@ -91,7 +91,7 @@ function refreshOpts() {
 
 async function playCurrent() {
   const q = currentQ.value
-  if (q) await play(q.english)
+  if (q) await play(q.english, store.fcSpeed)
 }
 
 // 细粒度推进顶栏进度（store.idx）：本批起点 + 已答 quiz 数。
@@ -227,7 +227,6 @@ function nextQuiz() {
 
 <style scoped>
 .memory-flash {
-  max-width: 640px;
   margin: 0 auto;
 }
 .batch-meta {

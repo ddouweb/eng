@@ -2,15 +2,7 @@
 // 中→英选择。源页 L822-868。英文干扰项来自 session 题集，进入该题时惰性生成、
 // 按 word_id 缓存（prev/next 往返不重排）。答后揭示音标/词性/英释/例句（源 _phonetic_audio_inline）。
 import { computed, ref, watch } from 'vue'
-import {
-  NAlert,
-  NButton,
-  NCard,
-  NProgress,
-  NRadio,
-  NRadioGroup,
-  useMessage,
-} from 'naive-ui'
+import { NAlert, NButton, NCard, NRadio, NRadioGroup, useMessage } from 'naive-ui'
 
 import { usePracticeStore } from '@/stores/practice'
 import { useTtsAudio } from '@/composables/useTtsAudio'
@@ -25,9 +17,6 @@ const q = computed(() => store.currentQuestion)
 const answered = computed(() => (q.value ? store.results.has(q.value.word_id) : false))
 const entry = computed(() => (q.value ? store.results.get(q.value.word_id) : undefined))
 const isCorrect = computed(() => entry.value?.isCorrect ?? false)
-const progressPct = computed(() =>
-  store.total ? Math.round((store.idx / store.total) * 100) : 0,
-)
 const phonetic = computed(() => formatPhonetic(q.value?.phonetic))
 
 const selected = ref<string | null>(null)
@@ -56,7 +45,7 @@ watch(
 )
 
 function onPlay() {
-  if (q.value) void play(q.value.english)
+  if (q.value) void play(q.value.english, store.fcSpeed)
 }
 
 async function onSubmit() {
@@ -82,11 +71,6 @@ function goNext() {
 <template>
   <div class="mode-wrap">
     <NCard size="medium">
-      <div class="prog">
-        <span class="prog-text">第 {{ store.idx + 1 }} / {{ store.total }} 题</span>
-        <NProgress :percentage="progressPct" :show-indicator="false" />
-      </div>
-
       <div v-if="q" class="body">
         <h3 class="cn">{{ q.chinese }}</h3>
 
@@ -137,17 +121,7 @@ function goNext() {
 
 <style scoped>
 .mode-wrap {
-  max-width: 720px;
   margin: 0 auto;
-}
-.prog {
-  margin-bottom: 16px;
-}
-.prog-text {
-  display: block;
-  color: #888;
-  font-size: 13px;
-  margin-bottom: 6px;
 }
 .cn {
   margin: 0 0 12px;

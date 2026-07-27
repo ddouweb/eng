@@ -2,14 +2,7 @@
 // 中→英拼写。源页 L871-900。大小写不敏感；提交前校验非空（源 L883）。
 // 答后揭示音标/词性/英释/例句（源 _phonetic_audio_inline）。源页无「上一题」。
 import { computed, ref, watch } from 'vue'
-import {
-  NAlert,
-  NButton,
-  NCard,
-  NInput,
-  NProgress,
-  useMessage,
-} from 'naive-ui'
+import { NAlert, NButton, NCard, NInput, useMessage } from 'naive-ui'
 
 import { usePracticeStore } from '@/stores/practice'
 import { useTtsAudio } from '@/composables/useTtsAudio'
@@ -23,9 +16,6 @@ const q = computed(() => store.currentQuestion)
 const answered = computed(() => (q.value ? store.results.has(q.value.word_id) : false))
 const entry = computed(() => (q.value ? store.results.get(q.value.word_id) : undefined))
 const isCorrect = computed(() => entry.value?.isCorrect ?? false)
-const progressPct = computed(() =>
-  store.total ? Math.round((store.idx / store.total) * 100) : 0,
-)
 const phonetic = computed(() => formatPhonetic(q.value?.phonetic))
 
 const answer = ref('')
@@ -38,7 +28,7 @@ watch(
 )
 
 function onPlay() {
-  if (q.value) void play(q.value.english)
+  if (q.value) void play(q.value.english, store.fcSpeed)
 }
 
 async function onSubmit() {
@@ -62,11 +52,6 @@ function goNext() {
 <template>
   <div class="mode-wrap">
     <NCard size="medium">
-      <div class="prog">
-        <span class="prog-text">第 {{ store.idx + 1 }} / {{ store.total }} 题</span>
-        <NProgress :percentage="progressPct" :show-indicator="false" />
-      </div>
-
       <div v-if="q" class="body">
         <p class="cn"><strong>中文：</strong>{{ q.chinese }}</p>
 
@@ -115,17 +100,7 @@ function goNext() {
 
 <style scoped>
 .mode-wrap {
-  max-width: 720px;
   margin: 0 auto;
-}
-.prog {
-  margin-bottom: 16px;
-}
-.prog-text {
-  display: block;
-  color: #888;
-  font-size: 13px;
-  margin-bottom: 6px;
 }
 .cn {
   font-size: 18px;

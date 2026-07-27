@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, watch, type Component } from 'vue'
-import { NAlert, NButton, NProgress } from 'naive-ui'
+import { NAlert, NButton, NProgress, NSelect, NSwitch } from 'naive-ui'
 
 import { modeMeta } from '@/constants/modes'
 import { usePracticeStore } from '@/stores/practice'
@@ -19,6 +19,17 @@ import PracticeConfig from '@/views/practice/PracticeConfig.vue'
 import PracticeSummary from '@/views/practice/PracticeSummary.vue'
 
 const store = usePracticeStore()
+
+// TTS 播放速率（与 WordsView 一致；练习中可在顶栏实时调整）。
+const SPEED_OPTIONS = [
+  { label: '0.8×', value: 0.8 },
+  { label: '1×', value: 1 },
+  { label: '1.25×', value: 1.25 },
+  { label: '1.5×', value: 1.5 },
+]
+function onSpeedChange(val: string | number | null): void {
+  if (typeof val === 'number') store.fcSpeed = val
+}
 
 const MODE_COMPS: Record<string, Component> = {
   flashcard: FlashcardMode,
@@ -62,15 +73,26 @@ function exitPractice() {
 <template>
   <div>
     <!-- 顶栏：进度 + 退出 -->
-    <div v-if="phase !== 'config'" class="topbar">
+    <div v-if="phase === 'playing'" class="topbar">
       <span class="mode-tag">{{ modeLabel }}</span>
       <NProgress
         type="line"
         :percentage="progressPct"
-        :show-indicator="false"
+        :show-indicator="true"
         class="topbar-prog"
       />
-      <span class="prog-text">{{ store.idx }}/{{ store.total }}</span>
+      <span class="prog-text">{{ store.idx + 1 }}/{{ store.total }}</span>
+      <span class="audio-ctrl">
+        <NSwitch v-model:value="store.autoPlay" size="small" />
+        <span class="ctrl-label">🔊自动</span>
+        <NSelect
+          :value="store.fcSpeed"
+          :options="SPEED_OPTIONS"
+          size="small"
+          style="width: 80px"
+          @update:value="onSpeedChange"
+        />
+      </span>
       <NButton size="small" tertiary @click="exitPractice">
         {{ store.hasAnswer ? '结束并保存' : '退出(不记录)' }}
       </NButton>
@@ -88,7 +110,7 @@ function exitPractice() {
       </NAlert>
 
       <component :is="modeComp" v-if="phase === 'playing' && modeComp" />
-      <PracticeSummary v-else-if="phase === 'done'" />
+      <PracticeSummary v-if="phase === 'done'" />
     </div>
   </div>
 </template>
@@ -114,9 +136,19 @@ function exitPractice() {
   min-width: 120px;
 }
 .prog-text {
-  font-size: 13px;
-  color: #888;
+  font-size: 15px;
+  color: #555;
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.audio-ctrl {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.ctrl-label {
+  font-size: 12px;
+  color: #888;
   white-space: nowrap;
 }
 .retry-banner {

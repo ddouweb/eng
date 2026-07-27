@@ -1,20 +1,11 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import {
-  NButton,
-  NCard,
-  NInputNumber,
-  NSelect,
-  NSpace,
-  NSwitch,
-  NTag,
-  useMessage,
-  type SelectOption,
-} from 'naive-ui'
+import { NButton, NCard, NInputNumber, NSpace, NSwitch, NTag, useMessage } from 'naive-ui'
 
 import { api } from '@/api/client'
 import { PRACTICE_MODES } from '@/constants/modes'
 import { usePracticeStore } from '@/stores/practice'
+import PracticePreview from '@/views/practice/PracticePreview.vue'
 import type { DailyTask, Unit } from '@/api/types'
 
 const emit = defineEmits<{ started: [] }>()
@@ -28,10 +19,18 @@ const COUNTS = [10, 20, 30, 50, 80, 100, 150, 200, '全部'] as const
 const countChoice = ref<number | '全部'>(50)
 const resolvedCount = computed(() => (countChoice.value === '全部' ? 2000 : countChoice.value))
 
-const unitOptions = computed<SelectOption[]>(() => [
-  { label: `📕 错题本（${wbCount.value}）`, value: 0 },
-  ...units.value.map((u) => ({ label: u.title, value: u.id })),
-])
+// 选 Unit：平铺点击式（错题本=0 作为一个特殊项与各 Unit 并列），点一下切换选中。
+function toggleUnit(id: number) {
+  const i = selectedIds.value.indexOf(id)
+  if (i >= 0) selectedIds.value.splice(i, 1)
+  else selectedIds.value.push(id)
+}
+function selectAllUnits() {
+  selectedIds.value = [0, ...units.value.map((u) => u.id)]
+}
+function clearUnits() {
+  selectedIds.value = []
+}
 
 // ── 练习模式（全页唯一选择处：顶部卡片选中式，统一驱动今日任务入口 + 自由练习）
 const selectedMode = ref('flashcard')
@@ -63,6 +62,19 @@ async function startFree() {
   }
   if (!ensureEnoughForMode(selectedMode.value)) return
   emit('started')
+}
+
+// ── 试听预览（不计统计，不建 session）──
+const previewing = ref(false)
+const previewUnitIds = ref<number[]>([])
+function startPreview() {
+  const ids = selectedIds.value.filter((id) => id > 0)
+  if (!ids.length) {
+    message.warning('试听预览需选择至少一个 Unit（错题本不支持预览）')
+    return
+  }
+  previewUnitIds.value = ids
+  previewing.value = true
 }
 
 // ── 今日计划聚合（spec §3.3）──
@@ -183,6 +195,12 @@ onMounted(async () => {
 
 <template>
   <div class="prac-config">
+    <PracticePreview
+      v-if="previewing"
+      :unit-ids="previewUnitIds"
+      @exit="previewing = false"
+    />
+    <template v-else>
     <h2 style="margin-top: 0">🎯 练习</h2>
 
     <!-- 练习模式（全页唯一选择处）：选中式，驱动下方今日任务 + 自由练习 -->
@@ -205,58 +223,41 @@ onMounted(async () => {
       </div>
     </NCard>
 
-    <!-- 今日任务快捷入口（模式由顶部选择，无重复选择器）-->
-    <NCard v-if="snapshot.length" size="small" title="📌 今日任务" class="block">
-      <NSpace wrap>
-        <NButton
-          v-if="dueN > 0"
-          type="warning"
-          @click="launch(undefined, dueN, '今日到期复习')"
-        >
-          🔁 今日到期复习（{{ dueN }}<template v-if="overdue">，逾期 {{ overdue }}</template>）
-        </NButton>
-        <NButton
-          v-if="agg.hasLearn && !agg.learnDone && agg.learnTotal > 0"
-          type="primary"
-          @click="launch('learn', agg.learnTotal, '今日学习')"
-        >
-          🚀 开始今日学习（剩 {{ agg.learnTotal }}）
-        </NButton>
-        <NButton
-          v-if="agg.hasWeekly && !agg.weeklyDone && agg.weekly > 0"
-          @click="launch('weekly_review', agg.weekly, '本周复习')"
-        >
-          📖 本周复习（剩 {{ agg.weekly }}）
-        </NButton>
-        <NButton
-          v-if="agg.hasMonthly && !agg.monthlyDone"
-          @click="launch('monthly_review', agg.monthly, '本月复习')"
-        >
-          📚 本月复习（剩 {{ agg.monthly }}）
-        </NButton>
-        <NButton
-          v-if="agg.hasDrill && !agg.drillDone"
-          @click="launch('wrong_word_drill', agg.drill, '错题冲刺')"
-        >
-          🎯 错题冲刺（剩 {{ agg.drill }}）
-        </NButton>
-      </NSpace>
-      <p class="hint">以上入口将以「{{ selectedModeMeta.icon }} {{ selectedModeMeta.label }}」模式练习</p>
-    </NCard>
-
     <!-- 自由练习配置 -->
     <NCard size="small" title="🎮 自由练习" class="block">
       <NSpace vertical :size="14">
-        <NSpace align="center" wrap>
-          <span class="field">选择 Unit</span>
-          <NSelect
-            v-model:value="selectedIds"
-            multiple
-            :options="unitOptions"
-            placeholder="可多选（含错题本）"
-            style="min-width: 360px"
-          />
-        </NSpace>
+        <div class="unit-block">
+          <div class="unit-toolbar">
+            <span class="field">选择 Unit</span>
+            <NSpace :size="8">
+              <NButton size="small" tertiary @click="selectAllUnits">全选</NButton>
+              <NButton size="small" tertiary @click="clearUnits">清空</NButton>
+            </NSpace>
+            <span class="sel-count">已选 {{ selectedIds.length }}</span>
+          </div>
+          <div class="unit-grid">
+            <div
+              class="unit-card"
+              :class="{ active: selectedIds.includes(0) }"
+              @click="toggleUnit(0)"
+            >
+              <span class="unit-icon">📕</span>
+              <span class="unit-title">错题本</span>
+              <span class="unit-meta">{{ wbCount }}</span>
+            </div>
+            <div
+              v-for="u in units"
+              :key="u.id"
+              class="unit-card"
+              :class="{ active: selectedIds.includes(u.id) }"
+              @click="toggleUnit(u.id)"
+            >
+              <span class="unit-icon">📘</span>
+              <span class="unit-title">{{ u.title }}</span>
+              <span class="unit-meta" v-if="u.word_count">{{ u.word_count }}</span>
+            </div>
+          </div>
+        </div>
 
         <NSpace align="center" wrap>
           <span class="field">数量</span>
@@ -282,14 +283,54 @@ onMounted(async () => {
           </template>
         </NSpace>
 
-        <NButton
-          type="primary"
-          size="large"
-          :disabled="!selectedIds.length"
-          @click="startFree"
-        >
-          🚀 开始练习（{{ selectedModeMeta.icon }} {{ selectedModeMeta.label }}）
-        </NButton>
+        <NSpace wrap :size="12">
+          <NButton
+            type="primary"
+            size="large"
+            :disabled="!selectedIds.length"
+            @click="startFree"
+          >
+            🚀 开始练习（{{ selectedModeMeta.icon }} {{ selectedModeMeta.label }}）
+          </NButton>
+          <NButton
+            v-if="dueN > 0"
+            type="warning"
+            size="large"
+            @click="launch(undefined, dueN, '今日到期复习')"
+          >
+            🔁 今日到期复习（{{ dueN }}<template v-if="overdue">，逾期 {{ overdue }}</template>）
+          </NButton>
+          <NButton
+            v-if="agg.hasLearn && !agg.learnDone && agg.learnTotal > 0"
+            type="primary"
+            size="large"
+            @click="launch('learn', agg.learnTotal, '今日学习')"
+          >
+            🚀 开始今日学习（剩 {{ agg.learnTotal }}）
+          </NButton>
+          <NButton
+            v-if="agg.hasWeekly && !agg.weeklyDone && agg.weekly > 0"
+            size="large"
+            @click="launch('weekly_review', agg.weekly, '本周复习')"
+          >
+            📖 本周复习（剩 {{ agg.weekly }}）
+          </NButton>
+          <NButton
+            v-if="agg.hasMonthly && !agg.monthlyDone"
+            size="large"
+            @click="launch('monthly_review', agg.monthly, '本月复习')"
+          >
+            📚 本月复习（剩 {{ agg.monthly }}）
+          </NButton>
+          <NButton
+            v-if="agg.hasDrill && !agg.drillDone"
+            size="large"
+            @click="launch('wrong_word_drill', agg.drill, '错题冲刺')"
+          >
+            🎯 错题冲刺（剩 {{ agg.drill }}）
+          </NButton>
+        </NSpace>
+        <NButton quaternary size="small" @click="startPreview">👀 试听预览（不计统计）</NButton>
         <p v-if="!selectedIds.length" class="warn">请先选择至少一个 Unit（或错题本）</p>
       </NSpace>
     </NCard>
@@ -297,14 +338,11 @@ onMounted(async () => {
     <NTag v-if="snapshot.length" :bordered="false" type="info">
       今日计划已聚合 {{ snapshot.length }} 个，涉及 {{ agg.aggUnitIds.length }} 个 Unit
     </NTag>
+    </template>
   </div>
 </template>
 
 <style scoped>
-.prac-config {
-  max-width: 860px;
-  margin: 0 auto;
-}
 .block {
   margin-bottom: 16px;
 }
@@ -319,6 +357,61 @@ onMounted(async () => {
   min-width: 64px;
   color: #666;
   font-size: 14px;
+}
+.unit-block {
+  width: 100%;
+}
+.unit-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+.sel-count {
+  margin-left: auto;
+  font-size: 13px;
+  color: #888;
+}
+.unit-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.unit-card {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid #e0e0e0;
+  border-radius: 16px;
+  padding: 3px 10px;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+  line-height: 1.6;
+}
+.unit-card:hover {
+  border-color: #18a058;
+  background: #f0faf3;
+}
+.unit-card.active {
+  border-color: #18a058;
+  background: #e8f7ee;
+  box-shadow: 0 0 0 1px #18a058 inset;
+}
+.unit-card.active .unit-title {
+  color: #18a058;
+}
+.unit-icon {
+  font-size: 13px;
+}
+.unit-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: #333;
+}
+.unit-meta {
+  font-size: 11px;
+  color: #999;
 }
 .mode-grid {
   display: grid;
@@ -353,11 +446,6 @@ onMounted(async () => {
   margin-top: 6px;
   font-size: 13px;
   color: #444;
-}
-.hint {
-  color: #888;
-  font-size: 13px;
-  margin: 8px 0 0;
 }
 .warn {
   color: #d03050;

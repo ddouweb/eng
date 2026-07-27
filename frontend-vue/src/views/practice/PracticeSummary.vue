@@ -90,11 +90,16 @@ async function loadUnitStats() {
   }
 }
 
-onMounted(loadUnitStats)
+onMounted(() => {
+  loadUnitStats()
+  // 正常完成路径给一次成功反馈（finish 失败时 finishError 非空，不弹，由重试按钮的 toast 负责）
+  if (!store.finishError) message.success('练习记录已保存')
+})
 
 function unitStatText(uid: number): string {
   const s = unitStats[uid]
-  if (s === 'loading') return '加载中…'
+  // undefined：loadUnitStats 尚未跑到该 uid（首次渲染）；与 'loading' 同口径。
+  if (s === 'loading' || s === undefined) return '加载中…'
   if (s === 'failed') return '加载失败'
   return `${s.rate}%`
 }
@@ -110,6 +115,7 @@ function restart() {
 
 <template>
   <div class="summary">
+    <h2 class="done-title">🎉 练习完成！</h2>
     <!-- 结束练习失败：本地统计仍展示，可重试保存到后端 -->
     <NAlert v-if="store.finishError" type="warning" class="finish-error">
       <span>⚠️ 结束练习失败：{{ store.finishError }}（当前为本地统计，可重试保存）</span>
@@ -202,6 +208,10 @@ function restart() {
   display: flex;
   flex-direction: column;
   gap: 16px;
+}
+.done-title {
+  margin: 0;
+  text-align: center;
 }
 .hint {
   color: #999;

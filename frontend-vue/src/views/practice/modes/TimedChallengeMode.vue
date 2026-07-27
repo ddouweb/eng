@@ -34,9 +34,6 @@ let startTime = 0
 const q = computed(() => store.currentQuestion)
 const phonetic = computed(() => (q.value ? formatPhonetic(q.value.phonetic) : ''))
 const isLast = computed(() => store.idx >= store.total - 1)
-const progressPct = computed(() =>
-  store.total > 0 ? Math.round((store.idx / store.total) * 100) : 0,
-)
 const countdownPct = computed(() =>
   Math.max(0, Math.min(100, Math.round((remaining.value / TIME_LIMIT) * 100))),
 )
@@ -84,7 +81,7 @@ function resetForQuestion(newQ: PracticeQuestion) {
     opts.value = generated
   }
   startTimer()
-  void play(newQ.english)
+  if (store.autoPlay) void play(newQ.english, store.fcSpeed)
 }
 
 function selectOption(opt: string) {
@@ -137,7 +134,7 @@ function optionType(opt: string): 'default' | 'success' | 'error' {
 
 async function onPlay() {
   const cur = q.value
-  if (cur) await play(cur.english)
+  if (cur) await play(cur.english, store.fcSpeed)
 }
 
 // 切题（store.idx 推进）即重置状态、重启倒计时。immediate 覆盖首题。
@@ -157,16 +154,6 @@ onBeforeUnmount(stopTimer)
 
 <template>
   <div v-if="q" class="timed-challenge">
-    <!-- 题号进度 -->
-    <NProgress
-      type="line"
-      :percentage="progressPct"
-      :show-indicator="false"
-      :height="6"
-      style="margin-bottom: 4px"
-    />
-    <p class="caption">第 {{ store.idx + 1 }} / {{ store.total }} 题</p>
-
     <!-- 倒计时（未答时显示） -->
     <div v-if="!answered" class="countdown">
       <NProgress
@@ -220,13 +207,7 @@ onBeforeUnmount(stopTimer)
 
 <style scoped>
 .timed-challenge {
-  max-width: 640px;
   margin: 0 auto;
-}
-.caption {
-  color: #999;
-  font-size: 13px;
-  margin: 0 0 12px;
 }
 .countdown {
   margin-bottom: 16px;

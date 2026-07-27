@@ -32,6 +32,8 @@ export const usePracticeStore = defineStore('practice', {
     submitFailures: [] as SubmitFailure[],
     fcAutoNext: false,
     fcDelay: 3.0,
+    fcSpeed: 1,
+    autoPlay: false,
   }),
   getters: {
     total: (s) => s.questions.length,

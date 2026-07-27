@@ -2,13 +2,7 @@
 // 英→中默写。源页 L903-927。精确、大小写敏感（trim 后比对，源 L913 strip）。
 // 题面已展示 english+音标+音频，故答后不再揭示富字段。源页无「上一题」、无空值校验。
 import { computed, ref, watch } from 'vue'
-import {
-  NAlert,
-  NButton,
-  NCard,
-  NInput,
-  NProgress,
-} from 'naive-ui'
+import { NAlert, NButton, NCard, NInput } from 'naive-ui'
 
 import { usePracticeStore } from '@/stores/practice'
 import { useTtsAudio } from '@/composables/useTtsAudio'
@@ -21,9 +15,6 @@ const q = computed(() => store.currentQuestion)
 const answered = computed(() => (q.value ? store.results.has(q.value.word_id) : false))
 const entry = computed(() => (q.value ? store.results.get(q.value.word_id) : undefined))
 const isCorrect = computed(() => entry.value?.isCorrect ?? false)
-const progressPct = computed(() =>
-  store.total ? Math.round((store.idx / store.total) * 100) : 0,
-)
 const phonetic = computed(() => formatPhonetic(q.value?.phonetic))
 
 const answer = ref('')
@@ -36,7 +27,7 @@ watch(
 )
 
 function onPlay() {
-  if (q.value) void play(q.value.english)
+  if (q.value) void play(q.value.english, store.fcSpeed)
 }
 
 async function onSubmit() {
@@ -56,11 +47,6 @@ function goNext() {
 <template>
   <div class="mode-wrap">
     <NCard size="medium">
-      <div class="prog">
-        <span class="prog-text">第 {{ store.idx + 1 }} / {{ store.total }} 题</span>
-        <NProgress :percentage="progressPct" :show-indicator="false" />
-      </div>
-
       <div v-if="q" class="body">
         <div class="word-line">
           <span class="word">{{ q.english }}</span>
@@ -101,17 +87,7 @@ function goNext() {
 
 <style scoped>
 .mode-wrap {
-  max-width: 720px;
   margin: 0 auto;
-}
-.prog {
-  margin-bottom: 16px;
-}
-.prog-text {
-  display: block;
-  color: #888;
-  font-size: 13px;
-  margin-bottom: 6px;
 }
 .word-line {
   display: flex;

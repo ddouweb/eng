@@ -52,7 +52,7 @@ watch(
 
 function replay() {
   const cur = store.currentQuestion
-  if (cur) void play(cur.english)
+  if (cur) void play(cur.english, store.fcSpeed)
 }
 
 function onSubmit() {
@@ -128,7 +128,6 @@ function goNext() {
 
 <style scoped>
 .scramble-mode {
-  max-width: 640px;
   margin: 0 auto;
   display: flex;
   flex-direction: column;

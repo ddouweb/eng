@@ -32,13 +32,18 @@ async function fetchBlobUrl(text: string): Promise<string | null> {
 
 export function useTtsAudio() {
   /** 播放英文发音：优先 blob 缓存（零网络），失败兜底直链。 */
-  async function play(text: string): Promise<void> {
-    if (!text) return
+  async function play(text: string, rate: number = 1): Promise<boolean> {
+    if (!text) return false
     const url = await fetchBlobUrl(text)
     const audio = url ? new Audio(url) : new Audio(api.getTtsUrl(text, 'en'))
-    await audio.play().catch(() => {
-      // 自动播放策略可能拒绝；静默（由用户手势触发的播放不受影响）
-    })
+    audio.playbackRate = rate
+    try {
+      await audio.play()
+      return true
+    } catch {
+      // 自动播放策略可能拒绝；返回 false 供调用方决定是否提示
+      return false
+    }
   }
   return { play }
 }

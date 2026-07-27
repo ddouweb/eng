@@ -1,18 +1,11 @@
 <script setup lang="ts">
 // 英→中选择。源页 L774-819。服务端预生成 q.options，前端只读。
 import { computed, ref, watch } from 'vue'
-import {
-  NAlert,
-  NButton,
-  NCard,
-  NProgress,
-  NRadio,
-  NRadioGroup,
-  useMessage,
-} from 'naive-ui'
+import { NAlert, NButton, NCard, NRadio, NRadioGroup, useMessage } from 'naive-ui'
 
 import { usePracticeStore } from '@/stores/practice'
 import { useTtsAudio } from '@/composables/useTtsAudio'
+import { formatPhonetic } from '@/composables/usePhonetic'
 
 const store = usePracticeStore()
 const message = useMessage()
@@ -27,9 +20,7 @@ const options = computed(() => {
   if (!qv) return [] as string[]
   return qv.options && qv.options.length ? qv.options : [qv.chinese]
 })
-const progressPct = computed(() =>
-  store.total ? Math.round((store.idx / store.total) * 100) : 0,
-)
+const phonetic = computed(() => formatPhonetic(q.value?.phonetic))
 
 const selected = ref<string | null>(null)
 // 上一题回访时从 store.results 复原所选；进入新题清空。
@@ -42,7 +33,7 @@ watch(
 )
 
 function onPlay() {
-  if (q.value) void play(q.value.english)
+  if (q.value) void play(q.value.english, store.fcSpeed)
 }
 
 async function onSubmit() {
@@ -68,14 +59,10 @@ function goNext() {
 <template>
   <div class="mode-wrap">
     <NCard size="medium">
-      <div class="prog">
-        <span class="prog-text">第 {{ store.idx + 1 }} / {{ store.total }} 题</span>
-        <NProgress :percentage="progressPct" :show-indicator="false" />
-      </div>
-
       <div v-if="q" class="body">
         <div class="word-line">
           <span class="word">{{ q.english }}</span>
+          <span v-if="phonetic" class="phon">{{ phonetic }}</span>
           <NButton size="small" quaternary @click="onPlay">🔊 播放</NButton>
         </div>
 
@@ -114,17 +101,7 @@ function goNext() {
 
 <style scoped>
 .mode-wrap {
-  max-width: 720px;
   margin: 0 auto;
-}
-.prog {
-  margin-bottom: 16px;
-}
-.prog-text {
-  display: block;
-  color: #888;
-  font-size: 13px;
-  margin-bottom: 6px;
 }
 .word-line {
   display: flex;
@@ -135,6 +112,10 @@ function goNext() {
 .word {
   font-size: 28px;
   font-weight: 700;
+}
+.phon {
+  color: #888;
+  font-size: 15px;
 }
 .opt-label {
   margin: 0 0 8px;

@@ -37,14 +37,14 @@ watch(
     skipped.value = false
     userAnswer.value = ''
     const cur = store.currentQuestion
-    if (cur) void play(cur.english)
+    if (cur && store.autoPlay) void play(cur.english, store.fcSpeed)
   },
   { immediate: true },
 )
 
 function replay() {
   const cur = store.currentQuestion
-  if (cur) void play(cur.english)
+  if (cur) void play(cur.english, store.fcSpeed)
 }
 
 function onSubmit() {
@@ -124,7 +124,6 @@ function goNext() {
 
 <style scoped>
 .dictation-mode {
-  max-width: 640px;
   margin: 0 auto;
   display: flex;
   flex-direction: column;
