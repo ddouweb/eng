@@ -23,12 +23,36 @@ const loading = ref(true)
 const creating = ref(false)
 const form = reactive({ title: '', sequence: 1 })
 
-async function load() {
+// 真服务端分页：NDataTable remote 模式，翻页带 page/page_size 回源（后端 order_by sequence）。
+const pagination = reactive({
+  page: 1,
+  pageSize: 20,
+  itemCount: 0,
+  showSizePicker: true,
+  pageSizes: [10, 20, 50],
+})
+
+async function load(page = pagination.page, pageSize = pagination.pageSize) {
   loading.value = true
-  const r = await api.listAllUnits()
-  if (r.code === 200) units.value = r.data.items
-  else message.error(`加载失败：${r.message}`)
+  const r = await api.listUnits(page, pageSize)
   loading.value = false
+  if (r.code === 200) {
+    units.value = r.data.items
+    pagination.itemCount = r.data.total
+  } else {
+    message.error(`加载失败：${r.message}`)
+  }
+}
+
+function handlePageChange(p: number) {
+  pagination.page = p
+  void load(p)
+}
+
+function handlePageSizeChange(ps: number) {
+  pagination.pageSize = ps
+  pagination.page = 1
+  void load(1, ps)
 }
 
 async function create() {
@@ -43,7 +67,8 @@ async function create() {
     message.success(`Unit 创建成功！ID=${r.data.id}`)
     form.title = ''
     form.sequence = 1
-    await load()
+    pagination.page = 1
+    await load(1)
   } else {
     message.error(r.message)
   }
@@ -54,6 +79,11 @@ async function remove(id: number) {
   if (r.code === 200) {
     message.success('已删除')
     await load()
+    // 当前页被删空且回退一页（避免停在空页）
+    if (!units.value.length && pagination.page > 1) {
+      pagination.page -= 1
+      await load()
+    }
   } else {
     message.error(r.message)
   }
@@ -86,7 +116,7 @@ const columns: DataTableColumns<Unit> = [
   },
 ]
 
-onMounted(load)
+onMounted(() => load(1))
 </script>
 
 <template>
@@ -108,7 +138,18 @@ onMounted(load)
     <NCard v-if="!units.length && !loading" size="small">
       还没有 Unit，点击上方「创建新 Unit」开始。
     </NCard>
-    <NDataTable v-else :columns="columns" :data="units" :bordered="false" size="small" />
+    <NDataTable
+      v-else
+      :columns="columns"
+      :data="units"
+      remote
+      :pagination="pagination"
+      :bordered="false"
+      size="small"
+      :row-key="(row) => row.id"
+      @update:page="handlePageChange"
+      @update:page-size="handlePageSizeChange"
+    />
 
     <p class="hint">
       💡 单人模式下词库经 ECDICT 脚本 / SQL 种子维护；如需新增 Unit，可在此创建后用脚本灌词。
