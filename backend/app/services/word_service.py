@@ -6,6 +6,7 @@ from app.repositories.mastery_repo import MasteryRepo
 from app.repositories.word_repo import WordRepo
 from app.schemas.common import success
 from app.schemas.exceptions import AppException
+from app.utils.phonetics import phonetic
 
 
 class WordService:
@@ -141,7 +142,7 @@ class WordService:
             "chinese": word.chinese,
             "type": word.type.value,
             "seq": word.seq,
-            "phonetic": word.phonetic,
+            "phonetic": phonetic(word.english, word.phonetic),
             "definition": word.definition,
             "pos": word.pos,
             "example": word.example,

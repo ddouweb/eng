@@ -19,6 +19,7 @@ from app.repositories.wrong_book_repo import WrongWordBookRepo
 from app.schemas.common import success
 from app.schemas.exceptions import AppException
 from app.utils.weighting import compute_weight, weighted_sample
+from app.utils.phonetics import phonetic
 
 # 错题本在前端以「虚拟 Unit」形式出现在 Unit 列表中，使用 0 作为虚拟 ID。
 # 真实 Unit 表自增从 1 开始，0 不会冲突。start_practice 的 unit_ids 含 0 即表示
@@ -395,7 +396,8 @@ class PracticeService:
                     "overdue_days": (today - nrd).days if is_due else 0,
                     "wrong_count": mastery.wrong_count if mastery else 0,
                     # 富字段透传给前端：练习答错揭示时展示音标/词性/英释/例句
-                    "phonetic": word.phonetic,
+                    # phonetic 缺省时由 app.utils.phonetics 用 eng_to_ipa 现算回退
+                    "phonetic": phonetic(word.english, word.phonetic),
                     "definition": word.definition,
                     "pos": word.pos,
                     "example": word.example,

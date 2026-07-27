@@ -7,6 +7,7 @@ from app.models.enums import MasteryLevel
 from app.models.mastery import MasteryRecord
 from app.models.word import Word
 from app.schemas.common import success
+from app.utils.phonetics import phonetic
 
 
 class ReviewService:
@@ -69,7 +70,7 @@ class ReviewService:
             "word_id": word.id,
             "english": word.english,
             "chinese": word.chinese,
-            "phonetic": word.phonetic,
+            "phonetic": phonetic(word.english, word.phonetic),
             "pos": word.pos,
             "definition": word.definition,
             "example": word.example,

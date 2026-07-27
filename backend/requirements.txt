@@ -23,6 +23,9 @@ httpx>=0.27.0
 # TTS (optional)
 edge-tts>=6.1.0
 
+# Phonetics (可选；词库未存 IPA 时用 eng_to_ipa 运行时回退，与老版行为一致)
+eng-to-ipa>=0.0.2
+
 # Cache (optional)
 redis>=5.0.0
 
