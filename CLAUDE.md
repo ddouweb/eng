@@ -175,3 +175,4 @@ Same status = same color everywhere (cards, stats, progress bars).
 
 # 其它说明
  - 除非明确指定语言，一律使用中文回复
+ - 可以用过ssh jd 访问生产服务器。生产服务器部署目录在： /data/eng
