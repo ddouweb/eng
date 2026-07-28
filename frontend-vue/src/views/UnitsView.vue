@@ -90,8 +90,8 @@ async function remove(id: number) {
 }
 
 const columns: DataTableColumns<Unit> = [
-  { title: '标题', key: 'title' },
   { title: '序号', key: 'sequence', width: 90 },
+  { title: '标题', key: 'title' },
   {
     title: '单词数',
     key: 'word_count',

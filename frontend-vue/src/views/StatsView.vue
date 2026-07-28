@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import {
   NButton,
   NCard,
+  NConfigProvider,
   NEmpty,
   NProgress,
   NResult,
@@ -42,6 +43,11 @@ const MASTERY_HEX: Record<MasteryLevel, string> = {
   learning: '#F97316',
   familiar: '#3B82F6',
   permanent: '#22C55E',
+}
+
+// 紧致化：缩小本页所有 NStatistic 的数字 / 标签字号（全局主题覆盖，一处生效）。
+const statThemeOverrides = {
+  Statistic: { valueFontSize: '22px', labelFontSize: '12px' },
 }
 
 const trendDays = ref(7)
@@ -259,8 +265,9 @@ onMounted(async () => {
 </script>
 
 <template>
-  <NSpin :show="loading">
-    <h2 style="margin-top: 0">📊 学习统计</h2>
+  <NConfigProvider :theme-overrides="statThemeOverrides">
+    <NSpin :show="loading">
+      <h2 style="margin-top: 0">📊 学习统计</h2>
 
     <!-- 全局概览 -->
     <template v-if="overview">
@@ -277,8 +284,6 @@ onMounted(async () => {
         <NCard size="small">
           <NStatistic label="连续学习" :value="`${overview.streak_days} 天`" />
         </NCard>
-      </div>
-      <div class="cards">
         <NCard size="small">
           <NStatistic label="掌握率" :value="`${overview.mastery_rate}%`" />
         </NCard>
@@ -312,7 +317,7 @@ onMounted(async () => {
     <!-- 掌握分布 -->
     <h3 class="section">掌握分布</h3>
     <NCard v-if="masteryDistOption" size="small">
-      <EChart :option="masteryDistOption" height="280px" />
+      <EChart :option="masteryDistOption" height="200px" />
     </NCard>
     <NResult
       v-else-if="overviewError"
@@ -341,19 +346,21 @@ onMounted(async () => {
           v-if="unitStats[u.id]"
           type="line"
           :percentage="unitStats[u.id].mastery_rate"
-          :height="10"
+          :height="8"
           :show-indicator="false"
-          style="margin: 8px 0 12px"
+          style="margin: 4px 0 6px"
         />
-        <div v-if="unitStats[u.id]" class="cards no-mb">
-          <NStatistic
+        <div v-if="unitStats[u.id]" class="dist">
+          <span
             v-for="lv in MASTERY_ORDER"
             :key="lv"
-            :label="`${MASTERY_META[lv].emoji} ${MASTERY_META[lv].label}`"
-            :value="unitStats[u.id].mastery_distribution[lv]"
-          />
+            class="dist-chip"
+            :style="{ background: MASTERY_META[lv].color }"
+          >
+            {{ MASTERY_META[lv].emoji }} {{ unitStats[u.id].mastery_distribution[lv] }}
+          </span>
         </div>
-        <NEmpty v-else size="small" description="暂无统计" />
+        <span v-else class="muted">暂无统计</span>
       </NCard>
     </NSpace>
 
@@ -370,7 +377,7 @@ onMounted(async () => {
     </NSpace>
     <NCard v-if="trendOption" size="small">
       <NSpin :show="trendLoading">
-        <EChart :option="trendOption" height="300px" />
+        <EChart :option="trendOption" height="220px" />
       </NSpin>
     </NCard>
     <NResult
@@ -389,7 +396,7 @@ onMounted(async () => {
     <h3 class="section">贡献热力图（最近 12 周）</h3>
     <NCard v-if="heatmapOption" size="small">
       <NSpin :show="heatLoading">
-        <EChart :option="heatmapOption" height="220px" />
+        <EChart :option="heatmapOption" height="170px" />
         <p class="hint">色块越绿＝当天练习量越大；空白＝当天未练习。</p>
       </NSpin>
     </NCard>
@@ -404,22 +411,20 @@ onMounted(async () => {
       </template>
     </NResult>
     <NEmpty v-else description="暂无练习记录，无法生成热力图" />
-  </NSpin>
+    </NSpin>
+  </NConfigProvider>
 </template>
 
 <style scoped>
 .cards {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-  gap: 12px;
-  margin-bottom: 12px;
-}
-.cards.no-mb {
-  margin-bottom: 0;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 8px;
+  margin-bottom: 8px;
 }
 .section {
-  margin: 22px 0 10px;
-  font-size: 17px;
+  margin: 12px 0 4px;
+  font-size: 15px;
   font-weight: 600;
 }
 .unit-head {
@@ -429,16 +434,32 @@ onMounted(async () => {
 }
 .unit-title {
   font-weight: 600;
-  font-size: 15px;
+  font-size: 14px;
 }
 .unit-rate {
   color: #18a058;
   font-size: 13px;
 }
+.dist {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.dist-chip {
+  color: #fff;
+  font-size: 12px;
+  line-height: 18px;
+  padding: 1px 8px;
+  border-radius: 10px;
+}
+.muted {
+  color: #9ca3af;
+  font-size: 13px;
+}
 .hint {
   color: #6B7280;
-  font-size: 13px;
-  margin: 8px 0 0;
+  font-size: 12px;
+  margin: 6px 0 0;
   text-align: center;
 }
 </style>

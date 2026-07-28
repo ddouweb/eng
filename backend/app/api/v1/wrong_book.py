@@ -1,3 +1,5 @@
+from typing import Literal
+
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -12,15 +14,17 @@ async def list_wrong_book(
     member_id: int = Query(1, ge=1),
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=500),
+    sort_by: Literal["added_at", "wrong_count", "english"] = Query("added_at"),
+    order: Literal["asc", "desc"] = Query("desc"),
     db: AsyncSession = Depends(get_db),
 ):
-    """错题本列表（含单词 + Unit 标题 + 掌握度）。
+    """错题本列表（含单词 + Unit 标题 + 掌握度），支持按加入时间 / 错误次数 / 英文排序。
 
     Example:
-        curl 'http://localhost:8000/api/v1/wrong-book?member_id=1&page=1&page_size=50'
+        curl 'http://localhost:8000/api/v1/wrong-book?member_id=1&page=1&page_size=50&sort_by=wrong_count&order=desc'
     """
     svc = WrongBookService(db)
-    return await svc.list(member_id, page, page_size)
+    return await svc.list(member_id, page, page_size, sort_by, order)
 
 
 @router.get("/count")

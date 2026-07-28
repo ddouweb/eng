@@ -227,9 +227,14 @@ export const api = {
     `${BASE}/tts/generate?text=${encodeURIComponent(text)}&lang=${lang}`,
 
   // ── Wrong book
-  listWrongBook: (page = 1, pageSize = 50) =>
+  listWrongBook: (
+    page = 1,
+    pageSize = 50,
+    sortBy: 'added_at' | 'wrong_count' | 'english' = 'added_at',
+    order: 'asc' | 'desc' = 'desc',
+  ) =>
     request<Page<WrongWordItem>>('get', '/wrong-book', {
-      params: { member_id: MEMBER_ID, page, page_size: pageSize },
+      params: { member_id: MEMBER_ID, page, page_size: pageSize, sort_by: sortBy, order },
     }),
   countWrongBook: () =>
     request<{ total: number }>('get', '/wrong-book/count', { params: { member_id: MEMBER_ID } }),

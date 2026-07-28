@@ -16,7 +16,12 @@ class WrongBookService:
         self.repo = WrongWordBookRepo(session)
 
     async def list(
-        self, member_id: int, page: int, page_size: int
+        self,
+        member_id: int,
+        page: int,
+        page_size: int,
+        sort_by: str = "added_at",
+        order: str = "desc",
     ) -> dict:
         total = await self.repo.count_by_member(member_id)
         if total == 0:
@@ -25,6 +30,16 @@ class WrongBookService:
             )
 
         base_filter = WrongWordBook.member_id == member_id
+
+        # 排序字段白名单：added_at(默认,最近加入) / wrong_count(错误次数) / english(英文)。
+        # 统一以 word_id 作确定性 tiebreaker —— 同值时保证分页顺序稳定，避免翻页错位/丢行。
+        sort_columns = {
+            "added_at": WrongWordBook.added_at,
+            "wrong_count": WrongWordBook.wrong_count,
+            "english": Word.english,
+        }
+        sort_col = sort_columns.get(sort_by, WrongWordBook.added_at)
+        order_expr = sort_col.desc() if order == "desc" else sort_col.asc()
 
         # count 已单独算过；这里只取分页数据，join 一次性带出 Word / Unit / Mastery
         stmt = (
@@ -42,7 +57,7 @@ class WrongBookService:
                 & (MasteryRecord.word_id == WrongWordBook.word_id),
             )
             .where(base_filter)
-            .order_by(WrongWordBook.added_at.desc())
+            .order_by(order_expr, WrongWordBook.word_id.asc())
             .offset((page - 1) * page_size)
             .limit(page_size)
         )

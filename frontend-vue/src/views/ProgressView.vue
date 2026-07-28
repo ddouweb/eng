@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import {
   NButton,
   NCard,
+  NConfigProvider,
   NEmpty,
   NProgress,
   NResult,
@@ -42,6 +43,11 @@ const MASTERY_HEX: Record<MasteryLevel, string> = {
   learning: '#F97316',
   familiar: '#3B82F6',
   permanent: '#22C55E',
+}
+
+// 紧致化：缩小本页所有 NStatistic 的数字 / 标签字号（全局主题覆盖，一处生效）。
+const statThemeOverrides = {
+  Statistic: { valueFontSize: '22px', labelFontSize: '12px' },
 }
 
 const DAY_OPTIONS: SelectOption[] = [
@@ -237,8 +243,9 @@ onMounted(async () => {
 </script>
 
 <template>
-  <NSpin :show="loading">
-    <h2 style="margin-top: 0">🏆 我的进步趋势</h2>
+  <NConfigProvider :theme-overrides="statThemeOverrides">
+    <NSpin :show="loading">
+      <h2 style="margin-top: 0">🏆 我的进步趋势</h2>
     <p class="caption">
       单人模式 · 追踪你自己的坚持与进步（连续打卡 · 练习趋势 · 掌握分布 · 个人最佳）。
     </p>
@@ -299,7 +306,7 @@ onMounted(async () => {
     <h3 class="section">贡献热力图（最近 12 周）</h3>
     <NCard v-if="heatmapOption" size="small">
       <NSpin :show="heatLoading">
-        <EChart :option="heatmapOption" height="220px" />
+        <EChart :option="heatmapOption" height="170px" />
         <p class="hint">色块越绿＝当天练习量越大；空白＝当天未练习。</p>
       </NSpin>
     </NCard>
@@ -328,7 +335,7 @@ onMounted(async () => {
     </NSpace>
     <NCard v-if="trendOption" size="small">
       <NSpin :show="trendLoading">
-        <EChart :option="trendOption" height="300px" />
+        <EChart :option="trendOption" height="220px" />
       </NSpin>
     </NCard>
     <NResult
@@ -360,7 +367,7 @@ onMounted(async () => {
 
       <h3 class="section">掌握分布</h3>
       <NCard v-if="masteryDistOption" size="small">
-        <EChart :option="masteryDistOption" height="280px" />
+        <EChart :option="masteryDistOption" height="200px" />
       </NCard>
       <NEmpty v-else description="暂无掌握度数据" />
     </template>
@@ -374,35 +381,37 @@ onMounted(async () => {
         <NButton @click="loadOverview">重试</NButton>
       </template>
     </NResult>
-  </NSpin>
+    </NSpin>
+  </NConfigProvider>
 </template>
 
 <style scoped>
 .caption {
   color: #666;
   margin-top: -8px;
+  margin-bottom: 4px;
   font-size: 13px;
 }
 .cards {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-  gap: 12px;
-  margin-bottom: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 8px;
+  margin-bottom: 8px;
 }
 .section {
-  margin: 22px 0 10px;
-  font-size: 17px;
+  margin: 12px 0 4px;
+  font-size: 15px;
   font-weight: 600;
 }
 .xp-text {
-  margin-bottom: 8px;
-  font-size: 14px;
+  margin-bottom: 6px;
+  font-size: 13px;
   color: #555;
 }
 .hint {
   color: #6B7280;
-  font-size: 13px;
-  margin: 8px 0 0;
+  font-size: 12px;
+  margin: 6px 0 0;
   text-align: center;
 }
 </style>

@@ -136,6 +136,9 @@ function restart() {
       </p>
     </NCard>
 
+    <!-- 再来一轮（前置，便于完成后直接重开，无需滚动到底部） -->
+    <NButton type="primary" size="large" @click="restart">🔄 再来一轮</NButton>
+
     <!-- 答题回顾 + 改判 + 标签 -->
     <NCard size="small" title="📝 答题回顾">
       <div class="review">

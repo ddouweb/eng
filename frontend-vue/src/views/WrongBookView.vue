@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { h, onMounted, reactive, ref } from 'vue'
+import { computed, h, onMounted, reactive, ref } from 'vue'
 import {
   NButton,
   NDataTable,
@@ -9,6 +9,7 @@ import {
   NTag,
   useMessage,
   type DataTableColumns,
+  type DataTableSortState,
 } from 'naive-ui'
 
 import { api } from '@/api/client'
@@ -30,9 +31,20 @@ const pagination = reactive({
   itemCount: 0,
 })
 
+// 服务端排序：remote 分页下排序必须回源，否则只排当前页会错乱。
+// 默认 added_at desc（最近加入）；点表头切到 wrong_count / english。
+type SortKey = 'added_at' | 'wrong_count' | 'english'
+const sortKey = ref<SortKey>('added_at')
+const sortOrder = ref<'ascend' | 'descend'>('descend')
+
 async function load() {
   loading.value = true
-  const r = await api.listWrongBook(pagination.page, pagination.pageSize)
+  const r = await api.listWrongBook(
+    pagination.page,
+    pagination.pageSize,
+    sortKey.value,
+    sortOrder.value === 'ascend' ? 'asc' : 'desc',
+  )
   loading.value = false
   if (r.code === 200) {
     items.value = r.data.items
@@ -76,12 +88,32 @@ function handlePageChange(p: number) {
   load()
 }
 
+// 表头排序回调：NDataTable remote 模式下 sorter:true 不做本地排序，仅触发事件由我们回源。
+// 三态循环 ascend→descend→false；false 时回到默认（added_at desc）。
+function onSorterUpdate(sorter: DataTableSortState | DataTableSortState[] | null) {
+  const s = Array.isArray(sorter) ? sorter[0] : sorter
+  if (s && s.order && (s.columnKey === 'english' || s.columnKey === 'wrong_count')) {
+    sortKey.value = s.columnKey
+    sortOrder.value = s.order
+  } else {
+    sortKey.value = 'added_at'
+    sortOrder.value = 'descend'
+  }
+  pagination.page = 1 // 排序变更后回到第一页
+  load()
+}
+
 function rowKey(row: WrongWordItem) {
   return row.word_id
 }
 
-const columns: DataTableColumns<WrongWordItem> = [
-  { title: '英文', key: 'english' },
+const columns = computed<DataTableColumns<WrongWordItem>>(() => [
+  {
+    title: '英文',
+    key: 'english',
+    sorter: true,
+    sortOrder: sortKey.value === 'english' ? sortOrder.value : false,
+  },
   { title: '中文', key: 'chinese' },
   {
     title: 'Unit',
@@ -104,6 +136,8 @@ const columns: DataTableColumns<WrongWordItem> = [
     title: '错误次数',
     key: 'wrong_count',
     width: 100,
+    sorter: true,
+    sortOrder: sortKey.value === 'wrong_count' ? sortOrder.value : false,
     render: (row) => String(row.wrong_count ?? 0),
   },
   {
@@ -138,7 +172,7 @@ const columns: DataTableColumns<WrongWordItem> = [
         },
       ),
   },
-]
+])
 
 onMounted(load)
 </script>
@@ -174,6 +208,7 @@ onMounted(load)
       :bordered="false"
       size="small"
       @update:page="handlePageChange"
+      @update:sorter="onSorterUpdate"
     />
   </div>
 </template>
