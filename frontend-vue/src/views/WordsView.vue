@@ -348,6 +348,9 @@ onBeforeUnmount(() => {
     playerAudio.src = ''
     playerAudio = null
   }
+  // 释放播放器 blob 缓存：遍历已创建的 objectURL 逐个回收，再清空 Map，避免内存泄漏
+  playerBlobCache.forEach((url) => URL.revokeObjectURL(url))
+  playerBlobCache.clear()
 })
 </script>
 
@@ -360,20 +363,20 @@ onBeforeUnmount(() => {
     </NCard>
 
     <template v-else>
-      <!-- 顶栏：Unit 选择 + 刷新 -->
-      <NSpace align="center" :wrap="false" style="margin-bottom: 12px; gap: 12px">
+      <!-- 顶栏：Unit 选择 + 刷新（窄屏允许换行，select 限宽避免溢出） -->
+      <NSpace align="center" :wrap="true" style="margin-bottom: 12px; gap: 12px">
         <NSelect
           :value="currentUnitId"
           :options="unitOptions"
-          style="width: 260px"
+          style="width: 260px; max-width: 60vw"
           placeholder="选择 Unit"
           @update:value="onSelectUnit"
         />
         <NButton :loading="loading" @click="refresh">🔄 刷新</NButton>
       </NSpace>
 
-      <!-- 播放器：按当前页词序顺序播放，autoplay 到下一词；到页末停止 -->
-      <NSpace v-if="words.length" align="center" :wrap="false" style="margin-bottom: 12px; gap: 6px">
+      <!-- 播放器：按当前页词序顺序播放，autoplay 到下一词；到页末停止（窄屏允许换行） -->
+      <NSpace v-if="words.length" align="center" :wrap="true" style="margin-bottom: 12px; gap: 6px">
         <NButton :type="playerPlaying ? 'default' : 'primary'" @click="togglePlay">
           {{ playerPlaying ? '⏸' : '▶' }}
         </NButton>

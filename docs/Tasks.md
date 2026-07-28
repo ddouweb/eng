@@ -70,11 +70,13 @@
 
 ---
 
-### Phase 4: Streamlit 前端 ✅ 已完成
+### Phase 4: 前端界面 ✅ 已完成
 
 **目标：** 完成完整的前端交互界面。
 
-- [x] API Client 封装
+> 早期为 Streamlit 实现，已整体迁移至 Vue 3 + Naive UI（`frontend-vue/`），旧 `frontend/` 停止支持。
+
+- [x] API Client 封装（axios 拦截器，`frontend-vue/src/api/`）
 - [x] Units 页面（创建 / 查看 / 删除 Unit）
 - [x] Words 页面（单词列表、标签管理、编辑）
 - [x] Practice 页面（选择模式 → 练习 → 提交）
@@ -127,10 +129,10 @@
 ### Phase 8: 高级功能 ✅ 已完成
 
 - [x] 听写模式（TTS, edge-tts）
-- [x] 跟读评分（STT + 评分）— 待集成外部 STT 服务
+- [ ] 跟读评分（STT + 评分）— 未实现，仅 TTS 发音上线，无 STT 评分
 - [x] Redis 缓存层（可选，自动降级）
-- [x] 多用户支持（侧边栏用户切换）
-- [x] 移动端适配 — Streamlit 响应式基础支持
+- [~] 多用户支持（侧边栏用户切换）— 已按业务决策移除，收敛为单人模式（member id=1）
+- [x] 移动端适配 — Vue 响应式基础支持
 
 ---
 
@@ -140,7 +142,7 @@
 
 - [x] 后端全局搜词：`WordRepo.search`（icontains + EXISTS 标签/掌握度，依赖 `uk_member_word_mastery`）→ `WordService.search`（带 unit_title/tags/mastery）→ `GET /words/search`
 - [x] 前端 api_client：`search_words`
-- [x] 前端页面 `8_📖_单词查询.py`：搜索 + 筛选（关键词/标签/掌握度/Unit）；每条带音标 + ▶ 播放（blob 缓存，重复播放零网络）
+- [x] 前端页面 `frontend-vue/src/views/SearchView.vue`：搜索 + 筛选（关键词/标签/掌握度/Unit）；每条带音标 + ▶ 播放（blob 缓存，重复播放零网络）
 - [x] 单元测试 + Review
 
 **交付物：** 搜词跨 Unit 定位；重复播放不重复请求。
@@ -163,6 +165,8 @@
 | Phase 7: AI 增强 | ✅ 已完成 |
 | Phase 8: 高级功能 | ✅ 已完成 |
 | Phase 9: 单词查询页 | ✅ 已完成 |
+| 错题本（WrongWordBook + WrongBookView） | ✅ 已完成 |
+| SRS 间隔重复（`backend/app/srs.py`，新词/复习/错题冲刺三类计划） | ✅ 已完成 |
 | Phase A-D: 每周结算（XP 四维 + bonus + freeze + 徽章） | ✅ 已完成 |
 | Phase E: 现金激励（周学习现金 + 里程碑奖金，虚拟钱包） | ✅ 已完成 |
 

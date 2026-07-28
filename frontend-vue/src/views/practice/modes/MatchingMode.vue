@@ -106,9 +106,12 @@ async function onCn(q: PracticeQuestion): Promise<void> {
     syncProgress()
     advanceIfBatchDone()
   } else {
+    // 错配仅本地视觉反馈，不提交。后端 submit_answer 对 (session_id, word_id)
+    // 幂等去重、首提交为准；此处若记错会把该词永久钉成 is_correct=false，但 UI
+    // 最终配对成功显示 ✅，污染正确率与掌握度。仅当一对最终配对成功时才 submitOne(true)，
+    // 放弃/超时未配对成功则不提交（不污染）。与 FlipMatchMode 同口径。
     wrong.value += 1
     flashMismatch()
-    await store.submitOne(sel, false, q.english)
   }
 }
 

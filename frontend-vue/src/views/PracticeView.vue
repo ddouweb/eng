@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, watch, type Component } from 'vue'
-import { NAlert, NButton, NProgress, NSelect, NSwitch } from 'naive-ui'
+import { NAlert, NButton, NPopconfirm, NProgress, NSelect, NSwitch } from 'naive-ui'
 
 import { modeMeta } from '@/constants/modes'
 import { usePracticeStore } from '@/stores/practice'
@@ -93,9 +93,18 @@ function exitPractice() {
           @update:value="onSpeedChange"
         />
       </span>
-      <NButton size="small" tertiary @click="exitPractice">
-        {{ store.hasAnswer ? '结束并保存' : '退出(不记录)' }}
-      </NButton>
+      <NPopconfirm
+        @positive-click="exitPractice"
+        positive-text="确认"
+        negative-text="取消"
+      >
+        <template #trigger>
+          <NButton size="small" tertiary>
+            {{ store.hasAnswer ? '结束并保存' : '退出(不记录)' }}
+          </NButton>
+        </template>
+        {{ store.hasAnswer ? '确认结束并保存本次练习？' : '确认退出？本次进度不会记录。' }}
+      </NPopconfirm>
     </div>
 
     <PracticeConfig v-if="phase === 'config'" />
@@ -119,7 +128,8 @@ function exitPractice() {
 .topbar {
   display: flex;
   align-items: center;
-  gap: 12px;
+  flex-wrap: wrap;
+  gap: 8px 12px;
   margin-bottom: 16px;
   position: sticky;
   top: 0;
@@ -150,6 +160,15 @@ function exitPractice() {
   font-size: 12px;
   color: #888;
   white-space: nowrap;
+}
+/* 窄屏：收起音频控件的文字标签，避免挤占顶栏 / 顶栏换行后过宽 */
+@media (max-width: 480px) {
+  .ctrl-label {
+    display: none;
+  }
+  .audio-ctrl {
+    flex-wrap: wrap;
+  }
 }
 .retry-banner {
   margin-bottom: 16px;

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { NAlert, NButton, NInput, NSpace } from 'naive-ui'
+import { NAlert, NButton, NInput, NSpace, useMessage } from 'naive-ui'
 
 import { usePracticeStore } from '@/stores/practice'
 import { useTtsAudio } from '@/composables/useTtsAudio'
@@ -9,6 +9,7 @@ import { formatPhonetic } from '@/composables/usePhonetic'
 // 听写（源页 L930-963）。compact：题面只给音频 + caption，不显英文/中文；
 // 答后揭示英文 + 音标 + 富字段（词性/英释/例句）。音频走 blob 缓存（零网络回放）。
 const store = usePracticeStore()
+const message = useMessage()
 const { play } = useTtsAudio()
 
 const q = computed(() => store.currentQuestion)
@@ -52,6 +53,11 @@ function onSubmit() {
   const cur = store.currentQuestion
   if (!cur) return
   const ans = answer.value
+  // 空提交拦截（口径与 SpellingMode 一致）：不进入判分、不写后端，避免污染正确率/掌握度
+  if (!ans.trim()) {
+    message.warning('请输入答案后再提交')
+    return
+  }
   const correct = ans.trim().toLowerCase() === cur.english.toLowerCase()
   submitted.value = true
   skipped.value = false

@@ -133,7 +133,10 @@ class TestWeeklySettlement:
         return service, state, member
 
     @pytest.mark.asyncio
-    async def test_settle_success_grants_bonus_freeze_badge(self, settle_mocks):
+    async def test_settle_success_grants_bonus_freeze_badge(self, settle_mocks, monkeypatch):
+        # 钉死 CASH_ENABLED=False，避免 .env 设 true 时 compute_weekly_cash 发现金让 cash_balance 断言失败
+        from app.config import settings
+        monkeypatch.setattr(settings, "CASH_ENABLED", False)
         service, state, member = settle_mocks
         # 无 plan → exp_days=5, daily_goal=30：login=25, plan=30, bonus=round(55/55*30)=30
         # 全勤7 → freeze_granted=1（2→3）；total=68<100 不发满分徽章，仅 week_login_7

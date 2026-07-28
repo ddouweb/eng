@@ -98,7 +98,10 @@ async function onCard(idx: number): Promise<void> {
     syncProgress()
     advanceIfBatchDone()
   } else {
-    // 不匹配：闪现一帧后翻回
+    // 不匹配：闪现一帧后翻回（仅本地视觉反馈，不提交错配）。
+    // 后端 (session,word) 幂等首提交为准，错配一旦提交会把该词永久钉成
+    // is_correct=false，而 UI 最终配对成功显示 ✅ → 污染正确率/掌握度。
+    // 仅配对成功才 submitOne(true)；放弃/超时未配对则不提交。与 MatchingMode 同口径。
     mismatch.value = true
     mmCards.value = [i1, i2]
     if (mmTimer) clearTimeout(mmTimer)
@@ -107,7 +110,6 @@ async function onCard(idx: number): Promise<void> {
       mmCards.value = []
       mmTimer = null
     }, 800)
-    await store.submitOne(c1.wid, false, c2.text)
   }
 }
 

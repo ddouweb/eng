@@ -29,6 +29,10 @@ const router = createRouter({ history: createWebHistory(), routes })
 setUnauthorizedHandler(() => {
   const cur = router.currentRoute.value
   if (cur.name !== 'login') {
+    // 先重置 auth store 的响应式 token，否则下方 beforeEach 守卫仍读到旧 token
+    // （isAuthed=true）会把这里的 /login 推送反弹回 /dashboard，用户卡死只能 F5。
+    // client 拦截器只清了 localStorage，没动 store —— 必须在此补一刀。
+    useAuthStore().logout()
     router.push({ name: 'login', query: { redirect: cur.fullPath } })
   }
 })

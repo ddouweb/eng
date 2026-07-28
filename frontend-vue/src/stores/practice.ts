@@ -18,23 +18,112 @@ interface SubmitFailure {
   msg: string
 }
 
+// —— sessionStorage 手动持久化（刷新/崩溃恢复进行中的练习会话）——
+// 不引入新依赖：直接读写 sessionStorage。仅快照「未结束」会话的最小状态；
+// finish 成功 / restart 时清键，避免恢复到已 finish 的脏数据。
+const STORAGE_KEY = 'eng_practice_snapshot_v1'
+
+interface PersistedSnapshot {
+  sessionId: number | null
+  mode: string
+  unitIds: number[]
+  questions: PracticeStartData['questions']
+  idx: number
+  // Map 不能直接 JSON 序列化，存为 [word_id, ResultEntry][] 还原
+  results: [number, ResultEntry][]
+  submitFailures: SubmitFailure[]
+  fcAutoNext: boolean
+  fcDelay: number
+  fcSpeed: number
+  autoPlay: boolean
+  savedAt: number
+}
+
+// 读取并校验快照：仅恢复结构合法且仍在进行中（sessionId 存在、questions 非空、idx ∈ [0, length]）的会话。
+// 已 finish 的不会出现在存储里（finish 成功时已清键）；后端会话过期无法前置判定，靠后续 API 失败暴露并由用户 restart。
+function readSnapshot(): PersistedSnapshot | null {
+  try {
+    const raw = sessionStorage.getItem(STORAGE_KEY)
+    if (!raw) return null
+    const snap = JSON.parse(raw) as PersistedSnapshot
+    if (
+      !snap ||
+      typeof snap !== 'object' ||
+      snap.sessionId == null ||
+      !Array.isArray(snap.questions) ||
+      snap.questions.length === 0 ||
+      typeof snap.idx !== 'number' ||
+      snap.idx < 0 ||
+      snap.idx > snap.questions.length ||
+      !Array.isArray(snap.results)
+    ) {
+      // 结构非法 / 已完成（idx 越界）→ 清掉脏数据
+      sessionStorage.removeItem(STORAGE_KEY)
+      return null
+    }
+    return snap
+  } catch {
+    sessionStorage.removeItem(STORAGE_KEY)
+    return null
+  }
+}
+
+function writeSnapshot(snap: PersistedSnapshot): void {
+  try {
+    sessionStorage.setItem(STORAGE_KEY, JSON.stringify(snap))
+  } catch {
+    // 配额满 / 隐私模式 → 静默降级，不阻塞练习流程
+  }
+}
+
+function clearSnapshot(): void {
+  try {
+    sessionStorage.removeItem(STORAGE_KEY)
+  } catch {
+    // ignore
+  }
+}
+
 export const usePracticeStore = defineStore('practice', {
-  state: () => ({
-    sessionId: null as number | null,
-    mode: '',
-    unitIds: [] as number[],
-    questions: [] as PracticeStartData['questions'],
-    idx: 0,
-    results: new Map<number, ResultEntry>(),
-    finished: false,
-    finishData: null as FinishResp | null,
-    finishError: null as string | null,
-    submitFailures: [] as SubmitFailure[],
-    fcAutoNext: false,
-    fcDelay: 3.0,
-    fcSpeed: 1,
-    autoPlay: false,
-  }),
+  state: () => {
+    // 初始化时尝试恢复未完成的会话（readSnapshot 已做有效性校验）
+    const snap = readSnapshot()
+    if (snap) {
+      return {
+        sessionId: snap.sessionId,
+        mode: snap.mode,
+        unitIds: (Array.isArray(snap.unitIds) ? snap.unitIds : []) as number[],
+        questions: snap.questions,
+        idx: snap.idx,
+        results: new Map<number, ResultEntry>(snap.results),
+        finished: false,
+        // finished/finishData/finishError 不恢复：已 finish 的会话不会进入此分支
+        finishData: null as FinishResp | null,
+        finishError: null as string | null,
+        submitFailures: (Array.isArray(snap.submitFailures) ? snap.submitFailures : []) as SubmitFailure[],
+        fcAutoNext: !!snap.fcAutoNext,
+        fcDelay: typeof snap.fcDelay === 'number' ? snap.fcDelay : 3.0,
+        fcSpeed: typeof snap.fcSpeed === 'number' ? snap.fcSpeed : 1,
+        autoPlay: !!snap.autoPlay,
+      }
+    }
+    return {
+      sessionId: null as number | null,
+      mode: '',
+      unitIds: [] as number[],
+      questions: [] as PracticeStartData['questions'],
+      idx: 0,
+      results: new Map<number, ResultEntry>(),
+      finished: false,
+      finishData: null as FinishResp | null,
+      finishError: null as string | null,
+      submitFailures: [] as SubmitFailure[],
+      fcAutoNext: false,
+      fcDelay: 3.0,
+      fcSpeed: 1,
+      autoPlay: false,
+    }
+  },
   getters: {
     total: (s) => s.questions.length,
     inProgress: (s) => s.questions.length > 0 && s.idx < s.questions.length,
@@ -62,6 +151,7 @@ export const usePracticeStore = defineStore('practice', {
         this.finishData = null
         this.finishError = null
         this.submitFailures = []
+        this._persist()
       }
       return r
     },
@@ -81,9 +171,30 @@ export const usePracticeStore = defineStore('practice', {
         // 服务端权威复判覆盖客户端判定（7 个客观模式客户端 is_correct 会被后端改判）
         this.results.set(wordId, { isCorrect: r.data.is_correct, userAnswer: userAnswer ?? null })
       }
+      this._persist()
     },
     setIdx(idx: number): void {
       this.idx = idx
+      this._persist()
+    },
+    // 内部：把当前进行中的会话快照写入 sessionStorage。已 finish / 无 session 时跳过。
+    // 仅在关键 mutation（start/submitOne/setIdx/rejudge/retryAllSubmits/clearSubmits）后调用。
+    _persist(): void {
+      if (this.sessionId == null || this.questions.length === 0 || this.finished) return
+      writeSnapshot({
+        sessionId: this.sessionId,
+        mode: this.mode,
+        unitIds: this.unitIds,
+        questions: this.questions,
+        idx: this.idx,
+        results: [...this.results.entries()],
+        submitFailures: this.submitFailures,
+        fcAutoNext: this.fcAutoNext,
+        fcDelay: this.fcDelay,
+        fcSpeed: this.fcSpeed,
+        autoPlay: this.autoPlay,
+        savedAt: Date.now(),
+      })
     },
     async finish(): Promise<void> {
       if (this.finished || this.sessionId == null) return
@@ -93,6 +204,8 @@ export const usePracticeStore = defineStore('practice', {
         this.finishData = r.data
         this.finishError = null
         this.finished = true
+        // 会话已结束，清除持久化快照，避免下次初始化恢复到已 finish 的脏数据
+        clearSnapshot()
       } else {
         this.finishError = r.message || '结束练习失败，请重试'
       }
@@ -111,6 +224,7 @@ export const usePracticeStore = defineStore('practice', {
             accuracy: r.data.accuracy,
           }
         }
+        this._persist()
         return true
       }
       return false
@@ -130,9 +244,11 @@ export const usePracticeStore = defineStore('practice', {
           })
         }
       }
+      this._persist()
     },
     clearSubmits(): void {
       this.submitFailures = []
+      this._persist()
     },
     restart(): void {
       this.sessionId = null
@@ -145,6 +261,8 @@ export const usePracticeStore = defineStore('practice', {
       this.finishData = null
       this.finishError = null
       this.submitFailures = []
+      // 显式重置：清掉持久化快照
+      clearSnapshot()
     },
   },
 })

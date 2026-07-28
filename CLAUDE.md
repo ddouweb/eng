@@ -11,11 +11,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Tech Stack
 
 - **Backend**: Python 3.11+ / FastAPI
-- **Frontend**: Streamlit
+- **Frontend**: Vue 3 + Naive UI + Pinia + ECharts + Vite（`frontend-vue/`；旧 Streamlit `frontend/` 已停止支持）
 - **Database**: MySQL 8.0
 - **ORM**: SQLAlchemy 2.0 (async via aiomysql)
 - **Migrations**: Alembic
-- **AI** (optional, swappable): Claude / Minimax / 智谱 / DeepSeek — all AI calls must be behind an abstraction so models can be swapped without changing business logic
+- **AI** (optional, swappable): Claude / DeepSeek / GLM(智谱) — all AI calls must be behind an abstraction so models can be swapped without changing business logic
 
 ## Development Workflow — MANDATORY
 
@@ -49,7 +49,7 @@ When implementing features, follow this simulated role pattern:
 | Product | Breaks requirements into deliverable feature modules |
 | Architecture | System architecture, module dependencies, DB schema |
 | Backend | API logic and database operations |
-| Frontend | Streamlit UI |
+| Frontend | Vue 3 + Naive UI 界面 |
 | AI | Generate dialogues, exercises, pronunciation content |
 | Test | Unit and integration tests |
 | Review | Code/interface/logic compliance check |
@@ -64,35 +64,70 @@ backend/
     main.py              # FastAPI app entry
     config.py            # Settings / env vars (pydantic-settings)
     database.py          # Async engine, session factory, get_db dependency
+    settlement_score.py  # 每周结算四维评分（XP / 完成度 / 稳定性 / 难度）
+    gamification.py      # 段位 / 徽章 / 难度系数（difficulty_mult）
+    cash.py              # 现金激励：周学习现金分档 + 里程碑奖金（虚拟钱包）
+    srs.py               # 间隔重复（错题本滚动复习调度）
+    middleware/          # 横切中间件
+      sensitive.py       # SensitiveDataMiddleware（请求/响应日志）
     models/              # SQLAlchemy ORM models
-    schemas/             # Pydantic request/response schemas
+      enums.py           # MasteryLevel / TagType / PracticeMode / Plan* 等枚举
+      member.py          # Member（含 total_xp / cash_balance）
+      settlement.py      # WeeklySettlement
+      cash_milestone.py  # CashMilestone
+      streak.py          # MemberStreak / MemberBadge
+      wrong_book.py      # WrongWordBook
+      unit.py / word.py（含 WordTag）/ mastery.py / practice.py / plan.py
+    schemas/             # Pydantic 请求/响应模型
       common.py          # Unified ApiResponse[T] envelope
+      exceptions.py      # 统一业务异常
     api/
-      router.py          # Aggregates all v1 routers
-      v1/                # Route handlers (unit, word, practice, plan, stats)
-    services/            # Business logic
-    repositories/        # Data access layer
+      deps.py            # get_current_user（OAuth2PasswordBearer / JWT）
+      router.py          # Aggregates all v1 routers（带 Depends(get_current_user)）
+      v1/                # Route handlers
+        auth.py health.py tts.py          # 免认证（登录 / 健康检查 / TTS 音频）
+        unit.py word.py practice.py       # 业务路由（JWT 保护）
+        review.py plan.py stats.py
+        ai.py wrong_book.py
+    services/            # Business logic（auth/exercise/nl_parse/plan/practice/review/stats/unit/word/wrong_book）
+    repositories/        # Data access layer（含 stats_repo / wrong_book_repo / mastery_repo 等）
     ai/                  # AI provider abstraction (swappable)
-      base.py            # AIProvider Protocol
-      factory.py         # Provider selection via config
+      base.py            # AIProvider Protocol（无 generate_audio）
+      base_provider.py   # 公共 HTTP / 重试基类
+      claude_provider.py deepseek_provider.py  # deepseek + glm(智谱) 复用同一实现
+      factory.py         # Provider selection via config（claude / deepseek / glm）
+      tts_service.py     # 独立 TTS（edge-tts），不属 AIProvider 协议
     utils/
       weighting.py       # Word selection weight algorithm
+      cache.py           # Redis 缓存（可选，自动降级）
+      phonetics.py       # 音标运行时回退（eng_to_ipa）
   alembic/               # DB migrations
   tests/
     unit/
     integration/
   requirements.txt
-frontend/
-  app.py                 # Streamlit entry
-  pages/                 # Streamlit multi-page app
-  components/            # Reusable UI components
-  api_client/            # Backend API call wrapper
+frontend-vue/
+  package.json           # Vue 3 + Naive UI + Pinia + ECharts 依赖
+  vite.config.ts         # Vite 构建 / 代理配置
+  tsconfig.json
+  index.html
+  src/
+    main.ts App.vue
+    api/                 # 后端 API 调用封装（axios 拦截器）
+    views/               # 路由页面（Dashboard / Units / Words / Practice / Stats / Plans / Search / WrongBook / WeeklySettlement / Ai / Progress / Login）
+    components/          # 可复用组件
+    composables/         # Vue composables
+    constants/           # 常量（如 modes.ts：11 种练习模式）
+    router/ stores/      # Vue Router + Pinia
+    utils/ styles/
 docs/
   PRD.md                 # Product requirements
   Architecture.md        # System architecture design
   Tasks.md               # Phase-by-phase development checklist
   Database.md            # DB schema (Phase 1+)
   API.md                 # API spec (Phase 1+)
+  Settlement.md          # 每周结算 + 现金激励设计（XP 四维 / bonus / freeze / 现金奖）
+  词库导入-ECDICT.md      # ECDICT 种子词库导入流程
 docker-compose.yml       # MySQL service
 ```
 
@@ -107,10 +142,10 @@ cd backend
 pip install -r requirements.txt
 uvicorn app.main:app --reload --port 8000
 
-# Frontend (Phase 4+)
-cd frontend
-pip install -r requirements.txt
-streamlit run app.py --server.port 8501
+# Frontend (Vue 3 + Naive UI)
+cd frontend-vue
+npm install
+npm run dev      # Vite dev server（默认 http://localhost:5173）
 
 # DB migration
 cd backend
@@ -135,6 +170,10 @@ ruff check . --fix
 - **MasteryLevel**: enum — `unlearned`, `learning`, `familiar`, `permanent`
 - **LearningPlan**: daily goal (word count), selected units, deadline date
 - **PracticeRecord**: timestamped log of practice attempts and results
+- **WrongWordBook**: 错题本，练习中答错自动收录，由 `srs.py` 调度滚动复习
+- **MemberStreak / MemberBadge**: 连续学习天数与获得的徽章（gamification）
+- **WeeklySettlement / CashMilestone**: 每周结算记录与现金里程碑奖金（虚拟钱包 `Member.cash_balance`）；详见 `docs/Settlement.md`
+- **Member.total_xp / cash_balance**: 累计 XP（驱动段位）与现金激励虚拟钱包余额
 
 ## Word Display Strategy
 
@@ -160,7 +199,7 @@ class AIProvider(Protocol):
     async def parse_natural_language(self, text: str) -> ParseNLResult: ...
 ```
 
-Concrete implementations (Claude, Minimax, Zhipu, DeepSeek) are registered via `ai/factory.py`. Switching providers requires only changing `.env`.
+Concrete implementations (Claude / DeepSeek / GLM(智谱)) are registered via `ai/factory.py`. GLM 复用 DeepSeek 实现（仅替换 `base_url` 与默认 model）。Switching providers requires only changing `.env`. TTS 不属此协议，由独立的 `ai/tts_service.py`（edge-tts）承担。
 
 ## Mastery Status Colors (Frontend)
 

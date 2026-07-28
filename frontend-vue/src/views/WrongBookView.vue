@@ -6,7 +6,6 @@ import {
   NDataTable,
   NPopconfirm,
   NSpace,
-  NSpin,
   NTag,
   useMessage,
   type DataTableColumns,
@@ -31,12 +30,6 @@ const pagination = reactive({
   itemCount: 0,
 })
 
-async function loadCount() {
-  const r = await api.countWrongBook()
-  if (r.code === 200) total.value = r.data.total
-  else message.error(`总数加载失败：${r.message}`)
-}
-
 async function load() {
   loading.value = true
   const r = await api.listWrongBook(pagination.page, pagination.pageSize)
@@ -44,13 +37,11 @@ async function load() {
   if (r.code === 200) {
     items.value = r.data.items
     pagination.itemCount = r.data.total
+    // list 接口已返回 total，直接复用，不再单独请求 count 接口
+    total.value = r.data.total
   } else {
     message.error(`加载失败：${r.message}`)
   }
-}
-
-async function refresh() {
-  await Promise.all([loadCount(), load()])
 }
 
 async function onPlay(text: string) {
@@ -63,7 +54,7 @@ async function onRemove(wordId: number, english: string) {
     message.success(`已移除 ${english}`)
     // 若当前页删完，回到上一页避免空页
     if (items.value.length === 1 && pagination.page > 1) pagination.page -= 1
-    await refresh()
+    await load()
   } else {
     message.error(r.message)
   }
@@ -74,7 +65,7 @@ async function onClear() {
   if (r.code === 200) {
     message.success('已清空错题本')
     pagination.page = 1
-    await refresh()
+    await load()
   } else {
     message.error(r.message)
   }
@@ -83,6 +74,10 @@ async function onClear() {
 function handlePageChange(p: number) {
   pagination.page = p
   load()
+}
+
+function rowKey(row: WrongWordItem) {
+  return row.word_id
 }
 
 const columns: DataTableColumns<WrongWordItem> = [
@@ -145,11 +140,11 @@ const columns: DataTableColumns<WrongWordItem> = [
   },
 ]
 
-onMounted(refresh)
+onMounted(load)
 </script>
 
 <template>
-  <NSpin :show="loading">
+  <div>
     <h2 style="margin-top: 0">📕 错题本</h2>
     <p class="caption">练习中答错的题会自动加入。答对不会自动移除，需在此手动管理。</p>
 
@@ -172,11 +167,13 @@ onMounted(refresh)
       :data="items"
       :remote="true"
       :pagination="pagination"
+      :loading="loading"
+      :row-key="rowKey"
       :bordered="false"
       size="small"
       @update:page="handlePageChange"
     />
-  </NSpin>
+  </div>
 </template>
 
 <style scoped>

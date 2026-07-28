@@ -11,11 +11,19 @@
 
 ## 1. 总览
 
-### 懒触发
-用户打开 `/weekly-settlement`（或首页 profile 卡片）时，后端 `StatsService`：
+### 懒触发（两个入口，副作用不同）
 
-1. `_maybe_settle_week`：回算最近 `SETTLE_BACKFILL_WEEKS = 4` 个**已完整结束且未结算**的 ISO 周，每周一张快照落 `weekly_settlement`；
-2. （`CASH_ENABLED` 时）`_maybe_grant_milestones`：检测三类里程碑，幂等发放到 `cash_milestone`。
+两个 `StatsService` 入口都会懒结算上周，但**只有 `/weekly-settlement` 会发放现金里程碑**——这是常见的归属混淆点：
+
+| 入口 | `_maybe_settle_week`<br>（回算上周 + bonus XP / freeze / 周徽章） | `_maybe_grant_milestones`<br>（`CASH_ENABLED` 时发放里程碑） |
+|---|---|---|
+| `GET /stats/profile`（首页 profile 卡片） | ✅ 调用 | ❌ **不调用** |
+| `GET /stats/weekly-settlement`（结算页） | ✅ 调用 | ✅ 调用（仅 `CASH_ENABLED`） |
+
+1. `_maybe_settle_week`：回算最近 `SETTLE_BACKFILL_WEEKS = 4` 个**已完整结束且未结算**的 ISO 周，每周一张快照落 `weekly_settlement`，同 savepoint 原子发 bonus XP（→`member.total_xp`）/ freeze / 周徽章；
+2. `_maybe_grant_milestones`：**仅 `/weekly-settlement` 入口**、且 `CASH_ENABLED` 时调用——检测三类里程碑，幂等发放到 `cash_milestone`（→累加 `member.cash_balance`）。
+
+> 因此「打开首页卡片就让 milestone 入账」是错误预期：profile 卡片只结算上周（XP 段位/徽章即时反映），里程碑必须打开 `/weekly-settlement` 才发。
 
 ### 幂等
 - 周：`weekly_settlement` 表 `UNIQUE(member_id, week_key)` —— 一人一周一行，重复结算安全跳过。

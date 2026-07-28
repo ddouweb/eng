@@ -9,6 +9,7 @@ import {
   NFormItem,
   NInput,
   NInputNumber,
+  NPopconfirm,
   NSelect,
   NSpace,
   NSpin,
@@ -18,6 +19,8 @@ import {
   useDialog,
   useMessage,
   type DialogOptions,
+  type FormInst,
+  type FormRules,
   type SelectOption,
 } from 'naive-ui'
 
@@ -93,6 +96,44 @@ const creating = ref(false)
 const canCreate = computed(
   () => !!form.name.trim() && form.unit_ids.length > 0 && form.learn_weekdays.length > 0,
 )
+
+// 行内校验：这三个字段控制「创建计划」按钮是否置灰，保留反馈让用户看到置灰原因
+const formRef = ref<FormInst | null>(null)
+const formRules: FormRules = {
+  name: [{ required: true, message: '请输入计划名称', trigger: ['input', 'blur'] }],
+  unit_ids: [
+    {
+      validator: (_rule, value: unknown) => Array.isArray(value) && value.length > 0,
+      message: '请至少选择一个 Unit',
+      trigger: ['change', 'blur'],
+    },
+  ],
+  learn_weekdays: [
+    {
+      validator: (_rule, value: unknown) => Array.isArray(value) && value.length > 0,
+      message: '请至少选择一个学习日',
+      trigger: ['change', 'blur'],
+    },
+  ],
+}
+
+// 起始日：禁止选择今天之前的日期（保留今天）
+function disablePastDate(ts: number): boolean {
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  return ts < today.getTime()
+}
+
+// 截止日期：禁止过去日期，且不能早于起始日（按日期字符串比较避免时区偏差）
+function disableDeadline(ts: number): boolean {
+  if (disablePastDate(ts)) return true
+  if (form.start_date) {
+    const picked = new Date(ts)
+    const pickedStr = `${picked.getFullYear()}-${String(picked.getMonth() + 1).padStart(2, '0')}-${String(picked.getDate()).padStart(2, '0')}`
+    if (pickedStr < form.start_date) return true
+  }
+  return false
+}
 
 function resetForm() {
   form.name = ''
@@ -258,14 +299,15 @@ onMounted(() => {
       <NEmpty v-if="!units.length" description="还没有 Unit，请先添加单词。" />
       <NForm
         v-else
+        ref="formRef"
         :model="form"
+        :rules="formRules"
         label-placement="left"
-        :show-feedback="false"
         label-width="92px"
       >
         <NSpace vertical :size="12">
           <NSpace align="center" wrap>
-            <NFormItem label="计划名称">
+            <NFormItem label="计划名称" path="name">
               <NInput
                 v-model:value="form.name"
                 placeholder="例：在职考研英语一轮"
@@ -282,7 +324,7 @@ onMounted(() => {
           </NSpace>
 
           <NSpace align="center" wrap>
-            <NFormItem label="选择 Unit">
+            <NFormItem label="选择 Unit" path="unit_ids">
               <NSelect
                 v-model:value="form.unit_ids"
                 multiple
@@ -303,7 +345,7 @@ onMounted(() => {
           </NSpace>
 
           <NSpace align="center" wrap>
-            <NFormItem label="学习日">
+            <NFormItem label="学习日" path="learn_weekdays">
               <NSelect
                 v-model:value="form.learn_weekdays"
                 multiple
@@ -328,6 +370,7 @@ onMounted(() => {
                 value-format="yyyy-MM-dd"
                 type="date"
                 clearable
+                :is-date-disabled="disablePastDate"
                 placeholder="默认今天"
                 style="width: 180px"
               />
@@ -338,6 +381,7 @@ onMounted(() => {
                 value-format="yyyy-MM-dd"
                 type="date"
                 clearable
+                :is-date-disabled="disableDeadline"
                 placeholder="可选"
                 style="width: 180px"
               />
@@ -393,16 +437,22 @@ onMounted(() => {
             >
               ▶ 继续
             </NButton>
-            <NButton
+            <NPopconfirm
               v-if="p.plan_type === 'forward' && p.status === 'active'"
-              size="small"
-              type="warning"
-              ghost
-              :loading="!!rebalancing[p.id]"
-              @click="rebalance(p)"
+              @positive-click="rebalance(p)"
             >
-              ⚖️ 重新平衡
-            </NButton>
+              <template #trigger>
+                <NButton
+                  size="small"
+                  type="warning"
+                  ghost
+                  :loading="!!rebalancing[p.id]"
+                >
+                  ⚖️ 重新平衡
+                </NButton>
+              </template>
+              将根据剩余天数重新分配每日新词量，确认？
+            </NPopconfirm>
           </NSpace>
         </div>
 
