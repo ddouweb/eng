@@ -187,13 +187,14 @@ onMounted(loadUnits)
     </p>
 
     <NCard title="🔍 搜索" size="small" style="margin-bottom: 16px">
-      <NForm label-placement="left" :show-feedback="false" @submit.prevent="search">
+      <NForm label-placement="left" :show-feedback="false">
         <NSpace vertical :size="12">
           <NFormItem label="关键词（英文或中文，模糊匹配）">
             <NInput
               v-model:value="form.q"
               placeholder="输入英文或中文"
               clearable
+              @keyup.enter="search"
               style="width: 320px"
             />
           </NFormItem>
@@ -212,7 +213,7 @@ onMounted(loadUnits)
               />
             </NFormItem>
           </NSpace>
-          <NButton type="primary" native-type="submit">🔍 搜索</NButton>
+          <NButton type="primary" @click="search">🔍 搜索</NButton>
         </NSpace>
       </NForm>
     </NCard>

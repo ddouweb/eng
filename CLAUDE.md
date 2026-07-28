@@ -175,6 +175,8 @@ Same status = same color everywhere (cards, stats, progress bars).
 
 # 其它说明
  - 除非明确指定语言，一律使用中文回复
+ - 前端已经全部切换到vue版本： @frontend-vue
+ - @frontend 已经不再提供支持
 
 # 生产服务器说明
  - 可以用过ssh jd 访问生产服务器。
