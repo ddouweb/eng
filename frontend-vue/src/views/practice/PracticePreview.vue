@@ -56,16 +56,23 @@ function goNext() {
   if (idx.value < words.value.length - 1) idx.value += 1
 }
 
+const loadError = ref(false)
+
 async function load() {
   loading.value = true
+  loadError.value = false
   const all: Word[] = []
+  let failed = 0
   for (const uid of props.unitIds) {
     if (uid <= 0) continue
     const r = await api.listWords(uid, 1, 2000)
     if (r.code === 200) all.push(...r.data.items)
+    else failed += 1
   }
   words.value = all
   idx.value = 0
+  // 全部 Unit 都拉失败且无词 → 错误态（区别于"所选 Unit 无单词"真空态）
+  if (!all.length && failed) loadError.value = true
   loading.value = false
 }
 
@@ -82,6 +89,11 @@ onBeforeUnmount(clearAuto)
     </div>
 
     <NSpin v-if="loading" />
+    <NEmpty v-else-if="loadError" description="加载失败">
+      <template #extra>
+        <NButton size="small" @click="load">重试</NButton>
+      </template>
+    </NEmpty>
     <NEmpty v-else-if="!words.length" description="所选 Unit 无单词" />
     <div v-else-if="cur" class="card">
       <div class="word-line">

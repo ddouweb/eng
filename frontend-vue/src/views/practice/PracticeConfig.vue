@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { NButton, NCard, NInputNumber, NSpace, NSwitch, NTag, useMessage } from 'naive-ui'
+import { NButton, NCard, NEmpty, NInputNumber, NSpace, NSpin, NSwitch, NTag, useMessage } from 'naive-ui'
 
 import { api } from '@/api/client'
 import { PRACTICE_MODES } from '@/constants/modes'
@@ -185,12 +185,28 @@ async function loadToday() {
   }
 }
 
-onMounted(async () => {
-  const [u, wb] = await Promise.all([api.listAllUnits(), api.countWrongBook()])
-  if (u.code === 200) units.value = u.data.items
-  if (wb.code === 200) wbCount.value = wb.data.total
-  await loadToday()
-})
+const loadInit = ref(true)
+const loadError = ref(false)
+
+// 抽出 init（带错误态 + 重试）：listAllUnits / countWrongBook / loadToday 任一抛错即进错误态，
+// 避免静默失败导致今日任务空白且无重试入口。
+async function init() {
+  loadInit.value = true
+  loadError.value = false
+  try {
+    const [u, wb] = await Promise.all([api.listAllUnits(), api.countWrongBook()])
+    if (u.code === 200) units.value = u.data.items
+    if (wb.code === 200) wbCount.value = wb.data.total
+    await loadToday()
+  } catch {
+    loadError.value = true
+    message.error('加载失败，请重试')
+  } finally {
+    loadInit.value = false
+  }
+}
+
+onMounted(init)
 </script>
 
 <template>
@@ -201,6 +217,13 @@ onMounted(async () => {
       @exit="previewing = false"
     />
     <template v-else>
+      <NSpin :show="loadInit">
+        <NEmpty v-if="loadError" description="加载失败，请重试" style="margin: 40px 0">
+          <template #extra>
+            <NButton size="small" @click="init">重试</NButton>
+          </template>
+        </NEmpty>
+        <template v-else>
     <h2 style="margin-top: 0">🎯 练习</h2>
 
     <!-- 练习模式（全页唯一选择处）：选中式，驱动下方今日任务 + 自由练习 -->
@@ -338,6 +361,8 @@ onMounted(async () => {
     <NTag v-if="snapshot.length" :bordered="false" type="info">
       今日计划已聚合 {{ snapshot.length }} 个，涉及 {{ agg.aggUnitIds.length }} 个 Unit
     </NTag>
+        </template>
+      </NSpin>
     </template>
   </div>
 </template>

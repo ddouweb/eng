@@ -3,7 +3,6 @@ import { computed, onMounted, ref } from 'vue'
 import {
   NButton,
   NCard,
-  NConfigProvider,
   NEmpty,
   NProgress,
   NResult,
@@ -19,6 +18,7 @@ import type { EChartsOption } from 'echarts'
 import { api } from '@/api/client'
 import type { DailyTrend, MasteryDist, ReviewDue, StatsOverview, Unit } from '@/api/types'
 import { MASTERY_META, MASTERY_ORDER, type MasteryLevel } from '@/constants/mastery'
+import { CHART_HEIGHT } from '@/constants/ui'
 import EChart from '@/components/EChart.vue'
 
 // 忠实迁移自 frontend/pages/4_📊_统计.py。
@@ -45,10 +45,7 @@ const MASTERY_HEX: Record<MasteryLevel, string> = {
   permanent: '#22C55E',
 }
 
-// 紧致化：缩小本页所有 NStatistic 的数字 / 标签字号（全局主题覆盖，一处生效）。
-const statThemeOverrides = {
-  Statistic: { valueFontSize: '22px', labelFontSize: '12px' },
-}
+// 紧致化：统计字号由 App.vue 全局 NConfigProvider 统一；图表高度取 CHART_HEIGHT 令牌。
 
 const trendDays = ref(7)
 const trendDaily = ref<DailyTrend[]>([])
@@ -265,9 +262,8 @@ onMounted(async () => {
 </script>
 
 <template>
-  <NConfigProvider :theme-overrides="statThemeOverrides">
-    <NSpin :show="loading">
-      <h2 style="margin-top: 0">📊 学习统计</h2>
+  <NSpin :show="loading">
+    <h2 style="margin-top: 0">📊 学习统计</h2>
 
     <!-- 全局概览 -->
     <template v-if="overview">
@@ -317,7 +313,7 @@ onMounted(async () => {
     <!-- 掌握分布 -->
     <h3 class="section">掌握分布</h3>
     <NCard v-if="masteryDistOption" size="small">
-      <EChart :option="masteryDistOption" height="200px" />
+      <EChart :option="masteryDistOption" :height="CHART_HEIGHT.md" />
     </NCard>
     <NResult
       v-else-if="overviewError"
@@ -334,7 +330,7 @@ onMounted(async () => {
     <!-- 按 Unit 统计 -->
     <h3 class="section">按 Unit 统计</h3>
     <NEmpty v-if="!units.length && !loading" description="还没有 Unit" />
-    <NSpace v-else vertical :size="12">
+    <div v-else class="unit-grid">
       <NCard v-for="u in units" :key="u.id" size="small">
         <div class="unit-head">
           <span class="unit-title">{{ u.title }}</span>
@@ -362,7 +358,7 @@ onMounted(async () => {
         </div>
         <span v-else class="muted">暂无统计</span>
       </NCard>
-    </NSpace>
+    </div>
 
     <!-- 练习趋势 -->
     <h3 class="section">练习趋势</h3>
@@ -377,7 +373,7 @@ onMounted(async () => {
     </NSpace>
     <NCard v-if="trendOption" size="small">
       <NSpin :show="trendLoading">
-        <EChart :option="trendOption" height="220px" />
+        <EChart :option="trendOption" :height="CHART_HEIGHT.lg" />
       </NSpin>
     </NCard>
     <NResult
@@ -396,7 +392,7 @@ onMounted(async () => {
     <h3 class="section">贡献热力图（最近 12 周）</h3>
     <NCard v-if="heatmapOption" size="small">
       <NSpin :show="heatLoading">
-        <EChart :option="heatmapOption" height="170px" />
+        <EChart :option="heatmapOption" :height="CHART_HEIGHT.sm" />
         <p class="hint">色块越绿＝当天练习量越大；空白＝当天未练习。</p>
       </NSpin>
     </NCard>
@@ -411,20 +407,25 @@ onMounted(async () => {
       </template>
     </NResult>
     <NEmpty v-else description="暂无练习记录，无法生成热力图" />
-    </NSpin>
-  </NConfigProvider>
+  </NSpin>
 </template>
 
 <style scoped>
 .cards {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-  gap: 8px;
-  margin-bottom: 8px;
+  grid-template-columns: repeat(auto-fit, minmax(var(--card-min), 1fr));
+  gap: var(--card-gap);
+  margin-bottom: var(--card-gap);
+}
+/* 按 Unit 统计：响应式多列（一行 3/4/5 个，随容器宽度自适应），替代原纵向堆叠 */
+.unit-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: var(--card-gap);
 }
 .section {
-  margin: 12px 0 4px;
-  font-size: 15px;
+  margin: var(--section-margin);
+  font-size: var(--section-title-size);
   font-weight: 600;
 }
 .unit-head {

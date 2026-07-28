@@ -25,15 +25,20 @@ const message = useMessage()
 // ── Unit 选项（两 tab 共用）
 const units = ref<Unit[]>([])
 const unitLoading = ref(true)
+const unitError = ref(false)
 const unitOptions = computed<SelectOption[]>(() =>
   units.value.map((u) => ({ label: `${u.title} (ID:${u.id})`, value: u.id })),
 )
 
 async function loadUnits() {
   unitLoading.value = true
+  unitError.value = false
   const r = await api.listAllUnits()
   if (r.code === 200) units.value = r.data.items
-  else message.error(`加载 Unit 失败：${r.message}`)
+  else {
+    unitError.value = true
+    message.error(`加载 Unit 失败：${r.message}`)
+  }
   unitLoading.value = false
 }
 
@@ -144,7 +149,14 @@ onMounted(loadUnits)
   <NSpin :show="unitLoading">
     <h2 style="margin-top: 0">🤖 AI 助手</h2>
 
-    <NCard v-if="!units.length && !unitLoading" size="small">
+    <NCard v-if="unitError && !unitLoading" size="small">
+      <NEmpty description="Unit 加载失败">
+        <template #extra>
+          <NButton size="small" @click="loadUnits">🔄 重试</NButton>
+        </template>
+      </NEmpty>
+    </NCard>
+    <NCard v-else-if="!units.length && !unitLoading" size="small">
       <NEmpty description="还没有 Unit，请先添加单词。" />
     </NCard>
 

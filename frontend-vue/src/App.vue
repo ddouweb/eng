@@ -17,6 +17,7 @@ import {
 } from 'naive-ui'
 
 import { useAuthStore } from '@/stores/auth'
+import { STAT_THEME_OVERRIDES } from '@/constants/ui'
 
 const route = useRoute()
 const router = useRouter()
@@ -108,7 +109,7 @@ function logout() {
 </script>
 
 <template>
-  <NConfigProvider :locale="zhCN" :date-locale="dateZhCN">
+  <NConfigProvider :locale="zhCN" :date-locale="dateZhCN" :theme-overrides="STAT_THEME_OVERRIDES">
     <NMessageProvider>
       <NDialogProvider>
         <RouterView v-if="isLogin" />

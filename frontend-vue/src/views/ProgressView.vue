@@ -3,7 +3,6 @@ import { computed, onMounted, ref } from 'vue'
 import {
   NButton,
   NCard,
-  NConfigProvider,
   NEmpty,
   NProgress,
   NResult,
@@ -21,6 +20,7 @@ import { api } from '@/api/client'
 import type { DailyTrend, StatsOverview, StatsProfile } from '@/api/types'
 import { MASTERY_META, MASTERY_ORDER, type MasteryLevel } from '@/constants/mastery'
 import { BADGES } from '@/constants/badges'
+import { CHART_HEIGHT } from '@/constants/ui'
 import EChart from '@/components/EChart.vue'
 
 // 忠实迁移自 frontend/pages/5_🏆_排行榜.py（单人模式后为自我纵向进步趋势）。
@@ -45,10 +45,7 @@ const MASTERY_HEX: Record<MasteryLevel, string> = {
   permanent: '#22C55E',
 }
 
-// 紧致化：缩小本页所有 NStatistic 的数字 / 标签字号（全局主题覆盖，一处生效）。
-const statThemeOverrides = {
-  Statistic: { valueFontSize: '22px', labelFontSize: '12px' },
-}
+// 紧致化：统计字号由 App.vue 全局 NConfigProvider 统一；图表高度取 CHART_HEIGHT 令牌。
 
 const DAY_OPTIONS: SelectOption[] = [
   { label: '最近 7 天', value: 7 },
@@ -243,9 +240,8 @@ onMounted(async () => {
 </script>
 
 <template>
-  <NConfigProvider :theme-overrides="statThemeOverrides">
-    <NSpin :show="loading">
-      <h2 style="margin-top: 0">🏆 我的进步趋势</h2>
+  <NSpin :show="loading">
+    <h2 style="margin-top: 0">🏆 我的进步趋势</h2>
     <p class="caption">
       单人模式 · 追踪你自己的坚持与进步（连续打卡 · 练习趋势 · 掌握分布 · 个人最佳）。
     </p>
@@ -306,7 +302,7 @@ onMounted(async () => {
     <h3 class="section">贡献热力图（最近 12 周）</h3>
     <NCard v-if="heatmapOption" size="small">
       <NSpin :show="heatLoading">
-        <EChart :option="heatmapOption" height="170px" />
+        <EChart :option="heatmapOption" :height="CHART_HEIGHT.sm" />
         <p class="hint">色块越绿＝当天练习量越大；空白＝当天未练习。</p>
       </NSpin>
     </NCard>
@@ -335,7 +331,7 @@ onMounted(async () => {
     </NSpace>
     <NCard v-if="trendOption" size="small">
       <NSpin :show="trendLoading">
-        <EChart :option="trendOption" height="220px" />
+        <EChart :option="trendOption" :height="CHART_HEIGHT.lg" />
       </NSpin>
     </NCard>
     <NResult
@@ -367,7 +363,7 @@ onMounted(async () => {
 
       <h3 class="section">掌握分布</h3>
       <NCard v-if="masteryDistOption" size="small">
-        <EChart :option="masteryDistOption" height="200px" />
+        <EChart :option="masteryDistOption" :height="CHART_HEIGHT.md" />
       </NCard>
       <NEmpty v-else description="暂无掌握度数据" />
     </template>
@@ -381,8 +377,7 @@ onMounted(async () => {
         <NButton @click="loadOverview">重试</NButton>
       </template>
     </NResult>
-    </NSpin>
-  </NConfigProvider>
+  </NSpin>
 </template>
 
 <style scoped>
@@ -394,13 +389,13 @@ onMounted(async () => {
 }
 .cards {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-  gap: 8px;
-  margin-bottom: 8px;
+  grid-template-columns: repeat(auto-fit, minmax(var(--card-min), 1fr));
+  gap: var(--card-gap);
+  margin-bottom: var(--card-gap);
 }
 .section {
-  margin: 12px 0 4px;
-  font-size: 15px;
+  margin: var(--section-margin);
+  font-size: var(--section-title-size);
   font-weight: 600;
 }
 .xp-text {

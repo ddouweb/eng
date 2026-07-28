@@ -193,12 +193,18 @@ async function loadUnits() {
   else message.error(`Unit 加载失败：${r.message}`)
 }
 
+const loadError = ref(false)
+
 async function load() {
   loading.value = true
+  loadError.value = false
   const r = await api.listPlans()
   loading.value = false
   if (r.code === 200) plans.value = r.data
-  else message.error(`计划列表加载失败：${r.message}`)
+  else {
+    loadError.value = true
+    message.error(`计划列表加载失败：${r.message}`)
+  }
 }
 
 async function pause(id: number) {
@@ -402,7 +408,16 @@ onMounted(() => {
     </NTabs>
 
     <NEmpty
-      v-if="!currentPlans.length"
+      v-if="loadError"
+      description="计划列表加载失败"
+      style="margin-top: 24px"
+    >
+      <template #extra>
+        <NButton size="small" @click="load">重试</NButton>
+      </template>
+    </NEmpty>
+    <NEmpty
+      v-else-if="!currentPlans.length"
       :description="tab === 'all' ? '暂无计划' : `暂无计划（${tab === 'active' ? '进行中' : '已暂停'}）`"
       style="margin-top: 24px"
     />

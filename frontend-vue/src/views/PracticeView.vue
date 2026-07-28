@@ -130,7 +130,7 @@ function exitPractice() {
   align-items: center;
   flex-wrap: wrap;
   gap: 8px 12px;
-  margin-bottom: 16px;
+  margin-bottom: 12px;
   position: sticky;
   top: 0;
   background: var(--app-bg);
@@ -171,7 +171,7 @@ function exitPractice() {
   }
 }
 .retry-banner {
-  margin-bottom: 16px;
+  margin-bottom: 12px;
 }
 .retry-actions {
   margin-top: 8px;

@@ -24,6 +24,7 @@ const { play: playRow } = useTtsAudio()
 
 // ── 数据状态（真服务端分页：NDataTable remote 模式，翻页带 page/page_size 回源，仅持当前页）
 const loading = ref(true)
+const loadError = ref(false)
 const units = ref<Unit[]>([])
 const currentUnitId = ref<number | null>(null)
 const words = ref<Word[]>([])
@@ -213,11 +214,13 @@ async function loadWords(
   const r = await api.listWords(unitId, page, pageSize)
   loading.value = false
   if (r.code !== 200) {
+    loadError.value = true
     message.error(r.message)
     words.value = []
     pagination.itemCount = 0
     return
   }
+  loadError.value = false
   words.value = r.data.items
   pagination.itemCount = r.data.total
   resetPlayer()
@@ -314,7 +317,7 @@ const columns: DataTableColumns<Word> = [
       if (!tags.length) return h('span', { style: 'color:#6B7280' }, '-')
       return h(
         NSpace,
-        { size: 4, wrap: false },
+        { size: 4, wrap: true },
         () =>
           tags.map((t) => {
             const meta = tagMeta(t)
@@ -393,7 +396,16 @@ onBeforeUnmount(() => {
       </NSpace>
 
       <NEmpty
-        v-if="!words.length && !loading"
+        v-if="loadError && !loading"
+        description="单词加载失败"
+        style="margin: 24px 0"
+      >
+        <template #extra>
+          <NButton size="small" @click="refresh">🔄 重试</NButton>
+        </template>
+      </NEmpty>
+      <NEmpty
+        v-else-if="!words.length && !loading"
         description="这个 Unit 还没有单词"
         style="margin: 24px 0"
       />

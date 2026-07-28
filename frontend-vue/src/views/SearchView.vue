@@ -111,6 +111,7 @@ const columns: DataTableColumns<Word> = [
   {
     title: '英文',
     key: 'english',
+    width: 300,
     render: (row) =>
       h(NSpace, { align: 'center', size: 6 }, () => [
         h('span', { style: 'font-weight:600' }, row.english),
@@ -131,7 +132,7 @@ const columns: DataTableColumns<Word> = [
         ),
       ]),
   },
-  { title: '中文', key: 'chinese' },
+  { title: '中文', key: 'chinese', width: 300, ellipsis: { tooltip: true } },
   {
     title: 'Unit',
     key: 'unit_id',

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { NAlert, NCard, NCollapse, NCollapseItem, NEmpty, NSpace, NSpin, NStatistic, NTag, useMessage } from 'naive-ui'
+import { NAlert, NButton, NCard, NCollapse, NCollapseItem, NEmpty, NSpace, NSpin, NStatistic, NTag, useMessage } from 'naive-ui'
 
 import { api } from '@/api/client'
 import type { CashMilestone, WeeklySettlement } from '@/api/types'
@@ -10,6 +10,7 @@ import DimensionBar from '@/components/DimensionBar.vue'
 import ScoreRing from '@/components/ScoreRing.vue'
 import Stars from '@/components/Stars.vue'
 import EChart from '@/components/EChart.vue'
+import { CHART_HEIGHT } from '@/constants/ui'
 import type { EChartsOption } from 'echarts'
 
 // 本周结算：周分环 + 四维条 + 星 + bonus + 现金激励（周学习现金 + 里程碑奖金）+ plan_health + 历史。
@@ -20,6 +21,7 @@ const cashBalance = ref(0)
 const cashEnabled = ref(false)
 const milestones = ref<CashMilestone[]>([])
 const loading = ref(true)
+const loadError = ref(false)
 
 const latest = computed<WeeklySettlement | null>(() => history.value[0] ?? null)
 const prev = computed<WeeklySettlement | null>(() => history.value[1] ?? null)
@@ -111,6 +113,7 @@ const trendOption = computed<EChartsOption>(() => {
 
 async function load() {
   loading.value = true
+  loadError.value = false
   const r = await api.getWeeklySettlement()
   if (r.code === 200) {
     history.value = r.data.history ?? []
@@ -118,6 +121,7 @@ async function load() {
     cashEnabled.value = r.data.cash_enabled ?? false
     milestones.value = r.data.milestones ?? []
   } else {
+    loadError.value = true
     message.error(r.message)
   }
   loading.value = false
@@ -156,7 +160,12 @@ onMounted(load)
       </NCollapseItem>
     </NCollapse>
 
-    <NEmpty v-if="!loading && !latest && !cashEnabled" description="尚无结算记录——打开本页会自动结算上一个完整的学习周。" style="margin-top: 40px" />
+    <NEmpty v-if="loadError && !loading" description="结算数据加载失败" style="margin-top: 40px">
+      <template #extra>
+        <NButton size="small" @click="load">🔄 重试</NButton>
+      </template>
+    </NEmpty>
+    <NEmpty v-else-if="!loading && !latest && !cashEnabled" description="尚无结算记录——打开本页会自动结算上一个完整的学习周。" style="margin-top: 40px" />
 
     <div v-if="latest || cashEnabled" class="settle">
       <!-- 本周卡片 -->
@@ -272,7 +281,7 @@ onMounted(load)
       <!-- 历史 -->
       <NCard v-if="history.length > 1" size="small" title="📜 历史周报">
         <div class="trend-wrap">
-          <EChart :option="trendOption" height="240px" />
+          <EChart :option="trendOption" :height="CHART_HEIGHT.lg" />
         </div>
         <div class="history">
           <div v-for="h in history" :key="h.week_key" class="hist-row">
@@ -291,12 +300,12 @@ onMounted(load)
 .subtitle {
   color: #6B7280;
   margin-top: -8px;
-  font-size: 14px;
+  font-size: 13px;
 }
 .settle {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 12px;
   max-width: 760px;
 }
 .week-head {

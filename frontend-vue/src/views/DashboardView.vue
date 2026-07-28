@@ -244,7 +244,7 @@ onMounted(load)
 .dashboard {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 12px;
 }
 .cta-banner :deep(.n-card__content) {
   padding: 16px !important;
@@ -263,7 +263,7 @@ onMounted(load)
 .cards {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 16px;
+  gap: var(--card-gap);
 }
 .xp-text {
   margin-bottom: 8px;
