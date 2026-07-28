@@ -1,3 +1,5 @@
+from typing import Literal
+
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -30,15 +32,20 @@ async def list_words_by_unit(
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=5000),
     type: WordType | None = Query(None),
+    sort_by: Literal["seq", "english", "mastery"] = Query("seq"),
+    order: Literal["asc", "desc"] = Query("asc"),
     db: AsyncSession = Depends(get_db),
 ):
-    """单元内单词列表。
+    """单元内单词列表（可按 序号默认 / 英文 / 掌握度 排序）。
 
     Example:
-        curl http://localhost:8000/api/v1/words/units/1/words?page=1&page_size=50
+        curl 'http://localhost:8000/api/v1/words/units/1/words?page=1&page_size=50&sort_by=mastery&order=asc'
     """
     svc = WordService(db)
-    return await svc.get_by_unit(unit_id, page=page, page_size=page_size, word_type=type)
+    return await svc.get_by_unit(
+        unit_id, page=page, page_size=page_size, word_type=type,
+        sort_by=sort_by, order=order,
+    )
 
 
 @router.get("/search")
@@ -51,18 +58,21 @@ async def search_words(
     type: WordType | None = Query(None),
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=5000),
+    sort_by: Literal["english", "mastery"] = Query("english"),
+    order: Literal["asc", "desc"] = Query("asc"),
     db: AsyncSession = Depends(get_db),
 ):
-    """全局搜词（跨所有 Unit，按关键词/标签/掌握度/Unit 过滤）。
+    """全局搜词（跨所有 Unit，按关键词/标签/掌握度/Unit 过滤，可按 英文 / 掌握度 排序）。
 
     Example:
-        curl 'http://localhost:8000/api/v1/words/search?q=apple&member_id=1'
+        curl 'http://localhost:8000/api/v1/words/search?q=apple&member_id=1&sort_by=mastery&order=asc'
         curl 'http://localhost:8000/api/v1/words/search?tag=favorite&level=learning&member_id=1'
     """
     svc = WordService(db)
     return await svc.search(
         q=q, member_id=member_id, tag=tag, level=level,
         unit_id=unit_id, word_type=type, page=page, page_size=page_size,
+        sort_by=sort_by, order=order,
     )
 
 

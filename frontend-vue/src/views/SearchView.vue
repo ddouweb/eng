@@ -8,12 +8,12 @@ import {
   NForm,
   NFormItem,
   NInput,
-  NPagination,
   NSelect,
   NSpace,
   NTag,
   useMessage,
   type DataTableColumns,
+  type DataTableSortState,
   type SelectOption,
 } from 'naive-ui'
 
@@ -27,7 +27,17 @@ import { useTtsAudio } from '@/composables/useTtsAudio'
 const message = useMessage()
 const { play } = useTtsAudio()
 
-const PAGE_SIZE = 50
+// 真服务端分页（NDataTable remote 模式）+ 服务端排序
+const pagination = reactive({
+  page: 1,
+  pageSize: 50,
+  itemCount: 0,
+  showSizePicker: true,
+  pageSizes: [20, 50, 100],
+})
+type SearchSortKey = 'english' | 'mastery'
+const sortKey = ref<SearchSortKey>('english')
+const sortOrder = ref<'ascend' | 'descend'>('ascend')
 
 // Unit 列表：用于「按 Unit 过滤」下拉 + 表格里 unit_id → title 反查（Word 无 unit_title 字段）。
 const units = ref<Unit[]>([])
@@ -44,8 +54,6 @@ const form = reactive({
 const submitted = ref(false)
 const loading = ref(true)
 const items = ref<Word[]>([])
-const total = ref(0)
-const page = ref(1)
 
 const tagOptions: SelectOption[] = [
   { label: '（不限）', value: '' },
@@ -65,8 +73,6 @@ const unitOptions = computed<SelectOption[]>(() => [
   ...units.value.map((u) => ({ label: `${u.title} (ID:${u.id})`, value: u.id })),
 ])
 
-const totalPages = computed(() => Math.max(1, Math.ceil(total.value / PAGE_SIZE)))
-
 async function loadUnits() {
   loading.value = true
   const r = await api.listAllUnits()
@@ -78,8 +84,10 @@ async function loadUnits() {
 async function doSearch() {
   loading.value = true
   const r = await api.searchWords({
-    page: page.value,
-    page_size: PAGE_SIZE,
+    page: pagination.page,
+    page_size: pagination.pageSize,
+    sort_by: sortKey.value,
+    order: sortOrder.value === 'ascend' ? 'asc' : 'desc',
     ...(form.q.trim() ? { q: form.q.trim() } : {}),
     ...(form.tag ? { tag: form.tag } : {}),
     ...(form.level ? { level: form.level } : {}),
@@ -88,30 +96,52 @@ async function doSearch() {
   loading.value = false
   if (r.code === 200) {
     items.value = r.data.items
-    total.value = r.data.total
+    pagination.itemCount = r.data.total
   } else {
     message.error(r.message)
     items.value = []
-    total.value = 0
+    pagination.itemCount = 0
   }
 }
 
 function search() {
   submitted.value = true
-  page.value = 1
+  pagination.page = 1
   void doSearch()
 }
 
-function onPageChange(p: number) {
-  page.value = p
+function handlePageChange(p: number) {
+  pagination.page = p
   void doSearch()
 }
 
-const columns: DataTableColumns<Word> = [
+function handlePageSizeChange(ps: number) {
+  pagination.pageSize = ps
+  pagination.page = 1
+  void doSearch()
+}
+
+// 表头排序：remote 模式下 sorter:true 仅触发事件，由我们回源；回落到默认英文升序。
+function onSorterUpdate(sorter: DataTableSortState | DataTableSortState[] | null) {
+  const s = Array.isArray(sorter) ? sorter[0] : sorter
+  if (s && s.order && (s.columnKey === 'english' || s.columnKey === 'mastery_level')) {
+    sortKey.value = s.columnKey === 'mastery_level' ? 'mastery' : 'english'
+    sortOrder.value = s.order
+  } else {
+    sortKey.value = 'english'
+    sortOrder.value = 'ascend'
+  }
+  pagination.page = 1
+  void doSearch()
+}
+
+const columns = computed<DataTableColumns<Word>>(() => [
   {
     title: '英文',
     key: 'english',
     width: 300,
+    sorter: true,
+    sortOrder: sortKey.value === 'english' ? sortOrder.value : false,
     render: (row) =>
       h(NSpace, { align: 'center', size: 6 }, () => [
         h('span', { style: 'font-weight:600' }, row.english),
@@ -141,6 +171,8 @@ const columns: DataTableColumns<Word> = [
   {
     title: '掌握度',
     key: 'mastery_level',
+    sorter: true,
+    sortOrder: sortKey.value === 'mastery' ? sortOrder.value : false,
     render: (row) => {
       const m = masteryMeta(row.mastery_level)
       return h(
@@ -175,7 +207,7 @@ const columns: DataTableColumns<Word> = [
       )
     },
   },
-]
+])
 
 onMounted(loadUnits)
 </script>
@@ -223,30 +255,26 @@ onMounted(loadUnits)
       <NEmpty description="输入关键词或选择筛选条件后点「🔍 搜索」" style="margin: 24px 0" />
     </template>
     <template v-else>
-      <p class="page-info">共 {{ total }} 条 · 第 {{ page }}/{{ totalPages }} 页</p>
+      <p class="page-info">共 {{ pagination.itemCount }} 条</p>
       <NEmpty
         v-if="!items.length && !loading"
         description="没有匹配的单词 · 试试调整关键词或筛选条件"
         style="margin: 24px 0"
       />
-      <template v-else>
-        <NDataTable
-          :columns="columns"
-          :data="items"
-          :loading="loading"
-          :bordered="false"
-          size="small"
-        />
-        <NSpace justify="center" style="margin-top: 16px">
-          <NPagination
-            :page="page"
-            :item-count="total"
-            :page-size="PAGE_SIZE"
-            :page-slot="7"
-            @update:page="onPageChange"
-          />
-        </NSpace>
-      </template>
+      <NDataTable
+        v-else
+        :columns="columns"
+        :data="items"
+        remote
+        :pagination="pagination"
+        :loading="loading"
+        :bordered="false"
+        size="small"
+        :row-key="(row) => row.id"
+        @update:page="handlePageChange"
+        @update:page-size="handlePageSizeChange"
+        @update:sorter="onSorterUpdate"
+      />
     </template>
   </div>
 </template>

@@ -76,8 +76,19 @@ async function load() {
   loading.value = false
 }
 
-onMounted(load)
-onBeforeUnmount(clearAuto)
+function onKey(e: KeyboardEvent) {
+  if (e.key === 'ArrowLeft') goPrev()
+  else if (e.key === 'ArrowRight') goNext()
+}
+
+onMounted(() => {
+  load()
+  window.addEventListener('keydown', onKey)
+})
+onBeforeUnmount(() => {
+  clearAuto()
+  window.removeEventListener('keydown', onKey)
+})
 </script>
 
 <template>
@@ -114,7 +125,7 @@ onBeforeUnmount(clearAuto)
         <NButton v-if="!isLast" type="primary" @click="goNext">➡️ 下一张</NButton>
         <NButton v-else type="primary" @click="emit('exit')">✅ 看完了</NButton>
       </NSpace>
-      <p class="hint">不计入统计。自动播放 / 自动下一题 / 速率沿用上方练习设置。</p>
+      <p class="hint">不计入统计。自动播放 / 自动下一题 / 速率沿用上方练习设置。· ←/→ 翻页</p>
     </div>
   </div>
 </template>

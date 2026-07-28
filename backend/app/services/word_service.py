@@ -28,10 +28,12 @@ class WordService:
 
     async def get_by_unit(
         self, unit_id: int, page: int = 1, page_size: int = 50,
-        word_type: WordType | None = None
+        word_type: WordType | None = None,
+        sort_by: str = "seq", order: str = "asc",
     ) -> dict:
         words, total = await self.repo.get_by_unit(
-            unit_id, page=page, page_size=page_size, word_type=word_type
+            unit_id, page=page, page_size=page_size, word_type=word_type,
+            sort_by=sort_by, order=order,
         )
         items = []
         for w in words:
@@ -51,11 +53,14 @@ class WordService:
         word_type: WordType | None = None,
         page: int = 1,
         page_size: int = 50,
+        sort_by: str = "english",
+        order: str = "asc",
     ) -> dict:
         """跨 Unit 全局搜词。返回 item 额外带 unit_title / tags / mastery(member 级)。"""
         words, total = await self.repo.search(
             q=q, member_id=member_id, tag=tag, level=level,
             unit_id=unit_id, word_type=word_type, page=page, page_size=page_size,
+            sort_by=sort_by, order=order,
         )
         items = []
         for w in words:

@@ -9,6 +9,7 @@ import {
   NTag,
   useMessage,
   type DataTableColumns,
+  type DataTableSortState,
   type SelectOption,
 } from 'naive-ui'
 
@@ -203,6 +204,11 @@ async function loadUnits(): Promise<void> {
   }
 }
 
+// 服务端排序：remote 分页下排序必须回源。默认 seq 升序（后端默认顺序）。
+type WordSortKey = 'seq' | 'english' | 'mastery'
+const sortKey = ref<WordSortKey>('seq')
+const sortOrder = ref<'ascend' | 'descend'>('ascend')
+
 async function loadWords(
   unitId: number,
   page = pagination.page,
@@ -211,7 +217,14 @@ async function loadWords(
   loading.value = true
   // 真服务端分页：仅取当前页。排序在后端（word_repo order_by seq nulls last, id），
   // 故跨页 seq 单调；不再在客户端排序（否则会破坏分页顺序）。
-  const r = await api.listWords(unitId, page, pageSize)
+  const r = await api.listWords(
+    unitId,
+    page,
+    pageSize,
+    undefined,
+    sortKey.value,
+    sortOrder.value === 'ascend' ? 'asc' : 'desc',
+  )
   loading.value = false
   if (r.code !== 200) {
     loadError.value = true
@@ -245,12 +258,26 @@ function handlePageSizeChange(ps: number): void {
   if (currentUnitId.value != null) void loadWords(currentUnitId.value, 1, ps)
 }
 
+// 表头排序：remote 模式下 sorter:true 仅触发事件，由我们回源；三态循环回落到默认 seq 升序。
+function onSorterUpdate(sorter: DataTableSortState | DataTableSortState[] | null) {
+  const s = Array.isArray(sorter) ? sorter[0] : sorter
+  if (s && s.order && (s.columnKey === 'english' || s.columnKey === 'mastery_level')) {
+    sortKey.value = s.columnKey === 'mastery_level' ? 'mastery' : 'english'
+    sortOrder.value = s.order
+  } else {
+    sortKey.value = 'seq'
+    sortOrder.value = 'ascend'
+  }
+  pagination.page = 1
+  if (currentUnitId.value != null) void loadWords(currentUnitId.value, 1)
+}
+
 async function refresh(): Promise<void> {
   if (currentUnitId.value != null) await loadWords(currentUnitId.value)
 }
 
 // ── 表格列
-const columns: DataTableColumns<Word> = [
+const columns = computed<DataTableColumns<Word>>(() => [
   {
     title: '序号',
     key: 'seq',
@@ -261,6 +288,8 @@ const columns: DataTableColumns<Word> = [
     title: '英文',
     key: 'english',
     width: 300,
+    sorter: true,
+    sortOrder: sortKey.value === 'english' ? sortOrder.value : false,
     render: (row) =>
       h(
         'div',
@@ -295,6 +324,8 @@ const columns: DataTableColumns<Word> = [
     title: '掌握度',
     key: 'mastery_level',
     width: 120,
+    sorter: true,
+    sortOrder: sortKey.value === 'mastery' ? sortOrder.value : false,
     render: (row) => {
       const m = masteryMeta(row.mastery_level)
       return h(
@@ -330,7 +361,7 @@ const columns: DataTableColumns<Word> = [
       )
     },
   },
-]
+])
 
 onMounted(async () => {
   loading.value = true
@@ -422,6 +453,7 @@ onBeforeUnmount(() => {
         :row-key="(row) => row.id"
         @update:page="handlePageChange"
         @update:page-size="handlePageSizeChange"
+        @update:sorter="onSorterUpdate"
       />
 
       <p class="hint">

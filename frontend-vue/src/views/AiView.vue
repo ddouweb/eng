@@ -87,6 +87,12 @@ const exercise = ref<ExerciseResult | null>(null)
 const answers = reactive<Record<number, string>>({})
 const submitted = ref(false)
 
+// 重做当前题（不重新请求 AI，省 token）：清空作答 + 回到题目态。
+function redoSame() {
+  resetAnswers()
+  submitted.value = false
+}
+
 function resetAnswers() {
   for (const k of Object.keys(answers)) {
     delete answers[Number(k)]
@@ -292,6 +298,7 @@ onMounted(loadUnits)
                 <div v-if="item.explanation" class="ex-expl">💡 {{ item.explanation }}</div>
               </div>
               <NButton style="margin-top: 12px" @click="resetExercise">重新生成</NButton>
+              <NButton style="margin-top: 12px; margin-left: 8px" tertiary @click="redoSame">🔁 重做本题</NButton>
             </NCard>
           </NSpin>
         </NSpace>

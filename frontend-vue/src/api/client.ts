@@ -74,6 +74,8 @@ interface SearchWordsParams {
   word_type?: string
   page?: number
   page_size?: number
+  sort_by?: 'english' | 'mastery'
+  order?: 'asc' | 'desc'
 }
 
 interface CreatePlanInput {
@@ -130,13 +132,26 @@ export const api = {
   deleteUnit: (id: number) => request<null>('delete', `/units/${id}`),
 
   // ── Words
-  listWords: (unitId: number, page = 1, pageSize = 50, wordType?: string) =>
+  listWords: (
+    unitId: number,
+    page = 1,
+    pageSize = 50,
+    wordType?: string,
+    sortBy: 'seq' | 'english' | 'mastery' = 'seq',
+    order: 'asc' | 'desc' = 'asc',
+  ) =>
     request<Page<Word>>('get', `/words/units/${unitId}/words`, {
-      params: { page, page_size: pageSize, ...(wordType ? { type: wordType } : {}) },
+      params: {
+        page,
+        page_size: pageSize,
+        sort_by: sortBy,
+        order,
+        ...(wordType ? { type: wordType } : {}),
+      },
     }),
   searchWords: (p: SearchWordsParams) =>
     request<Page<Word>>('get', '/words/search', {
-      params: { member_id: MEMBER_ID, page: p.page ?? 1, page_size: p.page_size ?? 50, ...(p.q ? { q: p.q } : {}), ...(p.tag ? { tag: p.tag } : {}), ...(p.level ? { level: p.level } : {}), ...(p.unit_id ? { unit_id: p.unit_id } : {}), ...(p.word_type ? { type: p.word_type } : {}) },
+      params: { member_id: MEMBER_ID, page: p.page ?? 1, page_size: p.page_size ?? 50, sort_by: p.sort_by ?? 'english', order: p.order ?? 'asc', ...(p.q ? { q: p.q } : {}), ...(p.tag ? { tag: p.tag } : {}), ...(p.level ? { level: p.level } : {}), ...(p.unit_id ? { unit_id: p.unit_id } : {}), ...(p.word_type ? { type: p.word_type } : {}) },
     }),
   batchCreateWords: (unitId: number, words: Array<Record<string, unknown>>) =>
     request<unknown>('post', `/words/units/${unitId}/words`, { data: { words } }),

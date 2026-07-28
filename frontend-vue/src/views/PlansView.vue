@@ -99,6 +99,11 @@ const canCreate = computed(
 
 // 行内校验：这三个字段控制「创建计划」按钮是否置灰，保留反馈让用户看到置灰原因
 const formRef = ref<FormInst | null>(null)
+
+function scrollToCreate() {
+  const el = (formRef.value as unknown as { $el?: HTMLElement })?.$el
+  el?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+}
 const formRules: FormRules = {
   name: [{ required: true, message: '请输入计划名称', trigger: ['input', 'blur'] }],
   unit_ids: [
@@ -175,10 +180,32 @@ const activePlans = computed(() => plans.value.filter((p) => p.status === 'activ
 const pausedPlans = computed(() => plans.value.filter((p) => p.status === 'paused'))
 
 const tab = ref<'all' | 'active' | 'paused'>('all')
+type PlanSortKey = 'default' | 'name' | 'deadline'
+const sortKey = ref<PlanSortKey>('default')
+const SORT_OPTIONS: SelectOption[] = [
+  { label: '默认排序', value: 'default' },
+  { label: '按名称', value: 'name' },
+  { label: '按截止日期', value: 'deadline' },
+]
+
+// 客户端排序：listPlans 单次全量拉取，纯前端排序无需后端改动。
 const currentPlans = computed<LearningPlan[]>(() => {
-  if (tab.value === 'active') return activePlans.value
-  if (tab.value === 'paused') return pausedPlans.value
-  return plans.value
+  let list: LearningPlan[]
+  if (tab.value === 'active') list = activePlans.value
+  else if (tab.value === 'paused') list = pausedPlans.value
+  else list = plans.value
+  if (sortKey.value === 'name') {
+    return [...list].sort((a, b) => a.name.localeCompare(b.name, 'zh'))
+  }
+  if (sortKey.value === 'deadline') {
+    // 无截止日期排到末尾
+    return [...list].sort((a, b) => {
+      if (!a.deadline) return 1
+      if (!b.deadline) return -1
+      return a.deadline.localeCompare(b.deadline)
+    })
+  }
+  return list
 })
 
 // ── 每日任务展开缓存（懒加载：首次展开才 getPlan）
@@ -401,11 +428,19 @@ onMounted(() => {
     </NCard>
 
     <!-- ── 计划列表 ── -->
-    <NTabs v-model:value="tab" type="line" animated>
-      <NTabPane name="all" tab="全部" />
-      <NTabPane name="active" tab="进行中" />
-      <NTabPane name="paused" tab="已暂停" />
-    </NTabs>
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+      <NTabs v-model:value="tab" type="line" animated>
+        <NTabPane name="all" tab="全部" />
+        <NTabPane name="active" tab="进行中" />
+        <NTabPane name="paused" tab="已暂停" />
+      </NTabs>
+      <NSelect
+        v-model:value="sortKey"
+        :options="SORT_OPTIONS"
+        size="small"
+        style="width: 140px; flex-shrink: 0"
+      />
+    </div>
 
     <NEmpty
       v-if="loadError"
@@ -420,7 +455,11 @@ onMounted(() => {
       v-else-if="!currentPlans.length"
       :description="tab === 'all' ? '暂无计划' : `暂无计划（${tab === 'active' ? '进行中' : '已暂停'}）`"
       style="margin-top: 24px"
-    />
+    >
+      <template #extra>
+        <NButton v-if="units.length" type="primary" @click="scrollToCreate">➕ 去创建计划</NButton>
+      </template>
+    </NEmpty>
 
     <NSpace v-else vertical :size="12" style="margin-top: 12px">
       <NCard v-for="p in currentPlans" :key="p.id" size="small">
