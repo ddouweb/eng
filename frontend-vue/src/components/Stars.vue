@@ -10,7 +10,15 @@ const cells = computed(() =>
 
 <template>
   <span class="stars">
-    <span v-for="(on, i) in cells" :key="i" :class="on ? 'on' : 'off'">★</span>
+    <!-- 亮灭用字形区分（实心 ★ vs 空心 ☆），颜色仅作辅助：色盲也可辨识 -->
+    <span
+      v-for="(on, i) in cells"
+      :key="i"
+      class="star"
+      :class="on ? 'on' : 'off'"
+      :aria-label="on ? '已获得' : '未获得'"
+      >{{ on ? '★' : '☆' }}</span
+    >
   </span>
 </template>
 
@@ -19,10 +27,14 @@ const cells = computed(() =>
   font-size: 22px;
   letter-spacing: 2px;
 }
+.star {
+  /* 字形为主要区分线索，颜色为辅助；确保空心星轮廓可见 */
+  line-height: 1;
+}
 .on {
-  color: #f0a020;
+  color: var(--warning, #f0a020);
 }
 .off {
-  color: #ddd;
+  color: #c9cdd4; /* 空心星描边：保留足够可见度的中性灰 */
 }
 </style>

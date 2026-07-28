@@ -37,15 +37,15 @@ const pct = computed(() =>
   margin-bottom: 5px;
 }
 .dim-label {
-  color: #444;
+  color: var(--text-primary, #1f2937);
 }
 .dim-score {
-  color: #888;
+  color: var(--text-secondary, #6b7280);
   font-variant-numeric: tabular-nums;
 }
 .bar {
   height: 10px;
-  background: #eef0f3;
+  background: var(--track-bg, #eef0f3);
   border-radius: 5px;
   overflow: hidden;
 }

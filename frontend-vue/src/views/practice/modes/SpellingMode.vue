@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // 中→英拼写。源页 L871-900。大小写不敏感；提交前校验非空（源 L883）。
 // 答后揭示音标/词性/英释/例句（源 _phonetic_audio_inline）。源页无「上一题」。
-import { computed, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import { NAlert, NButton, NCard, NInput, useMessage } from 'naive-ui'
 
 import { usePracticeStore } from '@/stores/practice'
@@ -19,10 +19,13 @@ const isCorrect = computed(() => entry.value?.isCorrect ?? false)
 const phonetic = computed(() => formatPhonetic(q.value?.phonetic))
 
 const answer = ref('')
+const inputRef = ref<InstanceType<typeof NInput> | null>(null)
 watch(
   () => q.value?.word_id,
   () => {
     answer.value = entry.value?.userAnswer ?? ''
+    // 进入新题自动聚焦输入框，便于连续「回车提交」
+    if (!answered.value) nextTick(() => inputRef.value?.focus())
   },
   { immediate: true },
 )
@@ -56,9 +59,11 @@ function goNext() {
         <p class="cn"><strong>中文：</strong>{{ q.chinese }}</p>
 
         <NInput
+          ref="inputRef"
           v-model:value="answer"
           :disabled="answered"
-          placeholder="输入英文拼写："
+          placeholder="输入英文拼写（回车提交）"
+          @keyup.enter="onSubmit"
         />
 
         <template v-if="!answered">
@@ -125,7 +130,7 @@ function goNext() {
   color: #666;
 }
 .meta {
-  color: #888;
+  color: #6B7280;
   font-size: 13px;
   margin-top: 6px;
 }

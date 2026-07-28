@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
-import { NAlert, NButton, NInput, NSpace, useMessage } from 'naive-ui'
+import { computed, nextTick, ref, watch } from 'vue'
+import { NAlert, NButton, NEmpty, NInput, NSpace, useMessage } from 'naive-ui'
 
 import { usePracticeStore } from '@/stores/practice'
 import { useTtsAudio } from '@/composables/useTtsAudio'
@@ -15,6 +15,7 @@ const { play } = useTtsAudio()
 const q = computed(() => store.currentQuestion)
 
 const answer = ref('')
+const inputRef = ref<InstanceType<typeof NInput> | null>(null)
 const submitted = ref(false)
 const skipped = ref(false)
 // 提交给服务端的 userAnswer：dictation 用原始未 strip 的输入（与源页 L944-945 一致）；
@@ -39,6 +40,8 @@ watch(
     userAnswer.value = ''
     const cur = store.currentQuestion
     if (cur && store.autoPlay) void play(cur.english, store.fcSpeed)
+    // 进入新题自动聚焦输入框，便于连续「回车提交」
+    if (!submitted.value) nextTick(() => inputRef.value?.focus())
   },
   { immediate: true },
 )
@@ -87,8 +90,9 @@ function goNext() {
     <NButton size="large" @click="replay">🔊 {{ submitted ? '再听' : '播放发音' }}</NButton>
 
     <NInput
+      ref="inputRef"
       v-model:value="answer"
-      placeholder="输入英文"
+      placeholder="输入英文（回车提交）"
       :disabled="submitted"
       class="input"
       @keyup.enter="onSubmit"
@@ -125,7 +129,7 @@ function goNext() {
       </NButton>
     </div>
   </div>
-  <div v-else class="empty">暂无题目</div>
+  <NEmpty v-else description="暂无题目" />
 </template>
 
 <style scoped>
@@ -137,7 +141,7 @@ function goNext() {
   gap: 16px;
 }
 .caption {
-  color: #888;
+  color: #6B7280;
   font-size: 14px;
   margin: 0;
 }
@@ -161,7 +165,7 @@ function goNext() {
   font-weight: 700;
 }
 .phonetic {
-  color: #888;
+  color: #6B7280;
   font-size: 15px;
 }
 .rich {
@@ -172,8 +176,5 @@ function goNext() {
 }
 .rich p {
   margin: 0;
-}
-.empty {
-  color: #999;
 }
 </style>

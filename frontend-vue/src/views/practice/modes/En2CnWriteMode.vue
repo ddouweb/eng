@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // 英→中默写。源页 L903-927。精确、大小写敏感（trim 后比对，源 L913 strip）。
 // 题面已展示 english+音标+音频，故答后不再揭示富字段。源页无「上一题」、无空值校验。
-import { computed, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import { NAlert, NButton, NCard, NInput, useMessage } from 'naive-ui'
 
 import { usePracticeStore } from '@/stores/practice'
@@ -19,10 +19,13 @@ const isCorrect = computed(() => entry.value?.isCorrect ?? false)
 const phonetic = computed(() => formatPhonetic(q.value?.phonetic))
 
 const answer = ref('')
+const inputRef = ref<InstanceType<typeof NInput> | null>(null)
 watch(
   () => q.value?.word_id,
   () => {
     answer.value = entry.value?.userAnswer ?? ''
+    // 进入新题自动聚焦输入框，便于连续「回车提交」
+    if (!answered.value) nextTick(() => inputRef.value?.focus())
   },
   { immediate: true },
 )
@@ -61,9 +64,11 @@ function goNext() {
         </div>
 
         <NInput
+          ref="inputRef"
           v-model:value="answer"
           :disabled="answered"
-          placeholder="输入中文释义："
+          placeholder="输入中文释义（回车提交）"
+          @keyup.enter="onSubmit"
         />
 
         <template v-if="!answered">
@@ -106,7 +111,7 @@ function goNext() {
   font-weight: 700;
 }
 .phon {
-  color: #888;
+  color: #6B7280;
   font-size: 14px;
 }
 .actions {

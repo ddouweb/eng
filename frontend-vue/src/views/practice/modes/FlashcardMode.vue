@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
-import { NButton, NProgress, NTag } from 'naive-ui'
+import { NButton, NEmpty, NProgress, NTag } from 'naive-ui'
 
 import { usePracticeStore } from '@/stores/practice'
 import { useTtsAudio } from '@/composables/useTtsAudio'
@@ -261,7 +261,7 @@ onBeforeUnmount(() => {
       </div>
     </div>
   </div>
-  <div v-else class="empty">暂无题目</div>
+  <NEmpty v-else description="暂无题目" />
 </template>
 
 <style scoped>
@@ -327,7 +327,7 @@ onBeforeUnmount(() => {
 }
 .fc-pos {
   font-size: 13px;
-  color: #888;
+  color: #6B7280;
   border: 1px solid #e0e0e0;
   border-radius: 999px;
   padding: 1px 9px;
@@ -386,7 +386,7 @@ onBeforeUnmount(() => {
 .fc-section-title {
   font-size: 12px;
   font-weight: 600;
-  color: #888;
+  color: #6B7280;
   letter-spacing: 0.05em;
   margin-bottom: 4px;
 }
@@ -445,12 +445,12 @@ onBeforeUnmount(() => {
 }
 .fc-countdown-caption {
   font-size: 12px;
-  color: #888;
+  color: #6B7280;
   text-align: center;
 }
 .fc-manual-hint {
   font-size: 12px;
-  color: #999;
+  color: #6B7280;
   text-align: center;
 }
 .fc-toggle {
@@ -470,10 +470,6 @@ onBeforeUnmount(() => {
 .fc-fade-leave-to {
   opacity: 0;
   transform: translateY(6px);
-}
-
-.empty {
-  color: #999;
 }
 
 @media (max-width: 560px) {

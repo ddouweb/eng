@@ -233,7 +233,7 @@ function nextQuiz() {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  color: #888;
+  color: var(--text-secondary, #6B7280);
   font-size: 13px;
   margin-bottom: 6px;
 }
@@ -255,7 +255,7 @@ function nextQuiz() {
   font-weight: 700;
 }
 .phonetic {
-  color: #888;
+  color: var(--text-secondary, #6B7280);
   margin: 0 0 12px;
   font-size: 15px;
 }

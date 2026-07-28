@@ -38,10 +38,10 @@ const overviewError = ref('')
 
 // ECharts 不吃 CSS 变量，故在此固化掌握度四色十六进制（与 styles/tokens.css 一致）。
 const MASTERY_HEX: Record<MasteryLevel, string> = {
-  unlearned: '#909399',
-  learning: '#e6a23c',
-  familiar: '#409eff',
-  permanent: '#67c23a',
+  unlearned: '#9CA3AF',
+  learning: '#F97316',
+  familiar: '#3B82F6',
+  permanent: '#22C55E',
 }
 
 const DAY_OPTIONS: SelectOption[] = [
@@ -89,15 +89,15 @@ const trendOption = computed<EChartsOption | null>(() => {
         name: '练习量',
         type: 'bar',
         data: daily.map((d) => d.total),
-        itemStyle: { color: '#409eff' },
+        itemStyle: { color: '#3B82F6' },
       },
       {
         name: '正确量',
         type: 'line',
         data: daily.map((d) => d.correct),
         smooth: true,
-        itemStyle: { color: '#67c23a' },
-        lineStyle: { color: '#67c23a' },
+        itemStyle: { color: '#18a058' },
+        lineStyle: { color: '#18a058' },
       },
     ],
   }
@@ -139,7 +139,7 @@ const heatmapOption = computed<EChartsOption | null>(() => {
       left: 'center',
       bottom: 0,
       inRange: { color: ['#ebedf0', '#2da44e'] },
-      show: false,
+      show: true,
     },
     calendar: {
       top: 30,
@@ -400,7 +400,7 @@ onMounted(async () => {
   color: #555;
 }
 .hint {
-  color: #999;
+  color: #6B7280;
   font-size: 13px;
   margin: 8px 0 0;
   text-align: center;

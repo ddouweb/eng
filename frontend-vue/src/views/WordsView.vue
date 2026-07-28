@@ -2,11 +2,10 @@
 import { computed, h, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import {
   NButton,
-  NCard,
   NDataTable,
+  NEmpty,
   NSelect,
   NSpace,
-  NSpin,
   NTag,
   useMessage,
   type DataTableColumns,
@@ -266,7 +265,7 @@ const columns: DataTableColumns<Word> = [
         [
           h('span', { style: 'font-weight:600;overflow:hidden;text-overflow:ellipsis' }, row.english),
           formatPhonetic(row.phonetic)
-            ? h('span', { style: 'color:#888;font-size:13px;flex-shrink:0' }, formatPhonetic(row.phonetic))
+            ? h('span', { style: 'color:#6B7280;font-size:13px;flex-shrink:0' }, formatPhonetic(row.phonetic))
             : null,
           h(
             NButton,
@@ -312,7 +311,7 @@ const columns: DataTableColumns<Word> = [
     width: 200,
     render: (row) => {
       const tags = row.tags ?? []
-      if (!tags.length) return h('span', { style: 'color:#999' }, '-')
+      if (!tags.length) return h('span', { style: 'color:#6B7280' }, '-')
       return h(
         NSpace,
         { size: 4, wrap: false },
@@ -355,12 +354,14 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <NSpin :show="loading">
+  <div>
     <h2 style="margin-top: 0">🔤 单词管理</h2>
 
-    <NCard v-if="!units.length && !loading" size="small">
-      还没有 Unit，请先到「单元管理」页面创建。
-    </NCard>
+    <NEmpty
+      v-if="!units.length && !loading"
+      description="还没有 Unit · 请先到「单元管理」创建"
+      style="margin: 24px 0"
+    />
 
     <template v-else>
       <!-- 顶栏：Unit 选择 + 刷新（窄屏允许换行，select 限宽避免溢出） -->
@@ -391,9 +392,11 @@ onBeforeUnmount(() => {
         <span class="player-status">{{ playerStatus }}</span>
       </NSpace>
 
-      <NCard v-if="!words.length && !loading" size="small">
-        这个 Unit 还没有单词。
-      </NCard>
+      <NEmpty
+        v-if="!words.length && !loading"
+        description="这个 Unit 还没有单词"
+        style="margin: 24px 0"
+      />
 
       <NDataTable
         v-else
@@ -401,6 +404,7 @@ onBeforeUnmount(() => {
         :data="words"
         remote
         :pagination="pagination"
+        :loading="loading"
         :bordered="false"
         size="small"
         :row-key="(row) => row.id"
@@ -412,7 +416,7 @@ onBeforeUnmount(() => {
         💡 单人模式下词库经 ECDICT 脚本 / SQL 种子维护；本页为只读浏览，如需新增词请用脚本灌词。
       </p>
     </template>
-  </NSpin>
+  </div>
 </template>
 
 <style scoped>
@@ -426,7 +430,7 @@ onBeforeUnmount(() => {
   color: #444;
 }
 .hint {
-  color: #999;
+  color: #6B7280;
   margin-top: 16px;
   font-size: 13px;
 }

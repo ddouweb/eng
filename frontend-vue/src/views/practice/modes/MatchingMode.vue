@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import {
   NButton,
   NCard,
+  NEmpty,
   NGrid,
   NGridItem,
   NProgress,
@@ -146,7 +147,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <NCard>
+  <NCard v-if="batchQs.length">
     <NSpace vertical :size="12">
       <div class="mg-progress-text">
         第 {{ batch + 1 }} 轮 · 已配对 {{ overall }}/{{ store.total
@@ -189,6 +190,7 @@ onBeforeUnmount(() => {
       </NGrid>
     </NSpace>
   </NCard>
+  <NEmpty v-else description="暂无题目" />
 </template>
 
 <style scoped>
@@ -200,7 +202,7 @@ onBeforeUnmount(() => {
   font-weight: 600;
 }
 .mg-caption {
-  color: #999;
+  color: var(--text-secondary, #6B7280);
   font-size: 13px;
 }
 .mg-col-title {

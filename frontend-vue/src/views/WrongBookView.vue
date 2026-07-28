@@ -2,8 +2,8 @@
 import { h, onMounted, reactive, ref } from 'vue'
 import {
   NButton,
-  NCard,
   NDataTable,
+  NEmpty,
   NPopconfirm,
   NSpace,
   NTag,
@@ -158,9 +158,11 @@ onMounted(load)
       </NPopconfirm>
     </NSpace>
 
-    <NCard v-if="!total && !loading" size="small">
-      错题本为空。在「练习」中答错的题会自动加入。
-    </NCard>
+    <NEmpty
+      v-if="!total && !loading"
+      description="错题本为空 · 在「练习」中答错的题会自动加入"
+      style="margin: 24px 0"
+    />
     <NDataTable
       v-else
       :columns="columns"
@@ -178,7 +180,7 @@ onMounted(load)
 
 <style scoped>
 .caption {
-  color: #999;
+  color: #6B7280;
   margin-top: -4px;
   font-size: 13px;
 }

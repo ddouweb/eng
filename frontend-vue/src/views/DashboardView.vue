@@ -271,7 +271,7 @@ onMounted(load)
   color: #555;
 }
 .hint {
-  color: #999;
+  color: #6B7280;
   font-size: 13px;
 }
 </style>

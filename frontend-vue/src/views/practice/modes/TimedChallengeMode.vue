@@ -18,7 +18,8 @@ const store = usePracticeStore()
 const { play } = useTtsAudio()
 
 const remaining = ref(TIME_LIMIT)
-const answered = ref(false) // 已点击选项 → 展示反馈（超时不展示，直接推进）
+const answered = ref(false) // 已点击选项或超时揭示 → 展示反馈
+const timedOut = ref(false) // 超时揭示期：隐藏手动「下一题」，1.5s 后自动推进
 const finished = ref(false) // 当前题已处理（点击或超时），互斥锁防双触发
 const selectedOpt = ref('')
 const isCorrect = ref(false)
@@ -29,6 +30,7 @@ const optCache = ref(new Map<number, string[]>())
 const opts = ref<string[]>([])
 
 let intervalId: ReturnType<typeof setInterval> | null = null
+let revealTimer: ReturnType<typeof setTimeout> | null = null
 let startTime = 0
 
 const q = computed(() => store.currentQuestion)
@@ -66,7 +68,12 @@ function startTimer() {
 }
 
 function resetForQuestion(newQ: PracticeQuestion) {
+  if (revealTimer) {
+    clearTimeout(revealTimer)
+    revealTimer = null
+  }
   answered.value = false
+  timedOut.value = false
   finished.value = false
   selectedOpt.value = ''
   isCorrect.value = false
@@ -105,13 +112,20 @@ function onTimeout() {
   const cur = q.value
   if (!cur) return
   finished.value = true
+  answered.value = true // 揭示正答：复用反馈区，展示「(超时) | 正确答案」
+  timedOut.value = true
   isCorrect.value = false
   selectedOpt.value = ''
   rt.value = TIME_LIMIT
   // 超时算错，userAnswer=''（服务端按 word.chinese 复判，此处不伪造选项）
   void store.submitOne(cur.word_id, false, '')
-  // 限时模式保持节奏：超时立即推进，不停在反馈页
-  advance()
+  // 先揭示正答 ~1.5s 再自动推进：既保持节奏，又让用户看到正确答案（而非直接跳过）
+  if (revealTimer) clearTimeout(revealTimer)
+  revealTimer = setTimeout(() => {
+    timedOut.value = false
+    revealTimer = null
+    advance()
+  }, 1500)
 }
 
 function advance() {
@@ -149,7 +163,13 @@ watch(
   { immediate: true },
 )
 
-onBeforeUnmount(stopTimer)
+onBeforeUnmount(() => {
+  stopTimer()
+  if (revealTimer) {
+    clearTimeout(revealTimer)
+    revealTimer = null
+  }
+})
 </script>
 
 <template>
@@ -188,7 +208,7 @@ onBeforeUnmount(stopTimer)
       </NButton>
     </div>
 
-    <!-- 反馈（点击路径；超时已推进，不展示） -->
+    <!-- 反馈：点击选项后展示；超时时也展示（揭示正答 ~1.5s） -->
     <NAlert v-if="answered" :type="isCorrect ? 'success' : 'error'" show-icon class="feedback">
       <span v-if="isCorrect">✅ 正确！反应 {{ rt.toFixed(1) }}s</span>
       <span v-else>
@@ -197,8 +217,8 @@ onBeforeUnmount(stopTimer)
       </span>
     </NAlert>
 
-    <!-- 下一题 -->
-    <NButton v-if="answered" type="primary" block class="next-btn" @click="advance">
+    <!-- 下一题（超时揭示期由 1.5s 定时器自动推进，故隐藏手动按钮） -->
+    <NButton v-if="answered && !timedOut" type="primary" block class="next-btn" @click="advance">
       {{ isLast ? '✅ 完成练习' : '➡️ 下一题' }}
     </NButton>
   </div>
@@ -229,7 +249,7 @@ onBeforeUnmount(stopTimer)
   font-weight: 700;
 }
 .phonetic {
-  color: #888;
+  color: var(--text-secondary, #6B7280);
   margin: 0 0 16px;
   font-size: 15px;
 }

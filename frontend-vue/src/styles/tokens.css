@@ -1,9 +1,23 @@
-/* 设计令牌：掌握度四色（与 CLAUDE.md / 后端 MasteryLevel 一致，全应用同色）。 */
+/* 设计令牌：掌握度四色 + 文本/语义色（与 CLAUDE.md / 后端 MasteryLevel 一致，全应用同色）。
+   掌握度 permanent(#22C55E) 与 UI 成功色(#18a058)语义不同，不可混用。 */
 :root {
-  --mastery-unlearned: #909399; /* 灰 */
-  --mastery-learning: #e6a23c; /* 橙 */
-  --mastery-familiar: #409eff; /* 蓝 */
-  --mastery-permanent: #67c23a; /* 绿 */
+  /* 掌握度四色（必须统一到这套） */
+  --mastery-unlearned: #9ca3af; /* 未学习 灰 */
+  --mastery-learning: #f97316; /* 学习中 橙 */
+  --mastery-familiar: #3b82f6; /* 熟悉 蓝 */
+  --mastery-permanent: #22c55e; /* 永久 绿（掌握度语义，区别于成功色） */
+
+  /* 文本色（WCAG AA：白底对比度 ≥4.5:1；替换原 #999/#888/#bbb/#ccc 等过浅灰） */
+  --text-primary: #1f2937; /* 主文本 */
+  --text-secondary: #6b7280; /* 辅助/说明文本 */
+
+  /* UI 语义色（Naive 默认调色板，便于主题覆写） */
+  --success: #18a058; /* 成功色，勿混用 #67c23a */
+  --warning: #f0a020; /* 警示 / 评分中段橙 */
+  --info: #2080f0; /* 信息 / 评分中段蓝 */
+
+  /* 进度/评分环轨道底色 */
+  --track-bg: #eef0f3;
 
   --app-bg: #f5f7fa;
   --app-radius: 10px;
@@ -20,7 +34,7 @@ body {
   font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', 'PingFang SC',
     'Microsoft YaHei', sans-serif;
   background: var(--app-bg);
-  color: #1f2329;
+  color: var(--text-primary);
 }
 
 a {

@@ -4,12 +4,12 @@ import {
   NButton,
   NCard,
   NDataTable,
+  NEmpty,
   NFormItem,
   NInput,
   NInputNumber,
   NPopconfirm,
   NSpace,
-  NSpin,
   useMessage,
   type DataTableColumns,
 } from 'naive-ui'
@@ -120,7 +120,7 @@ onMounted(() => load(1))
 </script>
 
 <template>
-  <NSpin :show="loading">
+  <div>
     <h2 style="margin-top: 0">📚 单元管理</h2>
 
     <NCard title="➕ 创建新 Unit" size="small" style="margin-bottom: 16px">
@@ -135,15 +135,18 @@ onMounted(() => load(1))
       </NSpace>
     </NCard>
 
-    <NCard v-if="!units.length && !loading" size="small">
-      还没有 Unit，点击上方「创建新 Unit」开始。
-    </NCard>
+    <NEmpty
+      v-if="!units.length && !loading"
+      description="还没有 Unit · 点击上方「创建新 Unit」开始"
+      style="margin: 24px 0"
+    />
     <NDataTable
       v-else
       :columns="columns"
       :data="units"
       remote
       :pagination="pagination"
+      :loading="loading"
       :bordered="false"
       size="small"
       :row-key="(row) => row.id"
@@ -154,12 +157,12 @@ onMounted(() => load(1))
     <p class="hint">
       💡 单人模式下词库经 ECDICT 脚本 / SQL 种子维护；如需新增 Unit，可在此创建后用脚本灌词。
     </p>
-  </NSpin>
+  </div>
 </template>
 
 <style scoped>
 .hint {
-  color: #999;
+  color: #6B7280;
   margin-top: 16px;
   font-size: 13px;
 }

@@ -4,13 +4,13 @@ import {
   NButton,
   NCard,
   NDataTable,
+  NEmpty,
   NForm,
   NFormItem,
   NInput,
   NPagination,
   NSelect,
   NSpace,
-  NSpin,
   NTag,
   useMessage,
   type DataTableColumns,
@@ -115,7 +115,7 @@ const columns: DataTableColumns<Word> = [
       h(NSpace, { align: 'center', size: 6 }, () => [
         h('span', { style: 'font-weight:600' }, row.english),
         formatPhonetic(row.phonetic)
-          ? h('span', { style: 'color:#888;font-size:13px' }, formatPhonetic(row.phonetic))
+          ? h('span', { style: 'color:#6B7280;font-size:13px' }, formatPhonetic(row.phonetic))
           : null,
         h(
           NButton,
@@ -158,7 +158,7 @@ const columns: DataTableColumns<Word> = [
     key: 'tags',
     render: (row) => {
       const tags = row.tags ?? []
-      if (!tags.length) return h('span', { style: 'color:#999' }, '-')
+      if (!tags.length) return h('span', { style: 'color:#6B7280' }, '-')
       return h(
         NSpace,
         { size: 4 },
@@ -180,7 +180,7 @@ onMounted(loadUnits)
 </script>
 
 <template>
-  <NSpin :show="loading">
+  <div>
     <h2 style="margin-top: 0">📖 单词查询</h2>
     <p class="caption">
       🔎 跨所有 Unit 搜已收录单词，按关键词/标签/掌握度/Unit 过滤，定位它属于哪个 Unit。每条都带音标与播放，重复播放不重复请求。
@@ -219,13 +219,23 @@ onMounted(loadUnits)
     </NCard>
 
     <template v-if="!submitted">
-      <NCard size="small">输入关键词或选择筛选条件后点「🔍 搜索」。</NCard>
+      <NEmpty description="输入关键词或选择筛选条件后点「🔍 搜索」" style="margin: 24px 0" />
     </template>
     <template v-else>
       <p class="page-info">共 {{ total }} 条 · 第 {{ page }}/{{ totalPages }} 页</p>
-      <NCard v-if="!items.length && !loading" size="small">没有匹配的单词。</NCard>
+      <NEmpty
+        v-if="!items.length && !loading"
+        description="没有匹配的单词 · 试试调整关键词或筛选条件"
+        style="margin: 24px 0"
+      />
       <template v-else>
-        <NDataTable :columns="columns" :data="items" :bordered="false" size="small" />
+        <NDataTable
+          :columns="columns"
+          :data="items"
+          :loading="loading"
+          :bordered="false"
+          size="small"
+        />
         <NSpace justify="center" style="margin-top: 16px">
           <NPagination
             :page="page"
@@ -237,17 +247,17 @@ onMounted(loadUnits)
         </NSpace>
       </template>
     </template>
-  </NSpin>
+  </div>
 </template>
 
 <style scoped>
 .caption {
-  color: #888;
+  color: #6B7280;
   font-size: 13px;
   margin: 0 0 16px;
 }
 .page-info {
-  color: #888;
+  color: #6B7280;
   font-size: 13px;
   margin: 0 0 12px;
 }

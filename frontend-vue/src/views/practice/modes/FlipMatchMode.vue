@@ -150,7 +150,8 @@ onBeforeUnmount(() => {
       <NProgress :percentage="pct" :show-indicator="false" />
       <div v-if="mismatch" class="fm-mismatch">❌ 不匹配！再试试</div>
       <div class="fm-caption">🔍 翻两张牌，找到英文和中文的配对</div>
-      <NGrid :cols="4" :x-gap="12" :y-gap="12">
+      <!-- 响应式列数：桌面 4 列、窄屏/手机 2 列（< 1024px），避免手机上 4 列过窄不可用 -->
+      <NGrid cols="2 s:2 m:4" responsive="screen" :x-gap="12" :y-gap="12">
         <NGridItem v-for="(c, idx) in cards" :key="`fm_${batch}_${idx}`">
           <NButton
             block
@@ -178,12 +179,16 @@ onBeforeUnmount(() => {
   font-weight: 600;
 }
 .fm-caption {
-  color: #999;
+  color: var(--text-secondary, #6B7280);
   font-size: 13px;
 }
 .fm-card {
-  height: 72px;
+  min-height: 72px;
   font-size: 15px;
+  white-space: normal;
+  /* 长单词（无空格英文/长中文释义）允许断行，不撑破卡片 */
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 .fm-back {
   font-size: 22px;

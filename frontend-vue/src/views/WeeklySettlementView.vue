@@ -9,6 +9,8 @@ import { milestoneDisplay, tierLabel } from '@/constants/cash'
 import DimensionBar from '@/components/DimensionBar.vue'
 import ScoreRing from '@/components/ScoreRing.vue'
 import Stars from '@/components/Stars.vue'
+import EChart from '@/components/EChart.vue'
+import type { EChartsOption } from 'echarts'
 
 // 本周结算：周分环 + 四维条 + 星 + bonus + 现金激励（周学习现金 + 里程碑奖金）+ plan_health + 历史。
 // 打开即懒结算上个完整周（后端 get_weekly_settlement 入口触发；CASH_ENABLED 时一并懒发放里程碑）。
@@ -44,6 +46,67 @@ const dims = computed<Dim[]>(() => {
     { label: '新词', icon: '🌱', score: s.new_score, max: 20, color: '#2080f0' },
     { label: '计划', icon: '📅', score: s.plan_score, max: 30, color: '#7c3aed' },
   ]
+})
+
+// 历史周分趋势：x=week_key（旧→新），y=总分(0-100) 折线，叠加星点（右轴 0-5）。
+// history 为 latest-first，趋势按时间正序故 reverse；颜色复用本页既有四维配色（蓝=分、橙=星）。
+const trendOption = computed<EChartsOption>(() => {
+  const rows = [...history.value].reverse()
+  return {
+    tooltip: { trigger: 'axis' },
+    legend: { data: ['周总分', '星'], top: 0, textStyle: { color: '#6B7280' } },
+    grid: { left: 36, right: 36, top: 36, bottom: 24, containLabel: true },
+    xAxis: {
+      type: 'category',
+      data: rows.map((h) => h.week_key),
+      axisLabel: { color: '#6B7280' },
+      axisLine: { lineStyle: { color: '#e5e7eb' } },
+      axisTick: { show: false },
+    },
+    yAxis: [
+      {
+        type: 'value',
+        name: '总分',
+        min: 0,
+        max: 100,
+        nameTextStyle: { color: '#6B7280' },
+        axisLabel: { color: '#6B7280' },
+        splitLine: { lineStyle: { color: '#f0f0f0' } },
+      },
+      {
+        type: 'value',
+        name: '星',
+        min: 0,
+        max: 5,
+        nameTextStyle: { color: '#6B7280' },
+        axisLabel: { color: '#6B7280', formatter: '{value}★' },
+        splitLine: { show: false },
+      },
+    ],
+    series: [
+      {
+        name: '周总分',
+        type: 'line',
+        smooth: true,
+        symbol: 'circle',
+        symbolSize: 8,
+        itemStyle: { color: '#2080f0' },
+        lineStyle: { color: '#2080f0', width: 3 },
+        areaStyle: { color: 'rgba(32,128,240,0.12)' },
+        data: rows.map((h) => h.total_score),
+        label: { show: true, color: '#374151', fontWeight: 600 },
+      },
+      {
+        name: '星',
+        type: 'scatter',
+        yAxisIndex: 1,
+        symbol: 'star',
+        symbolSize: 16,
+        itemStyle: { color: '#f0a020' },
+        data: rows.map((h) => h.stars),
+      },
+    ],
+  }
 })
 
 async function load() {
@@ -208,6 +271,9 @@ onMounted(load)
 
       <!-- 历史 -->
       <NCard v-if="history.length > 1" size="small" title="📜 历史周报">
+        <div class="trend-wrap">
+          <EChart :option="trendOption" height="240px" />
+        </div>
         <div class="history">
           <div v-for="h in history" :key="h.week_key" class="hist-row">
             <span class="hist-key">{{ h.week_key }}</span>
@@ -223,7 +289,7 @@ onMounted(load)
 
 <style scoped>
 .subtitle {
-  color: #888;
+  color: #6B7280;
   margin-top: -8px;
   font-size: 14px;
 }
@@ -244,7 +310,7 @@ onMounted(load)
   font-weight: 700;
 }
 .week-range {
-  color: #999;
+  color: #6B7280;
   font-size: 13px;
 }
 .top {
@@ -282,6 +348,9 @@ onMounted(load)
 .history {
   display: flex;
   flex-direction: column;
+}
+.trend-wrap {
+  margin-bottom: 12px;
 }
 .hist-row {
   display: flex;
@@ -326,7 +395,7 @@ onMounted(load)
 .cash-sub {
   font-size: 12px;
   font-weight: 400;
-  color: #999;
+  color: #6B7280;
 }
 .cash-stats {
   display: flex;
@@ -373,7 +442,7 @@ onMounted(load)
   font-variant-numeric: tabular-nums;
 }
 .m-date {
-  color: #bbb;
+  color: #6B7280;
   font-size: 12px;
   width: 84px;
   text-align: right;

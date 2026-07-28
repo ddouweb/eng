@@ -124,7 +124,7 @@ function logout() {
             @update:collapsed="collapsed = $event"
           >
             <div class="brand">
-              <span class="brand-icon">📚</span>
+              <span class="brand-icon" aria-hidden="true">📚</span>
               <span v-if="!collapsed" class="brand-text">家庭英语</span>
             </div>
             <NMenu
@@ -135,7 +135,7 @@ function logout() {
               :collapsed-icon-size="20"
             />
             <div class="logout">
-              <NButton block secondary @click="logout">
+              <NButton block secondary aria-label="退出登录" @click="logout">
                 <template v-if="collapsed">🚪</template>
                 <template v-else>🚪 退出登录</template>
               </NButton>

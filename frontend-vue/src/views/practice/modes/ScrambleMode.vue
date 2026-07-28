@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { NAlert, NButton, NInput, NSpace, useMessage } from 'naive-ui'
+import { NAlert, NButton, NEmpty, NInput, NSpace, useMessage } from 'naive-ui'
 
 import { usePracticeStore } from '@/stores/practice'
 import { useTtsAudio } from '@/composables/useTtsAudio'
@@ -123,7 +123,7 @@ function goNext() {
       </NButton>
     </div>
   </div>
-  <div v-else class="empty">暂无题目</div>
+  <NEmpty v-else description="暂无题目" />
 </template>
 
 <style scoped>
@@ -157,7 +157,7 @@ function goNext() {
   font-family: monospace;
 }
 .caption {
-  color: #888;
+  color: var(--text-secondary, #6B7280);
   font-size: 14px;
   margin: 0;
 }
@@ -181,7 +181,7 @@ function goNext() {
   font-weight: 700;
 }
 .phonetic {
-  color: #888;
+  color: var(--text-secondary, #6B7280);
   font-size: 15px;
 }
 .rich {
@@ -192,8 +192,5 @@ function goNext() {
 }
 .rich p {
   margin: 0;
-}
-.empty {
-  color: #999;
 }
 </style>

@@ -534,7 +534,7 @@ onMounted(() => {
 <style scoped>
 .suffix {
   margin-left: 6px;
-  color: #888;
+  color: #6B7280;
   font-size: 13px;
 }
 
@@ -559,7 +559,7 @@ onMounted(() => {
 }
 
 .plan-meta {
-  color: #888;
+  color: #6B7280;
   font-size: 13px;
   margin-top: 8px;
 }

@@ -290,7 +290,7 @@ onMounted(loadUnits)
 
 <style scoped>
 .caption {
-  color: #999;
+  color: #6B7280;
   font-size: 13px;
   margin: 0 0 12px;
 }
@@ -346,7 +346,7 @@ onMounted(loadUnits)
 }
 
 .bubble .zh {
-  color: #888;
+  color: #6B7280;
   font-size: 13px;
   margin-top: 4px;
 }
@@ -368,11 +368,11 @@ onMounted(loadUnits)
 }
 
 .ex-result.ok {
-  background: rgba(56, 142, 60, 0.08);
+  background: rgba(24, 160, 88, 0.10);
 }
 
 .ex-result.no {
-  background: rgba(211, 47, 47, 0.08);
+  background: rgba(208, 48, 80, 0.10);
 }
 
 .ex-result .ex-q {
@@ -385,7 +385,7 @@ onMounted(loadUnits)
 }
 
 .ex-expl {
-  color: #888;
+  color: #6B7280;
   font-size: 13px;
   margin-top: 6px;
 }
