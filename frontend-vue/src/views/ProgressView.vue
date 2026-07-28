@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import {
+  NButton,
   NCard,
   NEmpty,
   NProgress,
+  NResult,
   NSelect,
   NSpace,
   NSpin,
@@ -27,7 +29,12 @@ const profile = ref<StatsProfile | null>(null)
 const overview = ref<StatsOverview | null>(null)
 const trendDays = ref(7)
 const trendDaily = ref<DailyTrend[]>([])
+const trendLoading = ref(false)
+const trendError = ref('')
 const heatDaily = ref<DailyTrend[]>([])
+const heatLoading = ref(false)
+const heatError = ref('')
+const overviewError = ref('')
 
 // ECharts 不吃 CSS 变量，故在此固化掌握度四色十六进制（与 styles/tokens.css 一致）。
 const MASTERY_HEX: Record<MasteryLevel, string> = {
@@ -182,20 +189,39 @@ async function loadProfile() {
 
 async function loadOverview() {
   const r = await api.getStatsOverview()
-  if (r.code === 200) overview.value = r.data
-  // 源页 overview 失败仅 caption 提示，不阻断。
+  if (r.code === 200) {
+    overview.value = r.data
+    overviewError.value = ''
+  } else {
+    overview.value = null
+    overviewError.value = r.message || '数据加载失败'
+  }
 }
 
 async function loadTrend() {
+  trendLoading.value = true
   const r = await api.getStatsTrend(trendDays.value)
-  if (r.code === 200) trendDaily.value = r.data.daily
-  else trendDaily.value = []
+  trendLoading.value = false
+  if (r.code === 200) {
+    trendDaily.value = r.data.daily
+    trendError.value = ''
+  } else {
+    trendDaily.value = []
+    trendError.value = r.message || '趋势加载失败'
+  }
 }
 
 async function loadHeatmap() {
+  heatLoading.value = true
   const r = await api.getStatsTrend(84)
-  if (r.code === 200) heatDaily.value = r.data.daily
-  else heatDaily.value = []
+  heatLoading.value = false
+  if (r.code === 200) {
+    heatDaily.value = r.data.daily
+    heatError.value = ''
+  } else {
+    heatDaily.value = []
+    heatError.value = r.message || '热力图加载失败'
+  }
 }
 
 function onTrendDaysChange(v: string | number) {
@@ -272,9 +298,21 @@ onMounted(async () => {
     <!-- 贡献热力图（最近 12 周） -->
     <h3 class="section">贡献热力图（最近 12 周）</h3>
     <NCard v-if="heatmapOption" size="small">
-      <EChart :option="heatmapOption" height="220px" />
-      <p class="hint">色块越绿＝当天练习量越大；空白＝当天未练习。</p>
+      <NSpin :show="heatLoading">
+        <EChart :option="heatmapOption" height="220px" />
+        <p class="hint">色块越绿＝当天练习量越大；空白＝当天未练习。</p>
+      </NSpin>
     </NCard>
+    <NResult
+      v-else-if="heatError"
+      status="error"
+      title="热力图加载失败"
+      :description="heatError"
+    >
+      <template #footer>
+        <NButton :loading="heatLoading" @click="loadHeatmap">重试</NButton>
+      </template>
+    </NResult>
     <NEmpty v-else description="暂无练习记录，无法生成热力图" />
 
     <!-- 练习趋势 -->
@@ -289,8 +327,20 @@ onMounted(async () => {
       />
     </NSpace>
     <NCard v-if="trendOption" size="small">
-      <EChart :option="trendOption" height="300px" />
+      <NSpin :show="trendLoading">
+        <EChart :option="trendOption" height="300px" />
+      </NSpin>
     </NCard>
+    <NResult
+      v-else-if="trendError"
+      status="error"
+      title="趋势加载失败"
+      :description="trendError"
+    >
+      <template #footer>
+        <NButton :loading="trendLoading" @click="loadTrend">重试</NButton>
+      </template>
+    </NResult>
     <NEmpty v-else description="暂无练习记录" />
 
     <!-- 掌握分布 + 个人最佳 -->
@@ -314,6 +364,16 @@ onMounted(async () => {
       </NCard>
       <NEmpty v-else description="暂无掌握度数据" />
     </template>
+    <NResult
+      v-else-if="overviewError"
+      status="error"
+      title="数据加载失败"
+      :description="overviewError"
+    >
+      <template #footer>
+        <NButton @click="loadOverview">重试</NButton>
+      </template>
+    </NResult>
   </NSpin>
 </template>
 

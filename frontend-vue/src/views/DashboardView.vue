@@ -5,7 +5,9 @@ import {
   NAlert,
   NButton,
   NCard,
+  NEmpty,
   NProgress,
+  NResult,
   NSpace,
   NSpin,
   NStatistic,
@@ -25,6 +27,8 @@ const router = useRouter()
 const profile = ref<StatsProfile | null>(null)
 const reviewDue = ref<ReviewDue | null>(null)
 const loading = ref(true)
+// profile 加载错误文案；非 null 即进入错误态（NResult + 重试），与「真空态」严格区分。
+const loadError = ref<string | null>(null)
 
 // 解析 ISO 日期串（YYYY-MM-DD）为本地日 0 点 Date；非法返回 null。
 // 直接 new Date('2026-07-24') 会被当 UTC 0 点，本地时区偏移可能错位一天。
@@ -85,6 +89,8 @@ const xpText = computed(() => {
 
 async function load() {
   loading.value = true
+  loadError.value = null
+  // profile 是主数据：失败 → 进入错误态（可重试）。reviewDue 是辅助数据：失败仅 toast，不阻塞整页。
   const [profileResp, reviewResp] = await Promise.all([
     api.getStatsProfile(),
     api.getReviewDue(),
@@ -92,7 +98,9 @@ async function load() {
   if (profileResp.code === 200) {
     profile.value = profileResp.data
   } else {
-    message.error(`坚持数据加载失败：${profileResp.message}`)
+    // 接口失败 ≠ 空数据：记下文案交给 NResult 渲染，并保留 profile=null 以走错误分支而非空态。
+    profile.value = null
+    loadError.value = profileResp.message || `加载失败（HTTP ${profileResp.code}）`
   }
   if (reviewResp.code === 200) {
     reviewDue.value = reviewResp.data
@@ -106,15 +114,65 @@ function goPractice() {
   router.push('/practice')
 }
 
+function goPlans() {
+  router.push('/plans')
+}
+
 onMounted(load)
 </script>
 
 <template>
   <NSpin :show="loading">
     <h2 style="margin-top: 0">📚 Family English Coach</h2>
-    <p class="subtitle">上传教材图片 → 自动生成单词库 → 练习 → 追踪掌握进度</p>
+    <p class="subtitle">词库练习 → 掌握追踪 → 每日复习</p>
 
-    <div v-if="profile" class="dashboard">
+    <!-- 错误态：profile 接口失败（非 200 / 抛错）。给重试入口，而不是整页空白或误报「暂无数据」。 -->
+    <NResult
+      v-if="loadError"
+      status="error"
+      title="坚持数据加载失败"
+      :description="loadError"
+    >
+      <template #footer>
+        <NButton type="primary" @click="load">🔄 重试</NButton>
+      </template>
+    </NResult>
+
+    <!-- 空态：接口成功但确实无数据（profile 为空）。与错误态严格区分。-->
+    <!-- 加载中（loading=true）时不渲染，避免 spinner 下方闪现空态。 -->
+    <NEmpty
+      v-else-if="!loading && !profile"
+      description="暂无学习数据，去练习开启你的第一天吧～"
+    >
+      <template #extra>
+        <NButton type="primary" @click="goPractice">🎯 去练习</NButton>
+      </template>
+    </NEmpty>
+
+    <!-- 成功态 -->
+    <div v-else-if="profile" class="dashboard">
+      <!-- 顶部 CTA：核心行动入口置顶，不埋在最后一个区块。-->
+      <NCard size="small" class="cta-banner">
+        <div class="cta-row">
+          <div class="cta-text">
+            <template v-if="reviewDue && reviewDue.due_today > 0">
+              🔁 今天有 <b>{{ reviewDue.due_today }}</b> 个单词到期复习<span
+                v-if="reviewDue.overdue"
+                >（{{ reviewDue.overdue }} 个已逾期）</span
+              >
+            </template>
+            <template v-else-if="reviewDue">
+              ✅ 今天没有到期单词，可以学点新词或休息一下
+            </template>
+            <template v-else>🎯 开始今天的练习，保持连胜节奏</template>
+          </div>
+          <NSpace :size="8" wrap>
+            <NButton type="primary" @click="goPractice">🎯 去练习</NButton>
+            <NButton @click="goPlans">📅 学习计划</NButton>
+          </NSpace>
+        </div>
+      </NCard>
+
       <!-- 4 张指标卡 -->
       <div class="cards">
         <NCard size="small">
@@ -174,26 +232,6 @@ onMounted(load)
           还没有徽章——连续学习 7 天、累计 100 XP 即可解锁第一个！
         </p>
       </NCard>
-
-      <!-- 今日到期复习（SRS） -->
-      <NCard v-if="reviewDue" size="small" title="🔁 今日到期复习">
-        <NAlert
-          v-if="reviewDue.due_today > 0"
-          type="warning"
-          style="margin-bottom: 12px"
-        >
-          🔁 今天有 <b>{{ reviewDue.due_today }}</b> 个单词到期复习<span
-            v-if="reviewDue.overdue"
-            >（{{ reviewDue.overdue }} 个已逾期）</span
-          >——去「🎯 练习」起一轮
-        </NAlert>
-        <NAlert v-else type="success" style="margin-bottom: 12px">
-          ✅ 今天没有到期单词，可以学点新词或休息一下
-        </NAlert>
-        <NButton v-if="reviewDue.due_today > 0" type="primary" @click="goPractice">
-          🎯 去练习
-        </NButton>
-      </NCard>
     </div>
   </NSpin>
 </template>
@@ -207,6 +245,20 @@ onMounted(load)
   display: flex;
   flex-direction: column;
   gap: 16px;
+}
+.cta-banner :deep(.n-card__content) {
+  padding: 16px !important;
+}
+.cta-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.cta-text {
+  font-size: 14px;
+  color: #555;
 }
 .cards {
   display: grid;
