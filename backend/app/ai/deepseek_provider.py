@@ -2,9 +2,9 @@ import logging
 
 import httpx
 
-from app.ai.base import DialogueResult, ExerciseResult, ParseNLResult
+from app.ai.base import CheckinEncouragementResult, DialogueResult, ExerciseResult, ParseNLResult
 from app.ai.base_provider import (
-    BaseAIProvider, SYSTEM_PROMPT_DIALOGUE, SYSTEM_PROMPT_EXERCISE,
+    BaseAIProvider, SYSTEM_PROMPT_CHECKIN, SYSTEM_PROMPT_DIALOGUE, SYSTEM_PROMPT_EXERCISE,
     SYSTEM_PROMPT_PARSE_NL,
 )
 
@@ -60,3 +60,10 @@ class DeepSeekProvider(BaseAIProvider):
             {"role": "user", "content": text},
         ], max_tokens=4096)
         return self._parse_nl(result)
+
+    async def generate_checkin_encouragement(self, profile_summary: str) -> CheckinEncouragementResult:
+        text = await self._chat([
+            {"role": "system", "content": SYSTEM_PROMPT_CHECKIN},
+            {"role": "user", "content": profile_summary},
+        ], max_tokens=512)
+        return self._parse_checkin(text)

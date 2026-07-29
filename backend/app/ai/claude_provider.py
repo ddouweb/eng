@@ -2,9 +2,9 @@ import logging
 
 import httpx
 
-from app.ai.base import DialogueResult, ExerciseResult, ParseNLResult
+from app.ai.base import CheckinEncouragementResult, DialogueResult, ExerciseResult, ParseNLResult
 from app.ai.base_provider import (
-    BaseAIProvider, SYSTEM_PROMPT_DIALOGUE, SYSTEM_PROMPT_EXERCISE,
+    BaseAIProvider, SYSTEM_PROMPT_CHECKIN, SYSTEM_PROMPT_DIALOGUE, SYSTEM_PROMPT_EXERCISE,
     SYSTEM_PROMPT_PARSE_NL,
 )
 
@@ -65,3 +65,11 @@ class ClaudeProvider(BaseAIProvider):
             "messages": [{"role": "user", "content": text}],
         })
         return self._parse_nl(data["content"][0]["text"])
+
+    async def generate_checkin_encouragement(self, profile_summary: str) -> CheckinEncouragementResult:
+        data = await self._call_api({
+            "model": self.model, "max_tokens": 512,
+            "system": SYSTEM_PROMPT_CHECKIN,
+            "messages": [{"role": "user", "content": profile_summary}],
+        })
+        return self._parse_checkin(data["content"][0]["text"])

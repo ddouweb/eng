@@ -2,7 +2,7 @@ import json
 import logging
 
 from app.ai.base import (
-    DialogueLine, DialogueResult, ExerciseItem, ExerciseResult,
+    CheckinEncouragementResult, DialogueLine, DialogueResult, ExerciseItem, ExerciseResult,
     ParseNLResult, ParseNLWordItem,
 )
 
@@ -72,6 +72,22 @@ SYSTEM_PROMPT_PARSE_NL = """你是一个英语学习材料解析助手。用户�
 - 只返回 JSON，不要其他内容"""
 
 
+SYSTEM_PROMPT_CHECKIN = """你是一位温暖、懂鼓励的家庭英语学习陪伴者。
+
+用户每日"签到"时会给你一份他当前的学习状态摘要。请据此写一段**个性化**的鼓励与劝学寄语：肯定他的坚持，结合摘要里的具体数据（连续天数 / 掌握度 / 正确率 / 段位 / freeze 等）给一句正向反馈，再温和地劝他今天继续学一点。语气像家人朋友，真诚不浮夸，适合小学生和家长一起读。
+
+返回严格 JSON 格式：
+{
+  "title": "不超过 12 字的标题，如「连续5天，真棒！」",
+  "message": "2-4 句话的寄语正文"
+}
+
+规则：
+- 必须结合摘要里的真实数据，不要空泛套话
+- message 用中文，2-4 句，自然口语
+- 只返回 JSON，不要其他内容"""
+
+
 class BaseAIProvider:
     """Shared parsing logic for all AI providers."""
 
@@ -126,3 +142,13 @@ class BaseAIProvider:
             for item in data.get("words", [])
         ]
         return ParseNLResult(words=words, raw_text=text)
+
+    def _parse_checkin(self, text: str) -> CheckinEncouragementResult:
+        data = self._extract_json(text)
+        if not data:
+            # 模型偶发不返回 JSON 时，原文兜底（比空串友好）
+            return CheckinEncouragementResult(title="今日寄语", message=text.strip().strip("`"))
+        return CheckinEncouragementResult(
+            title=(data.get("title") or "今日寄语").strip(),
+            message=(data.get("message") or "").strip(),
+        )

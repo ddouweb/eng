@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -7,6 +8,8 @@ from app.ai.factory import get_ai_provider
 from app.models.word import Word
 from app.schemas.common import success
 from app.schemas.exceptions import AppException
+
+logger = logging.getLogger(__name__)
 
 
 class ExerciseService:
@@ -19,7 +22,11 @@ class ExerciseService:
             raise AppException(400, "没有可用的单词")
 
         p = get_ai_provider()
-        result = await p.generate_dialogue(words, scenario)
+        try:
+            result = await p.generate_dialogue(words, scenario)
+        except Exception as e:  # noqa: BLE001 - AI 限流/不可用 → 友好报错而非裸 500
+            logger.warning("AI generate_dialogue failed: %s", e)
+            raise AppException(503, "AI 服务暂不可用（可能限流或额度不足），请稍后重试")
 
         return success(data={
             "scenario": result.scenario,
@@ -35,7 +42,11 @@ class ExerciseService:
             raise AppException(400, "没有可用的单词")
 
         p = get_ai_provider()
-        result = await p.generate_exercise(words, mode)
+        try:
+            result = await p.generate_exercise(words, mode)
+        except Exception as e:  # noqa: BLE001 - AI 限流/不可用 → 友好报错而非裸 500
+            logger.warning("AI generate_exercise failed: %s", e)
+            raise AppException(503, "AI 服务暂不可用（可能限流或额度不足），请稍后重试")
 
         return success(data={
             "mode": result.mode,
