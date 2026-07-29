@@ -335,3 +335,54 @@ class TestSelectQuestions:
         out = PracticeService._select_questions(cands, 5, None)
         ids = [c["word_id"] for c in out]
         assert len(ids) == len(set(ids))   # 无重复
+
+
+# ────────────────────────────────────────────────────────────
+# _generate_options（英→中选项去重：防"两个相同正确答案"回归）
+# ────────────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_generate_options_no_duplicate_correct_for_synonyms(service):
+    """多词同译（hi/hello→你好）时，正确答案在选项中只出现一次。
+
+    回归用例：词库存在多个英文词共享同一中文释义，旧实现把其它题的同义
+    中文当作干扰项，导致选项里出现两个一模一样的"正确答案"。
+    """
+    correct = {"word_id": 1, "chinese": "你好"}
+    others = [
+        {"word_id": 2, "chinese": "你好"},     # 与正确答案同义 → 排除
+        {"word_id": 3, "chinese": "谢谢"},
+        {"word_id": 4, "chinese": "再见"},
+        {"word_id": 5, "chinese": "你好。"},   # 归一化(去标点)后同义 → 同样排除
+    ]
+    options = await service._generate_options(correct, others)
+    assert options.count("你好") == 1           # 核心：正确答案唯一（旧 bug 会重复）
+    assert len(options) == 4
+    assert "你好。" not in options               # 归一化同义项不作为独立干扰项
+
+
+@pytest.mark.asyncio
+async def test_generate_options_dedup_between_distractors(service):
+    """干扰项之间也按归一化去重（多个其它题中文相同时只取一个）。"""
+    correct = {"word_id": 1, "chinese": "苹果"}
+    others = [
+        {"word_id": 2, "chinese": "香蕉"},
+        {"word_id": 3, "chinese": "香蕉"},      # 与 word_id=2 重复 → 去重
+        {"word_id": 4, "chinese": "橘子"},
+        {"word_id": 5, "chinese": "葡萄"},
+    ]
+    options = await service._generate_options(correct, others)
+    assert len(options) == len(set(options))    # 选项整体无重复
+    assert options.count("苹果") == 1
+
+
+@pytest.mark.asyncio
+async def test_generate_options_few_candidates_pads_placeholder(service):
+    """词库太小（干扰项 < 3）时用占位补齐，不报错、正确答案仍唯一。"""
+    correct = {"word_id": 1, "chinese": "苹果"}
+    others = [{"word_id": 2, "chinese": "香蕉"}]   # 仅 1 个可用干扰项
+    options = await service._generate_options(correct, others)
+    assert options.count("苹果") == 1
+    assert "香蕉" in options
+    assert len(options) == 4

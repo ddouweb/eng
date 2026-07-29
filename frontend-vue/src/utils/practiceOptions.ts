@@ -15,7 +15,10 @@ export function shuffle<T>(arr: readonly T[]): T[] {
 // 用于干扰项去重与「与正确项归一化相同则排除」，使客户端判定与服务端复判口径一致
 // （否则如「苹果。」与「苹果」客户端 === 判异、服务端 _norm 判同，造成反馈/统计分歧）。
 export function normKey(s: string): string {
-  return s.toLowerCase().replace(/[^a-z0-9]/g, '')
+  // 与后端 PracticeService._normalize 口径一致：小写 + 仅保留 Unicode 字母数字（含汉字），
+  // 去标点/空白。原 /[^a-z0-9]/ 会把纯中文全删成空串，导致 pickDistractors 误把所有
+  // 中文干扰项判为「与正确项相同」而排除（限时挑战中文选项退化）。
+  return Array.from(s.toLowerCase()).filter((ch) => /[\p{L}\p{N}]/u.test(ch)).join('')
 }
 
 function pickDistractors(pool: string[], correct: string, n: number): string[] {

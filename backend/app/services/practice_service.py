@@ -449,13 +449,40 @@ class PracticeService:
         return chosen[:count]
 
     async def _generate_options(self, correct: dict, all_questions: list[dict]) -> list[str]:
-        candidates = [q["chinese"] for q in all_questions if q["word_id"] != correct["word_id"]]
-        if len(candidates) < 3:
-            candidates.extend(["(无选项)"] * (3 - len(candidates)))
-        wrong = random.sample(candidates, min(3, len(candidates)))
-        options = wrong + [correct["chinese"]]
+        """英→中选择题选项：正确答案 + 3 个来自 session 其它题的中文干扰项。
+
+        干扰项按归一化文本去重，并排除与正确答案同义的项（词库常见多词同译，
+        如 hi/hello→你好；否则会出现两个一模一样的正确选项）。归一化口径与
+        _server_judge 复判一致（_normalize），保证「出题去重」与「服务端判分」
+        对"同义"的判定不分歧。
+        """
+        answer = correct["chinese"]
+        seen: set[str] = {self._normalize(answer)} if answer else set()
+        deduped: list[str] = []
+        for q in all_questions:
+            if q["word_id"] == correct["word_id"]:
+                continue
+            c = q["chinese"]
+            if not c:
+                continue
+            key = self._normalize(c)
+            if key in seen:
+                continue
+            seen.add(key)
+            deduped.append(c)
+        wrong = random.sample(deduped, min(3, len(deduped)))
+        while len(wrong) < 3:  # 词库太小才占位补齐；占位不进采样池，避免占位重复
+            wrong.append("(无选项)")
+        options = wrong + [answer]
         random.shuffle(options)
         return options
+
+    @staticmethod
+    def _normalize(s: str) -> str:
+        """小写 + 仅保留字母数字（汉字属字母会被保留），忽略大小写/空格/标点差异。
+        供客观题服务端复判（_server_judge）与选择题选项去重（_generate_options）共用，
+        确保两者对"同义/同形"的判定口径一致。"""
+        return "".join(ch for ch in s.lower() if ch.isalnum())
 
     @staticmethod
     def _server_judge(
@@ -484,11 +511,7 @@ class PracticeService:
         if not user_answer or target is None:
             return client_correct
 
-        def _norm(s: str) -> str:
-            # 小写 + 仅保留字母数字（汉字属字母，会被保留），忽略大小写/空格/标点差异
-            return "".join(ch for ch in s.lower() if ch.isalnum())
-
-        return _norm(user_answer) == _norm(target)
+        return PracticeService._normalize(user_answer) == PracticeService._normalize(target)
 
     @staticmethod
     def _mastery_dict(mastery: MasteryRecord | None) -> dict:
