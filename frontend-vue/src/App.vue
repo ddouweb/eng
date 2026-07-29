@@ -1,11 +1,13 @@
 <script setup lang="ts">
-import { computed, h, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, h, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { RouterLink, RouterView, useRoute, useRouter } from 'vue-router'
 import type { RouteRecordNormalized } from 'vue-router'
 import {
   NButton,
   NConfigProvider,
   NDialogProvider,
+  NDrawer,
+  NDrawerContent,
   NLayout,
   NLayoutContent,
   NLayoutSider,
@@ -25,13 +27,14 @@ const auth = useAuthStore()
 
 const isLogin = computed(() => route.name === 'login')
 
-// 窄屏侧栏折叠：本版本 NLayoutSider 无 breakpoint prop，故用 matchMedia 自行驱动 collapsed。
-// <768px 自动折叠到 collapsed-width(64px)，保证 375-414px 手机端侧栏不再挤占 >50% 屏宽；
-// 桌面端保持 220px 展开，用户可点 trigger 手动折叠。
-const collapsed = ref(false)
+// 响应式布局：≥768px 桌面持久侧栏（可手动折叠）；<768px 改汉堡抽屉，侧栏不占位→内容全屏。
+const isMobile = ref(false)
+const collapsed = ref(false) // 桌面端手动折叠
+const drawerOpen = ref(false) // 移动端抽屉开关
 let mql: MediaQueryList | null = null
 function applyMq(matches: boolean): void {
-  collapsed.value = matches
+  isMobile.value = matches
+  if (matches) drawerOpen.value = false // 切到移动端时收起抽屉
 }
 function onMqChange(e: MediaQueryListEvent): void {
   applyMq(e.matches)
@@ -45,6 +48,13 @@ onBeforeUnmount(() => {
   mql?.removeEventListener('change', onMqChange)
   mql = null
 })
+// 路由变化后收起移动端抽屉（点菜单跳转即关）
+watch(
+  () => route.path,
+  () => {
+    if (isMobile.value) drawerOpen.value = false
+  },
+)
 
 // 业务分组：11 项导航按 首页/练习/管理/数据/AI 分组，提升可读性。
 type MenuGroupDef = { label: string; names: string[] }
@@ -101,6 +111,10 @@ const activeKey = computed(() => {
 
 // 折叠态收紧内边距，给 NMenu collapsed 图标留位（64 - 8*2 = 48 = NMenu collapsed-width）。
 const siderContentStyle = computed(() => (collapsed.value ? 'padding: 8px;' : 'padding: 14px;'))
+// 移动端：顶部固定栏留位（48px）+ 左右收紧到 16px，给内容更多横向空间。
+const contentStyle = computed(() =>
+  isMobile.value ? 'padding: 56px 16px 22px; overflow: auto;' : 'padding: 22px; overflow: auto;',
+)
 
 function logout() {
   auth.logout()
@@ -114,7 +128,9 @@ function logout() {
       <NDialogProvider>
         <RouterView v-if="isLogin" />
         <NLayout v-else has-sider style="height: 100vh">
+          <!-- 桌面：持久侧栏，可手动折叠 -->
           <NLayoutSider
+            v-if="!isMobile"
             bordered
             :width="220"
             :collapsed-width="64"
@@ -142,7 +158,29 @@ function logout() {
               </NButton>
             </div>
           </NLayoutSider>
-          <NLayoutContent content-style="padding: 22px; overflow: auto;">
+
+          <!-- 移动端：汉堡抽屉（侧栏不占位 → 内容全屏） -->
+          <NDrawer v-if="isMobile" v-model:show="drawerOpen" :width="240" placement="left">
+            <NDrawerContent body-content-style="padding: 14px;">
+              <div class="brand">
+                <span class="brand-icon" aria-hidden="true">📚</span>
+                <span class="brand-text">家庭英语</span>
+              </div>
+              <NMenu :options="menuOptions" :value="activeKey" />
+              <div class="logout">
+                <NButton block secondary @click="logout">🚪 退出登录</NButton>
+              </div>
+            </NDrawerContent>
+          </NDrawer>
+
+          <NLayoutContent :content-style="contentStyle">
+            <!-- 移动端顶部固定栏：汉堡 + 标题 -->
+            <div v-if="isMobile" class="mobile-bar">
+              <NButton quaternary circle aria-label="打开菜单" @click="drawerOpen = true">
+                ☰
+              </NButton>
+              <span class="mobile-title">📚 家庭英语</span>
+            </div>
             <RouterView />
           </NLayoutContent>
         </NLayout>
@@ -167,5 +205,24 @@ function logout() {
 }
 .logout {
   margin-top: 16px;
+}
+/* 移动端顶部固定栏 */
+.mobile-bar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 10px;
+  background: #fff;
+  border-bottom: 1px solid #e6e8eb;
+  z-index: 100;
+}
+.mobile-title {
+  font-weight: 700;
+  font-size: 15px;
 }
 </style>

@@ -12,17 +12,19 @@ import {
   NSpin,
   NStatistic,
   NTag,
+  useDialog,
   useMessage,
 } from 'naive-ui'
 
 import { api } from '@/api/client'
-import type { ReviewDue, StatsProfile } from '@/api/types'
+import type { CheckinEncouragement, ReviewDue, StatsProfile } from '@/api/types'
 import { BADGES } from '@/constants/badges'
 
 // 完整仪表盘（批次 5）：指标卡 / XP 进度 / 断签预警 / 回归引导 / 徽章 / 今日到期复习。
 // 忠实迁移自 frontend/app.py 的首页仪表盘部分。
 const message = useMessage()
 const router = useRouter()
+const dialog = useDialog()
 
 const profile = ref<StatsProfile | null>(null)
 const reviewDue = ref<ReviewDue | null>(null)
@@ -110,6 +112,48 @@ async function load() {
   loading.value = false
 }
 
+// ── 每日签到：AI 励学寄语 → 用户确认 → 标记今日活跃（保住 streak，不加 XP）。
+// gapDays===0 表示今日已活跃（练过或签过），按钮禁用；同日重复签到后端幂等 no-op。
+const checkinLoading = ref(false)
+
+async function onCheckin() {
+  if (checkinLoading.value) return
+  checkinLoading.value = true
+  const r = await api.checkinEncouragement()
+  checkinLoading.value = false
+  // 后端 best-effort：AI 成功→个性化寄语；AI 不可用→真实学习概况。两者都有实质内容。
+  // 仅当接口本身挂了（网络/500）才退极简静态文案，但弹窗照常、可继续签到。
+  const enc: CheckinEncouragement =
+    r.code === 200 && r.data
+      ? r.data
+      : { title: '今日寄语', message: '坚持就是胜利！今天也来学一点，保持你的节奏吧 💪' }
+  // AI 不可用时标题用 📊 区分（内容是真实学习数据，非 AI 生成）
+  const title = enc.ai_used === false ? `📊 ${enc.title}` : `✅ ${enc.title}`
+  dialog.info({
+    title,
+    content: enc.message,
+    positiveText: '确认签到',
+    negativeText: '再想想',
+    onPositiveClick: () => {
+      void doCheckin()
+    },
+  })
+}
+
+async function doCheckin() {
+  const r = await api.checkin()
+  if (r.code === 200) {
+    message.success(
+      r.data.first_active_today
+        ? `签到成功！已连续 ${r.data.current_streak} 天 🔥`
+        : '今日已活跃，明天再来吧～',
+    )
+    await load() // 刷新 streak / freeze / 按钮态
+  } else {
+    message.error(r.message)
+  }
+}
+
 function goPractice() {
   router.push('/practice')
 }
@@ -168,6 +212,11 @@ onMounted(load)
           </div>
           <NSpace :size="8" wrap>
             <NButton type="primary" @click="goPractice">🎯 去练习</NButton>
+            <NButton
+              :loading="checkinLoading"
+              :disabled="gapDays === 0"
+              @click="onCheckin"
+            >{{ gapDays === 0 ? '✅ 今日已签到' : '✅ 每日签到' }}</NButton>
             <NButton @click="goPlans">📅 学习计划</NButton>
           </NSpace>
         </div>

@@ -93,6 +93,22 @@ export interface StatsOverview {
   streak_days: number
 }
 
+// ── 每日签到 ──
+export interface CheckinEncouragement {
+  title: string
+  message: string
+  /** true=AI 个性化寄语；false=AI 不可用、已用真实学习数据兜底 */
+  ai_used?: boolean
+}
+export interface CheckinResult {
+  current_streak: number
+  longest_streak: number
+  freeze_balance: number
+  last_active_date: string | null
+  /** 本次签到是否为"今日首次活跃"（false=同日重复签到，streak 不变） */
+  first_active_today: boolean
+}
+
 export interface DailyTrend {
   date: string
   total: number

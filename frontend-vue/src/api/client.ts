@@ -4,6 +4,8 @@ import axios, { AxiosError, type AxiosRequestConfig } from 'axios'
 
 import type {
   ApiResp,
+  CheckinEncouragement,
+  CheckinResult,
   DailyTrend,
   DialogueResult,
   ExerciseResult,
@@ -218,6 +220,13 @@ export const api = {
     }),
   getStatsProfile: () =>
     request<StatsProfile>('get', '/stats/profile', { params: { member_id: MEMBER_ID } }),
+
+  // ── Check-in（每日签到：AI 励学寄语 + 确认签到标记今日活跃）
+  checkinEncouragement: () =>
+    request<CheckinEncouragement>('post', '/checkin/encouragement', {
+      params: { member_id: MEMBER_ID },
+    }),
+  checkin: () => request<CheckinResult>('post', '/checkin', { params: { member_id: MEMBER_ID } }),
   getWeeklySettlement: () =>
     request<WeeklySettlementData>(
       'get',

@@ -26,6 +26,9 @@ watch(
     answer.value = entry.value?.userAnswer ?? ''
     // 进入新题自动聚焦输入框，便于连续「回车提交」
     if (!answered.value) nextTick(() => inputRef.value?.focus())
+    // 自动播放：英→中 题面已展示英文，播放发音不泄题（受 autoPlay 开关控制）
+    const cur = q.value
+    if (cur && store.autoPlay) void play(cur.english, store.fcSpeed)
   },
   { immediate: true },
 )

@@ -28,6 +28,9 @@ watch(
   () => q.value?.word_id,
   () => {
     selected.value = entry.value?.userAnswer ?? null
+    // 自动播放：英→中 题面已展示英文，播放发音不泄题（与单词卡同口径，受 autoPlay 开关控制）
+    const cur = q.value
+    if (cur && store.autoPlay) void play(cur.english, store.fcSpeed)
   },
   { immediate: true },
 )
