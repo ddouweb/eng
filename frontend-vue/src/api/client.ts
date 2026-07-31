@@ -166,9 +166,10 @@ export const api = {
     request<null>('delete', `/words/${wordId}/tags/${tag}`),
 
   // ── Practice
-  startPractice: (mode: string, unitIds: number[], count = 10, taskType?: string) => {
+  startPractice: (mode: string, unitIds: number[], count = 10, taskType?: string, includeMastered?: boolean) => {
     const data: Record<string, unknown> = { member_id: MEMBER_ID, mode, unit_ids: unitIds, count }
     if (taskType) data.task_type = taskType
+    if (includeMastered) data.include_mastered = true
     return request<PracticeStartData>('post', '/practice/start', { data })
   },
   submitAnswer: (sessionId: number, wordId: number, isCorrect: boolean, userAnswer?: string | null) =>

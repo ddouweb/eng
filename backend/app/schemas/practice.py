@@ -12,6 +12,8 @@ class PracticeStart(BaseModel):
     # None / "learn" → 学习日默认选题（按 unit_id 抽取）
     # "weekly_review" / "monthly_review" → 按本周/本月练习记录的 word_id 选题
     task_type: TaskType | None = None
+    # True → 「全部」主动复习：兜底选词池允许未到期的 permanent 词进入（仅自由练习全量模式）
+    include_mastered: bool = False
 
 
 class SubmitAnswer(BaseModel):

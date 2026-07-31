@@ -18,6 +18,8 @@ const selectedIds = ref<number[]>([])
 const COUNTS = [10, 20, 30, 50, 80, 100, 150, 200, '全部'] as const
 const countChoice = ref<number | '全部'>(50)
 const resolvedCount = computed(() => (countChoice.value === '全部' ? 2000 : countChoice.value))
+// 「全部」= 主动复习全量（含已掌握 permanent 词）；其余数量仍按 SRS 排除已掌握词
+const isAll = computed(() => countChoice.value === '全部')
 
 // 选 Unit：平铺点击式（错题本=0 作为一个特殊项与各 Unit 并列），点一下切换选中。
 function toggleUnit(id: number) {
@@ -55,7 +57,7 @@ async function startFree() {
     message.warning('请至少选择一个 Unit（或错题本）')
     return
   }
-  const r = await store.start(selectedMode.value, [...selectedIds.value], resolvedCount.value)
+  const r = await store.start(selectedMode.value, [...selectedIds.value], resolvedCount.value, undefined, isAll.value)
   if (r.code !== 200) {
     message.error(r.message)
     return

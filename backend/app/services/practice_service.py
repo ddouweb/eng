@@ -39,9 +39,11 @@ class PracticeService:
         self, member_id: int, mode: PracticeMode,
         unit_ids: list[int], count: int = 10,
         task_type: TaskType | None = None,
+        include_mastered: bool = False,
     ) -> dict:
         questions = await self._build_questions(
             member_id, unit_ids, count, task_type=task_type,
+            include_mastered=include_mastered,
         )
         if not questions:
             if task_type == TaskType.weekly_review:
@@ -331,6 +333,7 @@ class PracticeService:
     async def _build_questions(
         self, member_id: int, unit_ids: list[int], count: int,
         task_type: TaskType | None = None,
+        include_mastered: bool = False,
     ) -> list[dict]:
         today = date.today()
 
@@ -405,11 +408,12 @@ class PracticeService:
 
         if not candidates:
             return []
-        return self._select_questions(candidates, count, task_type)
+        return self._select_questions(candidates, count, task_type, include_mastered)
 
     @staticmethod
     def _select_questions(
         candidates: list[dict], count: int, task_type: TaskType | None,
+        include_mastered: bool = False,
     ) -> list[dict]:
         """按模式选 count 题：到期优先（逾期多、错得多优先），新词/其他加权补量。
 
@@ -417,6 +421,7 @@ class PracticeService:
         - weekly/monthly：到期队列，不足回填未到期 learning/familiar（排除新词，避免混入）。
         - wrong_word_drill：候选已筛 wrong_count>0，按 (overdue, wrong) 排序（仍排除 permanent）。
         - 普通/learn：到期优先 → 新词加权 → 未到期兜底，三桶互斥并按 chosen_ids 去重。
+        - include_mastered=True（自由练习「全部」）：普通分支兜底池放开 permanent 未到期词。
         """
         def due_first(arr: list[dict]) -> list[dict]:
             return sorted(arr, key=lambda c: (-c["overdue_days"], -c["wrong_count"]))
@@ -443,7 +448,10 @@ class PracticeService:
             chosen += weighted_sample(new, count - len(chosen))
         if len(chosen) < count:
             chosen_ids = {x["word_id"] for x in chosen}
-            other = [c for c in non_perm if not c["is_due"] and not c["is_new"]
+            # include_mastered（自由练习「全部」）：兜底池放开 permanent 未到期词，
+            # 由 weighting 的 0.3 权重低频采样；常规练习仍用 non_perm 排除已掌握词。
+            pool = candidates if include_mastered else non_perm
+            other = [c for c in pool if not c["is_due"] and not c["is_new"]
                      and c["word_id"] not in chosen_ids]
             chosen += weighted_sample(other, count - len(chosen))
         return chosen[:count]

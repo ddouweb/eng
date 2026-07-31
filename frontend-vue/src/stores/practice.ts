@@ -138,8 +138,9 @@ export const usePracticeStore = defineStore('practice', {
       unitIds: number[],
       count: number,
       taskType?: string,
+      includeMastered?: boolean,
     ): Promise<ApiResp<PracticeStartData>> {
-      const r = await api.startPractice(mode, unitIds, count, taskType)
+      const r = await api.startPractice(mode, unitIds, count, taskType, includeMastered)
       if (r.code === 200) {
         this.sessionId = r.data.session_id
         this.mode = mode

@@ -336,6 +336,26 @@ class TestSelectQuestions:
         ids = [c["word_id"] for c in out]
         assert len(ids) == len(set(ids))   # 无重复
 
+    def test_default_excludes_permanent_not_due(self):
+        # 默认（常规练习）：未到期的 permanent 词三桶都进不去 → 选不到
+        cands = [self._c(1, level="permanent")]   # is_due=False, is_new=False
+        out = PracticeService._select_questions(cands, 5, None)
+        assert out == []
+
+    def test_include_mastered_pulls_permanent_not_due(self):
+        # 自由练习「全部」(include_mastered=True)：兜底池放开 permanent 未到期词
+        cands = [self._c(1, level="permanent"), self._c(2, level="permanent")]
+        out = PracticeService._select_questions(cands, 5, None, include_mastered=True)
+        ids = [c["word_id"] for c in out]
+        assert set(ids) == {1, 2}            # 两个 permanent 未到期词都被选到
+        assert len(out) == 2
+
+    def test_include_mastered_does_not_affect_wrong_drill(self):
+        # include_mastered 只作用于普通分支；错题刷仍排除 permanent（影响范围隔离）
+        cands = [self._c(1, is_due=True, level="permanent"), self._c(2, is_due=True)]
+        out = PracticeService._select_questions(cands, 5, TaskType.wrong_word_drill, True)
+        assert all(c["word_id"] != 1 for c in out)
+
 
 # ────────────────────────────────────────────────────────────
 # _generate_options（英→中选项去重：防"两个相同正确答案"回归）
