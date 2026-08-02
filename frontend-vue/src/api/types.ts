@@ -296,6 +296,7 @@ export interface CashMilestone {
   threshold: number
   amount: number
   snapshot: Record<string, unknown> | null
+  unit_title?: string | null // 仅 unit_complete：unit.title（threshold 是 unit_id 主键，仅 fallback）
   granted_at: string | null
 }
 

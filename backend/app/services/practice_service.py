@@ -168,7 +168,7 @@ class PracticeService:
         if ps.ended_at:
             raise AppException(400, "Session already ended")
 
-        ps.ended_at = datetime.now(timezone.utc)
+        ps.ended_at = datetime.now()
         await self.session.commit()
         await self.session.refresh(ps)
 
@@ -254,7 +254,7 @@ class PracticeService:
             mastery.consecutive_correct = 0
             update_srs(mastery, False, today)
             await self.wb_repo.upsert_on_wrong(ps.member_id, word_id)
-        mastery.last_reviewed_at = datetime.now(timezone.utc)
+        mastery.last_reviewed_at = datetime.now()
         await self.session.flush()
 
         # ── 每日任务：wrong→correct 补推进 review 槽；correct→wrong 回退 ──
@@ -549,7 +549,7 @@ class PracticeService:
             record.wrong_count += 1
         # SM-2 间隔重复：原地更新 interval/ease/next_review_date/level（答错时 cc 归 0）
         update_srs(record, is_correct, today)
-        record.last_reviewed_at = datetime.now(timezone.utc)
+        record.last_reviewed_at = datetime.now()
 
         await self.session.flush()
         return record
