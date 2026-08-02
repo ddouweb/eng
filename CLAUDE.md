@@ -171,5 +171,17 @@ Concrete implementations (Claude, Minimax, Zhipu, DeepSeek) are registered via `
 
 Same status = same color everywhere (cards, stats, progress bars).
 
+## 生产部署环境（代码独立于本仓库）
+
+⚠️ **生产代码不在本仓库内**，排查生产 bug 不能只看 `/home/eng/english`：
+
+- **前端**：生产用 **`frontend-vue`（Vue 项目）**，与仓库内的 `frontend/`（Streamlit，旧版/开发用）是两套独立代码。`frontend-vue` 源码不在本仓库，构建产物由 nginx 托管于 `eng.webtao.cn`，含 `/weekly-settlement` 等仓库内不存在的路由。
+- **后端**：宿主机进程，监听 `:8000`（FastAPI，`curl :8000` 返回 `{"code":404,"message":"Not Found","data":null}`）。与仓库 `backend/` 同源、同 `{"code","message","data"}` 信封，但生产代码亦独立维护。
+- **nginx**：宿主机运行，配置 `/data/video_root/cfg/nginx-default.conf`（root 所有，需提权读取）。
+- **数据库**：docker 容器（镜像 `mariadb:10.6.14`，容器名 `mariadb`），暴露 `:3306`，库名 `english_coach`，账号 `root`（密码见服务器私有配置，勿写入本仓库）。生产是 **MariaDB**，非仓库 `docker-compose.yml` 描述的 MySQL。
+- **权限**：nginx 配置、`frontend-vue` 源码、后端代码目录多为 root 所有；`eng` 用户 `ss`/`ps` 看不到他人进程与监听端口，需 `sudo`（需密码）。探活后端优先用 `curl :8000`，不要依赖 `eng` 用户的 `ss`。
+
+排查生产问题的工作流（需 root）：读 nginx conf → 拿到 `frontend-vue` 静态目录 + 后端 `proxy_pass` → 定位 `frontend-vue` 与后端源码目录 → 读对应路由/服务源码 → 改完重启宿主机后端进程（非容器）。
+
 # 其它说明
  - 除非明确指定语言，一律使用中文回复
