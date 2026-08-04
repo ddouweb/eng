@@ -16,6 +16,17 @@ class BaseRepo(Generic[ModelType]):
     async def get_by_id(self, id: int) -> ModelType | None:
         return await self.session.get(self.model, id)
 
+    async def get_by_id_for_update(self, id: int) -> ModelType | None:
+        """同 get_by_id，但加 FOR UPDATE 行锁，串行化对同一行的并发事务。
+
+        典型用途：submit_answer 锁父 PracticeSession 行，使同一会话的并发提交
+        串行——第二条提交等第一条提交后即可在去重查询里读到已存在记录，避免
+        双插入/双计 XP。SQLite 下 with_for_update 为 no-op（单写者串行，测试安全）。
+        """
+        stmt = select(self.model).where(self.model.id == id).with_for_update()
+        result = await self.session.execute(stmt)
+        return result.scalar_one_or_none()
+
     async def get_all(
         self, *, page: int = 1, page_size: int = 20, filters: list[Any] | None = None
     ) -> tuple[Sequence[ModelType], int]:

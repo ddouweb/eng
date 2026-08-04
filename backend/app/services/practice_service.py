@@ -82,7 +82,10 @@ class PracticeService:
         self, session_id: int, word_id: int,
         is_correct: bool, user_answer: str | None = None,
     ) -> dict:
-        ps = await self.session_repo.get_by_id(session_id)
+        # 锁父会话行：同一会话的并发提交（弱网重试 / _bg_submit / 双击）在此串行化，
+        # 使下方的 get_by_session_word 去重对第二个请求可靠命中，避免双插入记录、
+        # 双计 XP / 掌握度 / 每日任务槽。FOR UPDATE 仅锁已存在的会话行，开销可忽略。
+        ps = await self.session_repo.get_by_id_for_update(session_id)
         if not ps:
             raise AppException(404, "Practice session not found")
         if ps.ended_at:
@@ -100,6 +103,8 @@ class PracticeService:
 
         # 去重（幂等）：同一会话同一词只计一次。防止重复提交刷分，也容忍前端
         # rerun/重试导致的重复 _bg_submit —— 已有记录则直接回读，不重复计数/改掌握度。
+        # 可靠性由开头的会话行 FOR UPDATE 锁保证：并发第二提交在此串行到第一提交之后，
+        # 必然读到其刚插入的记录而提前返回，不会双插入。
         existing = await self.record_repo.get_by_session_word(session_id, word_id)
         if existing is not None:
             mastery = await self.mastery_repo.get_by_member_word(ps.member_id, word_id)

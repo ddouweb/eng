@@ -30,7 +30,7 @@ def _make_word(word_id=1, english="hello", chinese="你好"):
 
 @pytest.mark.asyncio
 async def test_submit_answer_session_not_found(service):
-    service.session_repo.get_by_id = AsyncMock(return_value=None)
+    service.session_repo.get_by_id_for_update = AsyncMock(return_value=None)
     with pytest.raises(AppException) as exc_info:
         await service.submit_answer(999, 1, True)
     assert exc_info.value.code == 404
@@ -39,7 +39,7 @@ async def test_submit_answer_session_not_found(service):
 @pytest.mark.asyncio
 async def test_submit_answer_session_already_ended(service):
     ps = MagicMock(ended_at="2026-01-01")
-    service.session_repo.get_by_id = AsyncMock(return_value=ps)
+    service.session_repo.get_by_id_for_update = AsyncMock(return_value=ps)
     with pytest.raises(AppException) as exc_info:
         await service.submit_answer(1, 1, True)
     assert exc_info.value.code == 400
@@ -199,7 +199,7 @@ class TestTickDailyTask:
 async def test_submit_answer_reflows_to_daily_task(service, mock_session):
     """完整链路：答对 + 首次今日 → 调 _tick_daily_task。"""
     ps = MagicMock(id=1, member_id=7, ended_at=None, correct_count=3)
-    service.session_repo.get_by_id = AsyncMock(return_value=ps)
+    service.session_repo.get_by_id_for_update = AsyncMock(return_value=ps)  # submit_answer 现锁会话行
 
     word = MagicMock(id=42, unit_id=10, english="hello", chinese="你好")
     service.session.get = AsyncMock(return_value=word)
@@ -231,7 +231,7 @@ async def test_submit_answer_reflows_to_daily_task(service, mock_session):
 async def test_submit_answer_wrong_answer_does_not_tick(service, mock_session):
     """答错不回流。"""
     ps = MagicMock(id=1, member_id=7, ended_at=None, correct_count=3)
-    service.session_repo.get_by_id = AsyncMock(return_value=ps)
+    service.session_repo.get_by_id_for_update = AsyncMock(return_value=ps)  # submit_answer 现锁会话行
 
     word = MagicMock(id=42, unit_id=10, english="hello", chinese="你好")
     service.session.get = AsyncMock(return_value=word)
@@ -260,7 +260,7 @@ async def test_submit_answer_wrong_answer_does_not_tick(service, mock_session):
 async def test_submit_answer_second_attempt_today_does_not_tick(service, mock_session):
     """同一天二次答对：is_first_today=False → 不回流。"""
     ps = MagicMock(id=1, member_id=7, ended_at=None, correct_count=3)
-    service.session_repo.get_by_id = AsyncMock(return_value=ps)
+    service.session_repo.get_by_id_for_update = AsyncMock(return_value=ps)  # submit_answer 现锁会话行
 
     word = MagicMock(id=42, unit_id=10, english="hello", chinese="你好")
     service.session.get = AsyncMock(return_value=word)

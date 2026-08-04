@@ -1,12 +1,27 @@
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import Response
 
 from app.ai.tts_service import get_tts_service
+from app.utils.rate_limit import SlidingWindowLimiter
 
 router = APIRouter(prefix="/tts", tags=["tts"])
 
+# 免登录公开端点限流：每 IP 每 60s 30 次。防止公网滥用（不同文本可迅速撑满磁盘缓存、
+# 或缓存未命中时触发 edge-tts 网络合成消耗带宽/CPU）。超限返回 429（经统一信封）。
+_tts_limiter = SlidingWindowLimiter(max_requests=30, window_seconds=60)
 
-@router.get("/generate")
+
+async def _tts_rate_limit(request: Request) -> None:
+    # 优先取反向代理透传的真实 IP（生产经 nginx），否则回退直连 client host
+    forwarded = request.headers.get("x-forwarded-for", "")
+    ip = forwarded.split(",")[0].strip() if forwarded else (
+        request.client.host if request.client else "unknown"
+    )
+    if not _tts_limiter.allow(ip):
+        raise HTTPException(status_code=429, detail="请求过于频繁，请稍后再试")
+
+
+@router.get("/generate", dependencies=[Depends(_tts_rate_limit)])
 async def generate_tts(
     text: str = Query(..., max_length=500),
     lang: str = Query("en", pattern="^(en|zh)$"),
