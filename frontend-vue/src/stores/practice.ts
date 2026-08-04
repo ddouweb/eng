@@ -105,6 +105,8 @@ export const usePracticeStore = defineStore('practice', {
         fcDelay: typeof snap.fcDelay === 'number' ? snap.fcDelay : 3.0,
         fcSpeed: typeof snap.fcSpeed === 'number' ? snap.fcSpeed : 1,
         autoPlay: !!snap.autoPlay,
+        // starting 不随快照恢复：刷新后不会自动重发 start，无需保留瞬时加载态
+        starting: false,
       }
     }
     return {
@@ -122,6 +124,7 @@ export const usePracticeStore = defineStore('practice', {
       fcDelay: 3.0,
       fcSpeed: 1,
       autoPlay: false,
+      starting: false,
     }
   },
   getters: {
@@ -140,21 +143,28 @@ export const usePracticeStore = defineStore('practice', {
       taskType?: string,
       includeMastered?: boolean,
     ): Promise<ApiResp<PracticeStartData>> {
-      const r = await api.startPractice(mode, unitIds, count, taskType, includeMastered)
-      if (r.code === 200) {
-        this.sessionId = r.data.session_id
-        this.mode = mode
-        this.unitIds = unitIds
-        this.questions = r.data.questions
-        this.idx = 0
-        this.results = new Map()
-        this.finished = false
-        this.finishData = null
-        this.finishError = null
-        this.submitFailures = []
-        this._persist()
+      // 后端对大词库（全池扫描 + 音标现算）耗时数秒，期间置 starting 让按钮转圈禁用，
+      // 避免用户干等以为卡死 / 重复点击发起多个会话。
+      this.starting = true
+      try {
+        const r = await api.startPractice(mode, unitIds, count, taskType, includeMastered)
+        if (r.code === 200) {
+          this.sessionId = r.data.session_id
+          this.mode = mode
+          this.unitIds = unitIds
+          this.questions = r.data.questions
+          this.idx = 0
+          this.results = new Map()
+          this.finished = false
+          this.finishData = null
+          this.finishError = null
+          this.submitFailures = []
+          this._persist()
+        }
+        return r
+      } finally {
+        this.starting = false
       }
-      return r
     },
     async submitOne(wordId: number, isCorrect: boolean, userAnswer?: string | null): Promise<void> {
       this.results.set(wordId, { isCorrect, userAnswer: userAnswer ?? null })

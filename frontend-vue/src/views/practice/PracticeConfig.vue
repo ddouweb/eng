@@ -312,7 +312,8 @@ onMounted(init)
           <NButton
             type="primary"
             size="large"
-            :disabled="!selectedIds.length"
+            :loading="store.starting"
+            :disabled="!selectedIds.length || store.starting"
             @click="startFree"
           >
             🚀 开始练习（{{ selectedModeMeta.icon }} {{ selectedModeMeta.label }}）
@@ -320,6 +321,8 @@ onMounted(init)
           <NButton
             v-if="dueN > 0"
             type="warning"
+            :loading="store.starting"
+            :disabled="store.starting"
             @click="launch(undefined, dueN, '今日到期复习')"
           >
             🔁 今日到期复习（{{ dueN }}<template v-if="overdue">，逾期 {{ overdue }}</template>）
@@ -327,24 +330,32 @@ onMounted(init)
           <NButton
             v-if="agg.hasLearn && !agg.learnDone && agg.learnTotal > 0"
             type="primary"
+            :loading="store.starting"
+            :disabled="store.starting"
             @click="launch('learn', agg.learnTotal, '今日学习')"
           >
             🚀 开始今日学习（剩 {{ agg.learnTotal }}）
           </NButton>
           <NButton
             v-if="agg.hasWeekly && !agg.weeklyDone && agg.weekly > 0"
+            :loading="store.starting"
+            :disabled="store.starting"
             @click="launch('weekly_review', agg.weekly, '本周复习')"
           >
             📖 本周复习（剩 {{ agg.weekly }}）
           </NButton>
           <NButton
             v-if="agg.hasMonthly && !agg.monthlyDone"
+            :loading="store.starting"
+            :disabled="store.starting"
             @click="launch('monthly_review', agg.monthly, '本月复习')"
           >
             📚 本月复习（剩 {{ agg.monthly }}）
           </NButton>
           <NButton
             v-if="agg.hasDrill && !agg.drillDone"
+            :loading="store.starting"
+            :disabled="store.starting"
             @click="launch('wrong_word_drill', agg.drill, '错题冲刺')"
           >
             🎯 错题冲刺（剩 {{ agg.drill }}）

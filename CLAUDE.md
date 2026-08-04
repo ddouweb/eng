@@ -220,11 +220,14 @@ Same status = same color everywhere (cards, stats, progress bars).
 # 生产服务器说明
  - 可以用过ssh jd 访问生产服务器。
  - 生产服务器部署目录在： /data/eng 是直接部署的。并非使用docker
+ - 访问数据库使用： mysql -h127.0.0.1 -uroot -p english_coach
  - nginx配置文件：/data/video_root/cfg/nginx-default.conf
  - nginx访问域名配置: eng.webtao.cn
  - 重启nginx: docker compose -f /data/video_root/docker-compose.yml restart nginx
  - 不要在生产环境自动安装任何内容，若需要安装，需要我确认
  - 不要在生产环境启动、停止、重启我的任何服务，除非明确告知我，并经过我同意
  - 生成环境的python运行在 /data/eng/backend/.venv下
+ - 除非明确说明。否则不能直接修改服务器文件
+
 
 

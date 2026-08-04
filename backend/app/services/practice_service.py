@@ -1,6 +1,8 @@
 import random
 from datetime import date, datetime, time, timedelta, timezone
 
+import anyio
+
 from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -340,8 +342,6 @@ class PracticeService:
         task_type: TaskType | None = None,
         include_mastered: bool = False,
     ) -> list[dict]:
-        today = date.today()
-
         # 候选词范围：统一按 unit_ids + 虚拟错题本（weekly/monthly 不再用时间窗，
         # 改为范围内「到期优先」，见 _select_questions）。
         has_wrong_book = WRONG_BOOK_VIRTUAL_UNIT_ID in unit_ids
@@ -377,6 +377,27 @@ class PracticeService:
         result_m = await self.session.execute(stmt_m)
         mastery_map: dict[int, MasteryRecord] = {r.word_id: r for r in result_m.scalars().all()}
 
+        # 候选构建 + 抽题 + 音标现算均为纯 CPU（基于上方已物化的 word_tags / mastery_map，
+        # 不再访问 DB 会话），且对全池千词较重——丢进线程池执行，避免阻塞事件循环冻结整站。
+        return await anyio.to_thread.run_sync(
+            PracticeService._pick_questions,
+            word_tags, mastery_map, count, task_type, include_mastered,
+        )
+
+    @staticmethod
+    def _pick_questions(
+        word_tags: dict[int, tuple[Word, list[TagType]]],
+        mastery_map: dict[int, MasteryRecord],
+        count: int, task_type: TaskType | None, include_mastered: bool,
+    ) -> list[dict]:
+        """构造候选 → 按权重抽 count 题 → 仅对入选题计算音标（纯 CPU 同步，由调用方丢线程池）。
+
+        基于已物化的 word_tags / mastery_map，不访问 DB，可安全在工作线程执行。
+        音标只用于前端展示、与抽题权重无关；全池缺 phonetic 时逐词 eng_to_ipa 现算极慢
+        （7477 词冷启动 ~48s，同步阻塞事件循环会冻结整站并触发前端 30s 超时），故延迟到
+        选题后只给入选的 count 题计算。
+        """
+        today = date.today()
         # 构造候选：compute_weight 带 SM-2 到期因子；三轮错题刷限定 wrong_count>0 且非 permanent
         candidates = []
         for wid, (word, tags) in word_tags.items():
@@ -404,16 +425,19 @@ class PracticeService:
                     "overdue_days": (today - nrd).days if is_due else 0,
                     "wrong_count": mastery.wrong_count if mastery else 0,
                     # 富字段透传给前端：练习答错揭示时展示音标/词性/英释/例句
-                    # phonetic 缺省时由 app.utils.phonetics 用 eng_to_ipa 现算回退
-                    "phonetic": phonetic(word.english, word.phonetic),
                     "definition": word.definition,
                     "pos": word.pos,
                     "example": word.example,
+                    # 音标延迟到选题后再算（见下方），不在建候选阶段逐词现算
+                    "_stored_phonetic": word.phonetic,
                 })
 
         if not candidates:
             return []
-        return self._select_questions(candidates, count, task_type, include_mastered)
+        chosen = PracticeService._select_questions(candidates, count, task_type, include_mastered)
+        for q in chosen:
+            q["phonetic"] = phonetic(q["english"], q.pop("_stored_phonetic", None))
+        return chosen
 
     @staticmethod
     def _select_questions(
