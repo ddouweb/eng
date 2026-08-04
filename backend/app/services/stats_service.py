@@ -12,6 +12,7 @@ from app.models.cash_milestone import CashMilestone
 from app.models.member import Member
 from app.models.settlement import WeeklySettlement
 from app.models.streak import MemberBadge, MemberStreak
+from app.models.unit import Unit
 from app.repositories.stats_repo import StatsRepo
 from app.schemas.common import success
 from app.settlement_score import (
@@ -131,17 +132,25 @@ class StatsService:
                 .limit(50)
             )
         ).scalars().all()
+        # unit_complete 的 threshold 复用存 unit_id（DB 主键，导入/删除会跳号），展示需还原
+        # unit.title，否则会出现 "背完 Unit 35" 实为 "Unit 17" 的误导。
+        unit_ids = [m.threshold for m in milestones if m.milestone_type == "unit_complete"]
+        unit_titles: dict[int, str] = {}
+        if unit_ids:
+            unit_titles = dict((await self.session.execute(
+                select(Unit.id, Unit.title).where(Unit.id.in_(unit_ids))
+            )).all())
         return success(data={
             "history": history,
             "latest": history[0] if history else None,
             "cash_balance": round((member.cash_balance if member else 0.0) or 0.0, 2),
             "cash_enabled": bool(settings.CASH_ENABLED),
-            "milestones": [self._milestone_to_dict(m) for m in milestones],
+            "milestones": [self._milestone_to_dict(m, unit_titles) for m in milestones],
         })
 
     @staticmethod
-    def _milestone_to_dict(m: CashMilestone) -> dict:
-        return {
+    def _milestone_to_dict(m: CashMilestone, unit_titles: dict[int, str] | None = None) -> dict:
+        d = {
             "milestone_key": m.milestone_key,
             "milestone_type": m.milestone_type,
             "threshold": m.threshold,
@@ -149,6 +158,11 @@ class StatsService:
             "snapshot": m.snapshot,
             "granted_at": m.granted_at.isoformat() if m.granted_at else None,
         }
+        if m.milestone_type == "unit_complete":
+            # threshold 复用存 unit_id；snapshot.unit_id 更权威。还原 title 供前端展示。
+            uid = (m.snapshot or {}).get("unit_id") or m.threshold
+            d["unit_title"] = (unit_titles or {}).get(int(uid))
+        return d
 
     # ─────────────────────────────────────────────────────
     # 每周懒结算

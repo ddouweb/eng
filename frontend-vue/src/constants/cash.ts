@@ -31,11 +31,15 @@ export const MILESTONES: Record<string, MilestoneMeta> = {
 export function milestoneDisplay(m: {
   milestone_type: string
   threshold: number
+  unit_title?: string | null
 }): { icon: string; title: string } {
   const meta = MILESTONES[m.milestone_type] ?? { name: m.milestone_type, icon: '🏅' }
   switch (m.milestone_type) {
-    case 'unit_complete':
-      return { icon: meta.icon, title: `背完 Unit ${m.threshold}` }
+    case 'unit_complete': {
+      // unit_title 来自后端 unit.title；threshold 是 unit_id（主键会跳号），仅 fallback。
+      const name = (m.unit_title ?? '').trim()
+      return { icon: meta.icon, title: name ? `背完 ${name}` : `背完 Unit ${m.threshold}` }
+    }
     case 'cumulative_words':
       return { icon: meta.icon, title: `累计掌握 ${m.threshold} 词` }
     case 'attendance_streak':
