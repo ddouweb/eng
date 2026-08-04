@@ -970,9 +970,9 @@ Query 参数：`member_id=1`
     "history": [
       {
         "week_key": "2026-W29", "week_start": "2026-07-13", "week_end": "2026-07-19",
-        "total_score": 68, "stars": 3,
-        "login_score": 25, "difficulty_score": 12, "new_score": 1, "plan_score": 30,
-        "bonus_xp": 30, "freeze_granted": 1,
+        "total_score": 65, "stars": 3,
+        "login_score": 35, "new_score": 10, "plan_score": 20,
+        "bonus_xp": 22, "freeze_granted": 1,
         "cash_reward": 10.0, "cash_tier_label": "3star",
         "badges_granted": ["week_login_7"], "plan_health": null,
         "settled_at": "2026-07-20T10:00:00"

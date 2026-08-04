@@ -271,7 +271,6 @@ export interface WeeklySettlement {
   week_start: string
   week_end: string
   login_score: number
-  difficulty_score: number
   new_score: number
   plan_score: number
   total_score: number
@@ -287,6 +286,50 @@ export interface WeeklySettlement {
   badges_granted: string[]
   plan_health: PlanHealth | null
   settled_at: string | null
+}
+
+// 今日完成情况（首页「完成情况+建议」卡片，GET /stats/today）
+export interface StatsToday {
+  today_new_done: number
+  today_new_target: number
+  today_review_done: number
+  today_review_target: number
+  today_correct: number
+  today_new_words: number
+  wrong_book_total: number
+  has_active_plan: boolean
+  plan_health: PlanHealth | null
+}
+
+// 本周进度预估（首页「本周进度」卡，GET /stats/week-progress）
+// 与 WeeklySettlement 互补：结算只处理已结束的上周；本接口是「本周进行中」实时预估，
+// bonus/cash 为「若此刻结算」的预估展示值，非实际入账。
+export interface WeekProgress {
+  week_key: string
+  week_start: string
+  as_of: string
+  active_days: number
+  exp_days: number
+  login_lost_days: number
+  login_remaining_days: number
+  new_words: number
+  weekly_new_target: number
+  completed_slots: number
+  planned_slots: number
+  plan_completion: number
+  login_score: number
+  new_score: number
+  plan_score: number
+  login_full: number
+  new_full: number
+  plan_full: number
+  total_score: number
+  stars: number
+  bonus_xp: number
+  cash_reward: number
+  cash_tier_label: string | null
+  cash_enabled: boolean
+  has_active_plan: boolean
 }
 
 // 现金里程碑发放记录（unit_complete / cumulative_words / attendance_streak 三类）

@@ -1,6 +1,6 @@
 from datetime import date, datetime, time, timedelta
 
-from sqlalchemy import and_, case, func, select
+from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.enums import MasteryLevel, PlanStatus, PlanType, TaskStatus
@@ -160,41 +160,6 @@ class StatsRepo:
         )
         return int((await self.session.execute(stmt)).scalar_one() or 0)
 
-    async def get_week_correct_breakdown(self, member_id: int, ws: date, we: date) -> dict:
-        """本周答对的词聚合：难词数 / 答对词数（均 DISTINCT word_id，防多 tag 放大）。
-
-        难词 = wrong_count≥2 AND ease_factor<2.3（收紧的高置信"卡壳词"）。
-        level 是结算时刻终态，故仅用 wrong_count/ease 这两个客观难度信号。
-        """
-        start_dt, end_dt = self._week_bounds(ws, we)
-        hard_cond = and_(
-            MasteryRecord.wrong_count >= 2,
-            MasteryRecord.ease_factor < 2.3,
-        )
-        stmt = (
-            select(
-                func.count(func.distinct(PracticeRecord.word_id)).label("correct_words"),
-                func.count(
-                    func.distinct(case((hard_cond, PracticeRecord.word_id)))
-                ).label("hard_words"),
-            )
-            .select_from(PracticeRecord)
-            .join(PracticeSession, PracticeSession.id == PracticeRecord.session_id)
-            .outerjoin(
-                MasteryRecord,
-                (MasteryRecord.word_id == PracticeRecord.word_id)
-                & (MasteryRecord.member_id == member_id),
-            )
-            .where(
-                PracticeSession.member_id == member_id,
-                PracticeRecord.is_correct.is_(True),
-                PracticeRecord.created_at >= start_dt,
-                PracticeRecord.created_at < end_dt,
-            )
-        )
-        row = (await self.session.execute(stmt)).one()
-        return {"correct_words": int(row[0] or 0), "hard_words": int(row[1] or 0)}
-
     async def get_week_new_word_count(self, member_id: int, ws: date, we: date) -> int:
         """本周首考的新词数 = COUNT word WHERE 该词全期首条 record.created_at 落本周。
 
@@ -257,6 +222,79 @@ class StatsRepo:
             "tasks_due": int(row[2] or 0),
             "tasks_done": int(row[3] or 0),
         }
+
+    # ─────────────────────────────────────────────────────
+    # 今日完成情况（/stats/today 首页卡片用）
+    # ─────────────────────────────────────────────────────
+    async def get_today_task_stats(self, member_id: int, today: date) -> dict:
+        """今日所有 active 计划的 DailyTask 槽位聚合（不限 plan_type）。
+
+        与 get_week_task_stats 不同：首页「今日完成情况」要算全部计划（forward 学新 +
+        review_only / wrong_word_drill 复习都是今日要做的），故不按 plan_type 收窄。
+        返回 Σ new/review 的 completed 与 target。
+        """
+        stmt = (
+            select(
+                func.coalesce(func.sum(DailyTask.completed_new), 0).label("new_done"),
+                func.coalesce(func.sum(DailyTask.new_count), 0).label("new_target"),
+                func.coalesce(func.sum(DailyTask.completed_review), 0).label("review_done"),
+                func.coalesce(func.sum(DailyTask.review_count), 0).label("review_target"),
+            )
+            .select_from(DailyTask)
+            .join(LearningPlan, LearningPlan.id == DailyTask.plan_id)
+            .where(
+                LearningPlan.member_id == member_id,
+                LearningPlan.status == PlanStatus.active,
+                DailyTask.task_date == today,
+            )
+        )
+        row = (await self.session.execute(stmt)).one()
+        return {
+            "new_done": int(row[0] or 0),
+            "new_target": int(row[1] or 0),
+            "review_done": int(row[2] or 0),
+            "review_target": int(row[3] or 0),
+        }
+
+    async def get_today_practice_summary(self, member_id: int, today: date) -> dict:
+        """今日实际练习：答对题数 + 首考新词数。
+
+        correct_count = 今日 is_correct 的 practice_record 行数（每答对一题算一题）。
+        new_word_count = 全期首条 record.created_at 落今日的 word 数（同源
+        get_week_new_word_count 的「首考」语义，today 版）——与任务槽位 completed_new 不同，
+        这是真实首接触量。
+        """
+        start_dt = datetime.combine(today, time.min)
+        end_dt = datetime.combine(today + timedelta(days=1), time.min)
+        correct_stmt = (
+            select(func.count())
+            .select_from(PracticeRecord)
+            .join(PracticeSession, PracticeSession.id == PracticeRecord.session_id)
+            .where(
+                PracticeSession.member_id == member_id,
+                PracticeRecord.is_correct.is_(True),
+                PracticeRecord.created_at >= start_dt,
+                PracticeRecord.created_at < end_dt,
+            )
+        )
+        correct_count = int((await self.session.execute(correct_stmt)).scalar_one() or 0)
+        first_seen = (
+            select(
+                PracticeRecord.word_id.label("wid"),
+                func.min(PracticeRecord.created_at).label("first_at"),
+            )
+            .select_from(PracticeRecord)
+            .join(PracticeSession, PracticeSession.id == PracticeRecord.session_id)
+            .where(PracticeSession.member_id == member_id)
+            .group_by(PracticeRecord.word_id)
+        ).subquery()
+        new_stmt = (
+            select(func.count())
+            .select_from(first_seen)
+            .where(first_seen.c.first_at >= start_dt, first_seen.c.first_at < end_dt)
+        )
+        new_word_count = int((await self.session.execute(new_stmt)).scalar_one() or 0)
+        return {"correct_count": correct_count, "new_word_count": new_word_count}
 
     async def get_active_forward_plan_with_remaining(self, member_id: int) -> dict | None:
         """取该 member 最近一个 active forward 计划，返回 plan_health 所需输入；无则 None。

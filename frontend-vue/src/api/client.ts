@@ -19,6 +19,8 @@ import type {
   ReviewDue,
   StatsOverview,
   StatsProfile,
+  StatsToday,
+  WeekProgress,
   SubmitResp,
   Unit,
   WeeklySettlementData,
@@ -221,6 +223,10 @@ export const api = {
     }),
   getStatsProfile: () =>
     request<StatsProfile>('get', '/stats/profile', { params: { member_id: MEMBER_ID } }),
+  getStatsToday: () =>
+    request<StatsToday>('get', '/stats/today', { params: { member_id: MEMBER_ID } }),
+  getStatsWeekProgress: () =>
+    request<WeekProgress>('get', '/stats/week-progress', { params: { member_id: MEMBER_ID } }),
 
   // ── Check-in（每日签到：AI 励学寄语 + 确认签到标记今日活跃）
   checkinEncouragement: () =>

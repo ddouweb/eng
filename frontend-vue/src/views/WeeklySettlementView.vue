@@ -13,7 +13,7 @@ import EChart from '@/components/EChart.vue'
 import { CHART_HEIGHT } from '@/constants/ui'
 import type { EChartsOption } from 'echarts'
 
-// 本周结算：周分环 + 四维条 + 星 + bonus + 现金激励（周学习现金 + 里程碑奖金）+ plan_health + 历史。
+// 本周结算：周分环 + 三维条 + 星 + bonus + 现金激励（周学习现金 + 里程碑奖金）+ plan_health + 历史。
 // 打开即懒结算上个完整周（后端 get_weekly_settlement 入口触发；CASH_ENABLED 时一并懒发放里程碑）。
 const message = useMessage()
 const history = ref<WeeklySettlement[]>([])
@@ -43,15 +43,14 @@ const dims = computed<Dim[]>(() => {
   const s = latest.value
   if (!s) return []
   return [
-    { label: '坚持', icon: '🔥', score: s.login_score, max: 25, color: '#18a058' },
-    { label: '难度', icon: '🧗', score: s.difficulty_score, max: 25, color: '#f0a020' },
-    { label: '新词', icon: '🌱', score: s.new_score, max: 20, color: '#2080f0' },
+    { label: '坚持', icon: '🔥', score: s.login_score, max: 45, color: '#18a058' },
+    { label: '新词', icon: '🌱', score: s.new_score, max: 25, color: '#2080f0' },
     { label: '计划', icon: '📅', score: s.plan_score, max: 30, color: '#7c3aed' },
   ]
 })
 
 // 历史周分趋势：x=week_key（旧→新），y=总分(0-100) 折线，叠加星点（右轴 0-5）。
-// history 为 latest-first，趋势按时间正序故 reverse；颜色复用本页既有四维配色（蓝=分、橙=星）。
+// history 为 latest-first，趋势按时间正序故 reverse；颜色复用本页既有总分配色（蓝=分、橙=星）。
 const trendOption = computed<EChartsOption>(() => {
   const rows = [...history.value].reverse()
   return {
@@ -145,12 +144,15 @@ onMounted(load)
 <template>
   <NSpin :show="loading">
     <h2 style="margin-top: 0">🌟 本周结算</h2>
-    <p class="subtitle">每周一张「学习周报卡」：四维评分 → 星 + XP；开启现金激励后另发周学习现金 + 里程碑奖金，累计进虚拟钱包。</p>
+    <p class="subtitle">每周一张「学习周报卡」：三维评分 → 星 + XP；开启现金激励后另发周学习现金 + 里程碑奖金，累计进虚拟钱包。</p>
 
     <NCollapse class="logic" :default-expanded-names="[]">
       <NCollapseItem title="📖 结算逻辑简述（怎么算分 / 怎么发钱）" name="logic">
         <ul class="logic-list">
-          <li><b>四维评分</b>（满分 100）：坚持 25 + 难度 25 + 新词 20 + 计划 30 → 周总分 → 星 = round(总分/20)，0~5 星。</li>
+          <li><b>三维评分</b>（满分 100）：坚持 45 + 新词 25 + 计划 30 → 周总分 → 星 = round(总分/20)，0~5 星。</li>
+          <li><b>坚持（满分 45）</b>：本周真实学习日 ÷ 计划应学日数。学满应学日即满分（多学不额外加分，按比例封顶）。</li>
+          <li><b>新词（满分 25）</b>：本周「首次接触」的词数 ÷ 周目标（每日目标 × 应学日数）。「首次接触」指该词全期第一条练习记录出现在本周，与何时录入词库无关——只要本周才第一次练它就算。只有整个词库都被练过一遍后此项才会归零。</li>
+          <li><b>计划（满分 30）</b>：本周「学新词(forward)」类计划的每日任务完成度——已完成题数 ÷ 计划题数。纯复习 / 错题刷类计划不计入（避免复习被重复奖励）。</li>
           <li><b>XP 奖励</b>：答对逐题得 XP（含难度系数）；周结算另发 bonus XP（仅坚持+计划派生，封顶 30/周）。</li>
           <li><b>周学习现金</b>（开启后）：按星 + 计划完成度分档——5★+满计划 ¥50 / 5★ ¥40 / 4★+满计划 ¥30 / 4★ ¥20 / 3★ ¥10；≤2 星不发，封顶 ¥50/周。</li>
           <li><b>里程碑奖金</b>（开启后）：背完一个 Unit / 累计掌握 N 词 / 连续 N 周全勤，达标即发、每项终身一次。</li>

@@ -474,7 +474,7 @@ CREATE TABLE `weekly_settlement` (
   `week_start`       DATE NOT NULL,
   `week_end`         DATE NOT NULL,
   `login_score`      INT NOT NULL DEFAULT 0,
-  `difficulty_score` INT NOT NULL DEFAULT 0,
+  `difficulty_score` INT NOT NULL DEFAULT 0 COMMENT '已停用（四维→三维重构）：新行恒 0，历史行保留旧值',
   `new_score`        INT NOT NULL DEFAULT 0,
   `plan_score`       INT NOT NULL DEFAULT 0,
   `total_score`      INT NOT NULL DEFAULT 0,

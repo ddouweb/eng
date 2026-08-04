@@ -35,18 +35,17 @@
 
 ---
 
-## 2. 四维评分公式（满分 100）
+## 2. 三维评分公式（满分 100）
 
-每周由 `settlement_score.py` 的纯函数算出四维：
+每周由 `settlement_score.py` 的纯函数算出三维（原「难度」维已移除：它依赖 wrong≥2 的卡壳词，反向激励故意答错）：
 
 | 维度 | 满分 | 公式 | 数据源（`stats_repo`） |
 |---|---|---|---|
-| 坚持分 login | 25 | `round(25 * clamp(active_days / expected_days, 0, 1))` | `get_week_active_days` |
-| 难度分 | 25 | `round(25 * clamp((hard/correct) / 0.6, 0, 1))`，correct≤0→0 | `get_week_correct_breakdown`（hard=wrong≥2 且 ease<2.3） |
-| 新词分 | 20 | `round(20 * clamp(new_words / target, 0, 1))`，target=daily_goal×expected_days | `get_week_new_word_count` |
+| 坚持分 login | 45 | `round(45 * clamp(active_days / expected_days, 0, 1))` | `get_week_active_days` |
+| 新词分 | 25 | `round(25 * clamp(new_words / target, 0, 1))`，target=daily_goal×expected_days | `get_week_new_word_count` |
 | 计划分 | 30 | `round(30 * clamp(completed/planned, 0, 1))`，planned≤0→0 | `get_week_task_stats`（仅 forward 计划） |
 
-- `total = login + difficulty + new + plan`
+- `total = login + new + plan`
 - `stars = round(total / 20)`，clamp[0, 5]（银行家舍入：50 分 → 2 星）
 - `expected_days`：本周 [ws,we] 内落在 `learn_weekdays` 的学习日数；无活跃 plan 时回退 5。
 
@@ -199,10 +198,10 @@
         "week_key": "2026-W29",
         "week_start": "2026-07-13",
         "week_end": "2026-07-19",
-        "login_score": 25, "difficulty_score": 12, "new_score": 1,
-        "plan_score": 30, "total_score": 68, "stars": 3,
+        "login_score": 35, "new_score": 10,
+        "plan_score": 20, "total_score": 65, "stars": 3,
         "real_days": 7, "new_words_learned": 5, "plan_completion": 1.0,
-        "bonus_xp": 30, "freeze_granted": 1,
+        "bonus_xp": 22, "freeze_granted": 1,
         "cash_reward": 10.0, "cash_tier_label": "3star",
         "badges_granted": ["week_login_7"],
         "plan_health": null,

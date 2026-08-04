@@ -87,6 +87,124 @@ class TestGetTrend:
         assert len(result["data"]["daily"]) == 2
 
 
+class TestTodayProgress:
+    @pytest.fixture
+    def today_mocks(self, service, mock_repo):
+        """配置 get_today_progress 所需 mock：今日任务 + 实际练习 + forward 计划 + 错题总量。"""
+        mock_repo.get_today_task_stats = AsyncMock(
+            return_value={"new_done": 5, "new_target": 10, "review_done": 3, "review_target": 8}
+        )
+        mock_repo.get_today_practice_summary = AsyncMock(
+            return_value={"correct_count": 42, "new_word_count": 6}
+        )
+        mock_repo.get_active_forward_plan_with_remaining = AsyncMock(
+            return_value={
+                "plan_id": 18, "deadline": date(2026, 12, 31), "daily_goal": 93,
+                "learn_weekdays_raw": "[0,1,2,3,4]", "total_words": 2000, "mastered": 800,
+            }
+        )
+        service.wrong_repo = MagicMock()
+        service.wrong_repo.count_by_member = AsyncMock(return_value=12)
+        return service
+
+    @pytest.mark.asyncio
+    async def test_today_progress_aggregates_fields(self, today_mocks):
+        result = await today_mocks.get_today_progress(1)
+        assert result["code"] == 200
+        d = result["data"]
+        assert d["today_new_done"] == 5
+        assert d["today_new_target"] == 10
+        assert d["today_review_done"] == 3
+        assert d["today_review_target"] == 8
+        assert d["today_correct"] == 42
+        assert d["today_new_words"] == 6
+        assert d["wrong_book_total"] == 12
+        assert d["has_active_plan"] is True
+        # plan_health 以今天为基准：remaining_unmastered = 2000 - 800 = 1200
+        assert d["plan_health"] is not None
+        assert d["plan_health"]["remaining_unmastered"] == 1200
+
+    @pytest.mark.asyncio
+    async def test_today_progress_no_active_plan(self, service, mock_repo):
+        mock_repo.get_today_task_stats = AsyncMock(
+            return_value={"new_done": 0, "new_target": 0, "review_done": 0, "review_target": 0}
+        )
+        mock_repo.get_today_practice_summary = AsyncMock(
+            return_value={"correct_count": 0, "new_word_count": 0}
+        )
+        mock_repo.get_active_forward_plan_with_remaining = AsyncMock(return_value=None)
+        service.wrong_repo = MagicMock()
+        service.wrong_repo.count_by_member = AsyncMock(return_value=0)
+        result = await service.get_today_progress(1)
+        d = result["data"]
+        assert d["has_active_plan"] is False
+        assert d["plan_health"] is None
+
+    @pytest.mark.asyncio
+    async def test_today_progress_does_not_settle(self, today_mocks):
+        """首页高频打开：get_today_progress 不得触发懒结算（_maybe_settle_week）。"""
+        today_mocks._maybe_settle_week = AsyncMock()
+        await today_mocks.get_today_progress(1)
+        today_mocks._maybe_settle_week.assert_not_awaited()
+
+
+class TestWeekProgress:
+    @pytest.fixture
+    def week_mocks(self, service, mock_repo):
+        """配置 get_week_progress 所需 mock：本周活跃/新词/任务/forward 计划。"""
+        mock_repo.get_week_active_days = AsyncMock(return_value=3)
+        mock_repo.get_week_new_word_count = AsyncMock(return_value=12)
+        mock_repo.get_week_task_stats = AsyncMock(return_value={
+            "completed_slots": 18, "planned_slots": 25, "tasks_due": 5, "tasks_done": 3
+        })
+        mock_repo.get_active_forward_plan_with_remaining = AsyncMock(return_value={
+            "plan_id": 18, "deadline": date(2026, 12, 31), "daily_goal": 30,
+            "learn_weekdays_raw": "[0,1,2,3,4]", "total_words": 2000, "mastered": 800,
+        })
+        return service
+
+    @pytest.mark.asyncio
+    async def test_week_progress_aggregates_fields(self, week_mocks):
+        result = await week_mocks.get_week_progress(1)
+        assert result["code"] == 200
+        d = result["data"]
+        assert d["week_key"].startswith("20")        # 2026-Wxx
+        assert d["active_days"] == 3
+        assert d["new_words"] == 12
+        assert d["has_active_plan"] is True
+        # daily_goal=30, exp_days=5（工作日）→ weekly_new_target=150
+        assert d["weekly_new_target"] == 150
+        # login=score_login(3,5)=round(3/5*45)=27
+        assert d["login_score"] == 27
+        assert d["login_full"] == 45
+        assert d["new_full"] == 25
+        assert d["plan_full"] == 30
+        # total = 三维分之和（new=score_new(12,150)=2, plan=score_plan(18,25)=22）
+        assert d["total_score"] == d["login_score"] + d["new_score"] + d["plan_score"]
+
+    @pytest.mark.asyncio
+    async def test_week_progress_no_active_plan(self, service, mock_repo):
+        mock_repo.get_week_active_days = AsyncMock(return_value=0)
+        mock_repo.get_week_new_word_count = AsyncMock(return_value=0)
+        mock_repo.get_week_task_stats = AsyncMock(return_value={
+            "completed_slots": 0, "planned_slots": 0, "tasks_due": 0, "tasks_done": 0
+        })
+        mock_repo.get_active_forward_plan_with_remaining = AsyncMock(return_value=None)
+        result = await service.get_week_progress(1)
+        d = result["data"]
+        assert d["has_active_plan"] is False
+        assert d["total_score"] == 0
+        assert d["stars"] == 0
+        assert d["bonus_xp"] == 0
+
+    @pytest.mark.asyncio
+    async def test_week_progress_does_not_settle(self, week_mocks):
+        """首页高频：get_week_progress 不得触发懒结算（纯只读预估，不落表不发奖）。"""
+        week_mocks._maybe_settle_week = AsyncMock()
+        await week_mocks.get_week_progress(1)
+        week_mocks._maybe_settle_week.assert_not_awaited()
+
+
 # ── 每周结算 _settle_one_week / _maybe_settle_week ──
 class _OkSavepoint:
     async def __aenter__(self):
@@ -112,9 +230,6 @@ class TestWeeklySettlement:
     def settle_mocks(self, service, mock_repo):
         """配置 _settle_one_week 成功路径所需 mock：全勤 7 天 + 满计划 + 无 active plan。"""
         mock_repo.get_week_active_days = AsyncMock(return_value=7)
-        mock_repo.get_week_correct_breakdown = AsyncMock(
-            return_value={"correct_words": 10, "hard_words": 3}
-        )
         mock_repo.get_week_new_word_count = AsyncMock(return_value=5)
         mock_repo.get_week_task_stats = AsyncMock(
             return_value={"completed_slots": 20, "planned_slots": 20,
@@ -138,8 +253,8 @@ class TestWeeklySettlement:
         from app.config import settings
         monkeypatch.setattr(settings, "CASH_ENABLED", False)
         service, state, member = settle_mocks
-        # 无 plan → exp_days=5, daily_goal=30：login=25, plan=30, bonus=round(55/55*30)=30
-        # 全勤7 → freeze_granted=1（2→3）；total=68<100 不发满分徽章，仅 week_login_7
+        # 无 plan → exp_days=5, daily_goal=30：login=45, new=1(5/150), plan=30, bonus=round(75/75*30)=30
+        # 全勤7 → freeze_granted=1（2→3）；total=76<100 不发满分徽章，仅 week_login_7
         done = await service._settle_one_week(
             1, "2026-W29", date(2026, 7, 13), date(2026, 7, 19)
         )
@@ -155,50 +270,25 @@ class TestWeeklySettlement:
 
     @pytest.mark.asyncio
     async def test_settle_grants_cash_when_enabled(self, settle_mocks, monkeypatch):
-        """CASH_ENABLED=true：3★+100%完成 → 命中 3star 档 ¥10，累加进 cash_balance。"""
+        """CASH_ENABLED=true：4★+100%完成 → 命中 4star_full 档 ¥30，累加进 cash_balance。"""
         from app.config import settings
         monkeypatch.setattr(settings, "CASH_ENABLED", True)
         service, _state, member = settle_mocks
-        # total=68 → stars=3；plan_completion=1.0 → compute_weekly_cash(3,1.0)=(10.0,"3star")
+        # total=76 → stars=4；plan_completion=1.0 → compute_weekly_cash(4,1.0)=(30.0,"4star_full")
         done = await service._settle_one_week(
             1, "2026-W29", date(2026, 7, 13), date(2026, 7, 19)
         )
         assert done is True
-        assert member.cash_balance == 10.0        # round(0.0 + 10.0, 2)
+        assert member.cash_balance == 30.0        # round(0.0 + 30.0, 2)
         row = service.session.add.call_args_list[-1].args[0]
-        assert row.cash_reward == 10.0
-        assert row.cash_tier_label == "3star"
+        assert row.cash_reward == 30.0
+        assert row.cash_tier_label == "4star_full"
         # bonus 仍正常发（cash 与 bonus 独立、同 savepoint 原子）
         assert member.total_xp == 130
 
-    @pytest.mark.asyncio
-    async def test_settle_cash_accrues_even_when_bonus_zero(self, settle_mocks, monkeypatch):
-        """坑#1 回归保护：bonus==0 但 stars>=3 时，cash_reward 仍须累加 cash_balance。
-
-        若有人把 savepoint 条件误改回 `if bonus > 0:`（漏 or cash_reward），
-        本测试会失败——bonus=0 不加载 member、cash_balance 不累加。
-        场景：active=1→login=5；hard6/correct10→difficulty=25；new150/target150→new=20；
-        completed2/planned20→plan=3；total=53→stars=3；bonus=round(8/55*30)=4<5→0。
-        """
-        from app.config import settings
-        monkeypatch.setattr(settings, "CASH_ENABLED", True)
-        service, _state, member = settle_mocks
-        service.repo.get_week_active_days = AsyncMock(return_value=1)
-        service.repo.get_week_correct_breakdown = AsyncMock(
-            return_value={"correct_words": 10, "hard_words": 6}
-        )
-        service.repo.get_week_new_word_count = AsyncMock(return_value=150)
-        service.repo.get_week_task_stats = AsyncMock(
-            return_value={"completed_slots": 2, "planned_slots": 20,
-                          "tasks_due": 1, "tasks_done": 0}
-        )
-        await service._settle_one_week(1, "2026-W29", date(2026, 7, 13), date(2026, 7, 19))
-        assert member.cash_balance == 10.0     # bonus=0 但 cash 仍累加（or cash_reward 分支生效）
-        assert member.total_xp == 100          # bonus=0 → total_xp 不变
-        row = service.session.add.call_args_list[-1].args[0]
-        assert row.bonus_xp == 0
-        assert row.cash_reward == 10.0
-        assert row.cash_tier_label == "3star"
+    # 原 test_settle_cash_accrues_even_when_bonus_zero 已移除：三维重分配（坚持 35 / 新词 25 / 计划 40）
+    # 后，bonus==0 ⟹ login+plan≤11 ⟹ total≤36 ⟹ stars≤2 ⟹ cash==0，「bonus==0 但发现金」的
+    # 组合数学上不再可能。cash 与 bonus 同累加的覆盖由 test_settle_grants_cash_when_enabled 承担。
 
     @pytest.mark.asyncio
     async def test_settle_skips_already_settled(self, service, mock_repo):

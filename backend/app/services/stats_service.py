@@ -14,14 +14,17 @@ from app.models.settlement import WeeklySettlement
 from app.models.streak import MemberBadge, MemberStreak
 from app.models.unit import Unit
 from app.repositories.stats_repo import StatsRepo
+from app.repositories.wrong_book_repo import WrongWordBookRepo
 from app.schemas.common import success
 from app.settlement_score import (
+    LOGIN_FULL,
+    NEW_FULL,
+    PLAN_FULL,
     compute_bonus,
     compute_stars,
     compute_weekly_cash,
     expected_learn_days,
     plan_health,
-    score_difficulty,
     score_login,
     score_new,
     score_plan,
@@ -36,6 +39,7 @@ SETTLE_BACKFILL_WEEKS = 4
 class StatsService:
     def __init__(self, session: AsyncSession):
         self.repo = StatsRepo(session)
+        self.wrong_repo = WrongWordBookRepo(session)
         self.session = session
 
     async def get_overview(self, member_id: int) -> dict:
@@ -101,6 +105,109 @@ class StatsService:
             "total_xp": xp,
             "level": xp_to_level(xp),
             "badges": badges,
+        })
+
+    async def get_today_progress(self, member_id: int) -> dict:
+        """今日完成情况（首页「完成情况+建议」卡片）：今日任务进度 + 实时计划体检 +
+        今日实际练习量 + 错题待处理数。
+
+        纯只读聚合，**不**触发 _maybe_settle_week（首页高频打开；结算走 /profile 与
+        /weekly-settlement 入口）。plan_health 以今天为基准（区别于周结算用上周日 we 快照）。
+        """
+        today = date.today()
+        task_stats = await self.repo.get_today_task_stats(member_id, today)
+        practice = await self.repo.get_today_practice_summary(member_id, today)
+        plan_inputs = await self.repo.get_active_forward_plan_with_remaining(member_id)
+        health = None
+        if plan_inputs is not None:
+            health = plan_health(
+                plan_inputs["total_words"], plan_inputs["mastered"], plan_inputs["deadline"],
+                plan_inputs["daily_goal"], plan_inputs["learn_weekdays_raw"], today,
+            )
+        wrong_total = await self.wrong_repo.count_by_member(member_id)
+        return success(data={
+            "today_new_done": task_stats["new_done"],
+            "today_new_target": task_stats["new_target"],
+            "today_review_done": task_stats["review_done"],
+            "today_review_target": task_stats["review_target"],
+            "today_correct": practice["correct_count"],
+            "today_new_words": practice["new_word_count"],
+            "wrong_book_total": wrong_total,
+            "has_active_plan": plan_inputs is not None,
+            "plan_health": health,
+        })
+
+    async def get_week_progress(self, member_id: int) -> dict:
+        """本周进度预估（首页「本周进度」卡用）：把周结算三维评分套到当前进行中的周，
+        让用户看到「截至今天本周能拿多少分/星/bonus/现金 + 还差什么」。
+
+        与 /weekly-settlement 的区别：结算只处理「已结束的上周」（懒触发，滞后一周）；
+        本接口算「本周进行中」的实时预估，区间 [本周一, 今天]。纯只读，不触发懒结算、
+        不落表、不发奖励——bonus/cash 仅为「若此刻结算」的预估展示值，非实际入账。
+        """
+        today = date.today()
+        ws = today - timedelta(days=today.weekday())   # 本周周一
+        week_end = ws + timedelta(days=6)              # 本周日（算 exp_days/remaining 用）
+        iso = ws.isocalendar()
+        week_key = f"{iso.year}-W{iso.week:02d}"
+
+        active_days = await self.repo.get_week_active_days(member_id, ws, today)
+        new_words = await self.repo.get_week_new_word_count(member_id, ws, today)
+        task_stats = await self.repo.get_week_task_stats(member_id, ws, today)
+        plan_inputs = await self.repo.get_active_forward_plan_with_remaining(member_id)
+
+        raw = plan_inputs["learn_weekdays_raw"] if plan_inputs is not None else None
+        daily_goal = plan_inputs["daily_goal"] if plan_inputs is not None else 30
+        exp_days = expected_learn_days(raw, ws, week_end)
+        weekly_new_target = daily_goal * max(exp_days, 1)
+
+        login_score = score_login(active_days, exp_days)
+        new_score = score_new(new_words, weekly_new_target)
+        plan_score = score_plan(task_stats["completed_slots"], task_stats["planned_slots"])
+        total = login_score + new_score + plan_score
+        stars = compute_stars(total)
+        bonus = compute_bonus(login_score, plan_score)
+        plan_completion = (
+            round(task_stats["completed_slots"] / task_stats["planned_slots"], 3)
+            if task_stats["planned_slots"] > 0 else 0.0
+        )
+        # 预估现金：与结算同口径（CASH_ENABLED 关 → 0/None，仅不算不发）。
+        cash_reward, cash_tier = (
+            compute_weekly_cash(stars, plan_completion)
+            if settings.CASH_ENABLED else (0.0, None)
+        )
+
+        # 坚持维度差距：已过应学日里没活跃的=已断（无法挽回）；今天之后的应学日=剩余（全勤可补）。
+        elapsed = expected_learn_days(raw, ws, today)
+        remaining = expected_learn_days(raw, today + timedelta(days=1), week_end)
+        login_lost_days = max(0, elapsed - active_days)
+
+        return success(data={
+            "week_key": week_key,
+            "week_start": ws.isoformat(),
+            "as_of": today.isoformat(),
+            "active_days": active_days,
+            "exp_days": exp_days,
+            "login_lost_days": login_lost_days,
+            "login_remaining_days": remaining,
+            "new_words": new_words,
+            "weekly_new_target": weekly_new_target,
+            "completed_slots": task_stats["completed_slots"],
+            "planned_slots": task_stats["planned_slots"],
+            "plan_completion": plan_completion,
+            "login_score": login_score,
+            "new_score": new_score,
+            "plan_score": plan_score,
+            "login_full": LOGIN_FULL,
+            "new_full": NEW_FULL,
+            "plan_full": PLAN_FULL,
+            "total_score": total,
+            "stars": stars,
+            "bonus_xp": bonus,
+            "cash_reward": cash_reward,
+            "cash_tier_label": cash_tier,
+            "cash_enabled": bool(settings.CASH_ENABLED),
+            "has_active_plan": plan_inputs is not None,
         })
 
     async def get_weekly_settlement(self, member_id: int) -> dict:
@@ -217,7 +324,6 @@ class StatsService:
         if active_days == 0:
             return False  # 本周完全没练习 → 不造 0 分垃圾行
 
-        breakdown = await self.repo.get_week_correct_breakdown(member_id, ws, we)
         new_words = await self.repo.get_week_new_word_count(member_id, ws, we)
         task_stats = await self.repo.get_week_task_stats(member_id, ws, we)
         plan_inputs = await self.repo.get_active_forward_plan_with_remaining(member_id)
@@ -231,10 +337,9 @@ class StatsService:
         weekly_new_target = daily_goal * max(exp_days, 1)
 
         login_score = score_login(active_days, exp_days)
-        difficulty_score = score_difficulty(breakdown["hard_words"], breakdown["correct_words"])
         new_score = score_new(new_words, weekly_new_target)
         plan_score = score_plan(task_stats["completed_slots"], task_stats["planned_slots"])
-        total = login_score + difficulty_score + new_score + plan_score
+        total = login_score + new_score + plan_score
         stars = compute_stars(total)
         bonus = compute_bonus(login_score, plan_score)
 
@@ -279,7 +384,7 @@ class StatsService:
         )
         row = WeeklySettlement(
             member_id=member_id, week_key=week_key, week_start=ws, week_end=we,
-            login_score=login_score, difficulty_score=difficulty_score,
+            login_score=login_score,
             new_score=new_score, plan_score=plan_score, total_score=total, stars=stars,
             real_days=active_days, new_words_learned=new_words, plan_completion=plan_completion,
             bonus_xp=bonus, freeze_granted=freeze_granted,
@@ -379,7 +484,6 @@ class StatsService:
             "week_start": r.week_start.isoformat(),
             "week_end": r.week_end.isoformat(),
             "login_score": r.login_score,
-            "difficulty_score": r.difficulty_score,
             "new_score": r.new_score,
             "plan_score": r.plan_score,
             "total_score": r.total_score,
