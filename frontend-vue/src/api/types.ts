@@ -64,6 +64,7 @@ export interface LevelInfo {
   next_level_min_xp: number | null
   next_level_name: string | null
   progress: number
+  stars: number
 }
 
 export interface BadgeEarned {

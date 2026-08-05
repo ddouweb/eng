@@ -31,9 +31,16 @@ def test_xp_to_level_boundary_and_progress():
     assert lv100["level_min_xp"] == 100
     # 白银(100)→黄金(300)：150 XP 进度 = 0.25
     assert abs(xp_to_level(150)["progress"] - 0.25) < 1e-6
-    top = xp_to_level(5000)
-    assert top["level_name"] == "大师"
-    assert top["next_level_min_xp"] is None and top["progress"] == 1.0
+    # 大师封顶后每 1000 XP 一颗 ★（stars=floor((xp-2000)/1000)），永不满级。
+    base = xp_to_level(2000)
+    assert base["level_name"] == "大师"                          # 刚到大师：0 星
+    assert base["stars"] == 0
+    assert base["next_level_min_xp"] == 3000                     # 下一颗星阈值（非 null → 不满级）
+    master2 = xp_to_level(4525)
+    assert master2["level_name"] == "大师★★" and master2["stars"] == 2
+    assert master2["next_level_min_xp"] == 5000                  # 下一颗星
+    assert master2["next_level_name"] == "大师★★★"
+    assert abs(master2["progress"] - 0.525) < 1e-6               # (4525-4000)/1000
 
 
 # ── _advance_streak ──
