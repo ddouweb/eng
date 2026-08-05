@@ -177,6 +177,10 @@ const xpText = computed(() => {
   const p = profile.value
   if (!p) return ''
   const lv = p.level
+  // 大师封顶阶段（带星）：只显示当前段位，不再提示「→ 下一颗星」。
+  if (lv.is_max_level) {
+    return `${lv.level_icon} ${lv.level_name}　·　累计 ${p.total_xp} XP`
+  }
   if (lv.next_level_min_xp == null) {
     return `${lv.level_icon} ${lv.level_name}（满级）　·　累计 ${p.total_xp} XP`
   }

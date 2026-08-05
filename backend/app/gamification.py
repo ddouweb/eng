@@ -79,10 +79,11 @@ MAX_FREEZE_BALANCE = 5
 def xp_to_level(total_xp: int) -> dict:
     """根据累计 XP 返回当前段位与到下一段位的进度（0~1）。
 
-    大师（最高段位）封顶后不再升段，而是每 1000 XP 折一颗 ★，星数无上限、
+    大师（最高段位）封顶后不再升段，而是每 1000 XP 折一颗 ⭐，星数无上限、
     永不满级：stars = floor((xp - 大师线) / 1000)，即 2000→0、3000→1、4525→2。
     星直接拼进 level_name / next_level_name，且 next_level_min_xp 永远指向
     下一颗星，因此前端「满级」分支不再触发、进度条继续走，无需前端改动。
+    is_max_level 标识大师阶段，前端据此隐藏「→ 下一颗星」只显示当前段位。
     """
     xp = max(0, int(total_xp or 0))
     cur_idx = 0
@@ -96,14 +97,16 @@ def xp_to_level(total_xp: int) -> dict:
         progress = round((xp - lo) / span, 3) if span > 0 else 1.0
         next_name = LEVELS[cur_idx + 1][1]
         stars = 0
+        is_max_level = False
     else:
-        # 大师封顶后：每 1000 XP 一颗 ★，星数无上限、永不满级。
+        # 大师封顶后：每 1000 XP 一颗 ⭐，星数无上限、永不满级。
         stars = (xp - lo) // 1000
         cur_lo = lo + stars * 1000       # 当前星段下限
         next_lo = cur_lo + 1000          # 下一颗星阈值（永远存在 → 不满级）
         progress = round((xp - cur_lo) / 1000, 3)
-        name = f"{name}{'★' * stars}"
-        next_name = f"{LEVELS[cur_idx][1]}{'★' * (stars + 1)}"
+        name = f"{name}{'⭐' * stars}"
+        next_name = f"{LEVELS[cur_idx][1]}{'⭐' * (stars + 1)}"
+        is_max_level = True
     return {
         "level_index": cur_idx,
         "level_name": name,
@@ -113,6 +116,7 @@ def xp_to_level(total_xp: int) -> dict:
         "next_level_name": next_name,
         "progress": progress,
         "stars": stars,
+        "is_max_level": is_max_level,
     }
 
 
