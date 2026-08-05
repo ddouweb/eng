@@ -10,7 +10,7 @@ import {
   NSpace,
   NSpin,
   NStatistic,
-  NTag,
+  NTooltip,
   useMessage,
   type SelectOption,
 } from 'naive-ui'
@@ -19,7 +19,7 @@ import type { EChartsOption } from 'echarts'
 import { api } from '@/api/client'
 import type { DailyTrend, StatsOverview, StatsProfile } from '@/api/types'
 import { MASTERY_META, MASTERY_ORDER, type MasteryLevel } from '@/constants/mastery'
-import { BADGES } from '@/constants/badges'
+import { BADGES, type BadgeMeta } from '@/constants/badges'
 import { CHART_HEIGHT } from '@/constants/ui'
 import EChart from '@/components/EChart.vue'
 
@@ -75,6 +75,33 @@ const xpText = computed(() => {
   const lv = p.level
   if (lv.next_level_min_xp == null) return `${lv.level_icon} ${lv.level_name}（满级）`
   return `${lv.level_icon} ${lv.level_name} → ${lv.next_level_name}`
+})
+
+// 已获徽章集合（O(1) 判定）+ 首次获得时间映射 + 徽章总数：徽章区全量展示，
+// 命中此处者点亮、其余置灰，hover 显示获得条件与时间，标题展示「已获 X / N」。
+const earnedBadgeSet = computed<Set<string>>(
+  () => new Set((profile.value?.badges ?? []).map((b) => b.key)),
+)
+const awardedAtMap = computed<Map<string, string>>(() => {
+  const m = new Map<string, string>()
+  for (const b of profile.value?.badges ?? []) {
+    if (b.awarded_at) m.set(b.key, b.awarded_at.slice(0, 10))
+  }
+  return m
+})
+const badgeTotal = computed(() => Object.keys(BADGES).length)
+// 徽章排序：已获得排前（按获得时间升序，早的在前），未获得排后（保持定义顺序）。
+const sortedBadges = computed(() => {
+  const earned: Array<{ key: string; meta: BadgeMeta }> = []
+  const locked: Array<{ key: string; meta: BadgeMeta }> = []
+  for (const [key, meta] of Object.entries(BADGES)) {
+    if (earnedBadgeSet.value.has(key)) earned.push({ key, meta })
+    else locked.push({ key, meta })
+  }
+  earned.sort((a, b) =>
+    (awardedAtMap.value.get(a.key) ?? '').localeCompare(awardedAtMap.value.get(b.key) ?? ''),
+  )
+  return [...earned, ...locked]
 })
 
 // ── 图表 option ──
@@ -278,23 +305,32 @@ onMounted(async () => {
         />
       </NCard>
 
-      <!-- 徽章 -->
-      <NCard size="small" title="🎖️ 徽章">
-        <NSpace v-if="profile.badges.length" :size="8" wrap>
-          <NTag
-            v-for="b in profile.badges"
-            :key="b"
-            type="success"
-            size="medium"
-            round
-            :bordered="false"
+      <!-- 徽章墙：默认显示图标+名称；hover 显示获得条件与获取时间 -->
+      <NCard size="small" :title="`🎖️ 徽章 · 已获 ${earnedBadgeSet.size} / ${badgeTotal}`">
+        <div class="badge-grid">
+          <NTooltip
+            v-for="{ key, meta } in sortedBadges"
+            :key="key"
+            trigger="hover"
+            placement="top"
           >
-            {{ BADGES[b]?.icon ?? '🏅' }} {{ BADGES[b]?.name ?? b }}
-          </NTag>
-        </NSpace>
-        <p v-else class="hint" style="margin: 0">
-          还没有徽章——连续学习 7 天、累计 100 XP 即可解锁第一个！
-        </p>
+            <template #trigger>
+              <div
+                class="badge-chip"
+                :class="earnedBadgeSet.has(key) ? 'earned' : 'locked'"
+              >
+                <span class="badge-emoji">{{ meta.icon }}</span>
+                <span class="badge-label">{{ meta.name }}</span>
+              </div>
+            </template>
+            <div style="max-width: 200px">
+              <div>{{ meta.desc }}</div>
+              <div v-if="earnedBadgeSet.has(key) && awardedAtMap.has(key)" style="margin-top: 4px; font-size: 12px; opacity: 0.85">
+                🏆 {{ awardedAtMap.get(key) }}
+              </div>
+            </div>
+          </NTooltip>
+        </div>
       </NCard>
     </template>
 
@@ -386,6 +422,58 @@ onMounted(async () => {
   margin-top: -8px;
   margin-bottom: 4px;
   font-size: 13px;
+}
+.badge-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(66px, 1fr));
+  gap: 8px;
+}
+.badge-chip {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 8px 4px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  cursor: default;
+  transition: transform 0.12s ease;
+}
+.badge-chip:hover {
+  transform: translateY(-2px);
+}
+.badge-emoji {
+  font-size: 24px;
+  line-height: 1;
+}
+.badge-label {
+  font-size: 11px;
+  line-height: 1.2;
+  text-align: center;
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* 点亮：浅绿底 + 绿边框 + 彩色图标 + 深绿加粗名（与未点亮强对比） */
+.badge-chip.earned {
+  background: #dcfce7;
+  border-color: #22c55e;
+}
+.badge-chip.earned .badge-label {
+  color: #15803d;
+  font-weight: 600;
+}
+/* 未点亮：灰白底 + 灰度透明图标 + 浅灰名 */
+.badge-chip.locked {
+  background: #f5f5f5;
+}
+.badge-chip.locked .badge-emoji {
+  filter: grayscale(1);
+  opacity: 0.4;
+}
+.badge-chip.locked .badge-label {
+  color: #b0b0b0;
 }
 .cards {
   display: grid;

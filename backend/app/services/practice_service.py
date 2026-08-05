@@ -1,22 +1,24 @@
 import random
-from datetime import date, datetime, time, timedelta, timezone
+from datetime import date, datetime, time, timedelta
 
 import anyio
 
 from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.gamification import MAX_FREEZE_BALANCE, STREAK_BADGE_THRESHOLDS, XP_BADGE_THRESHOLDS, difficulty_mult
+from app.gamification import MAX_FREEZE_BALANCE, PERMANENT_BADGE_THRESHOLDS, PRACTICE_BADGE_THRESHOLDS, STREAK_BADGE_THRESHOLDS, XP_BADGE_THRESHOLDS, difficulty_mult
+from app.services.badge_service import award_badge_if_new
 from app.srs import update_srs
 from app.models.enums import MasteryLevel, PlanStatus, PracticeMode, TagType, TaskStatus, TaskType
 from app.models.mastery import MasteryRecord
 from app.models.member import Member
 from app.models.plan import DailyTask, LearningPlan, PlanUnit
 from app.models.practice import PracticeRecord, PracticeSession
-from app.models.streak import MemberBadge, MemberStreak
+from app.models.streak import MemberStreak
 from app.models.word import Word, WordTag
 from app.repositories.mastery_repo import MasteryRepo
 from app.repositories.practice_repo import PracticeRecordRepo, PracticeSessionRepo
+from app.repositories.stats_repo import StatsRepo
 from app.repositories.wrong_book_repo import WrongWordBookRepo
 from app.schemas.common import success
 from app.schemas.exceptions import AppException
@@ -185,6 +187,11 @@ class PracticeService:
             accuracy = min(100.0, ps.correct_count / ps.total_count * 100)
         else:
             accuracy = 0.0
+
+        # 模式探索徽章：累计用过的练习模式 >= 10 种（本次会话已落 mode，distinct 计数）
+        if await StatsRepo(self.session).get_used_mode_count(ps.member_id) >= 10:
+            if await award_badge_if_new(self.session, ps.member_id, "modes_explorer"):
+                await self.session.commit()
 
         return success(data={
             "session_id": ps.id,
@@ -797,16 +804,32 @@ class PracticeService:
         for x, key in XP_BADGE_THRESHOLDS:
             if xp >= x:
                 candidates.append(key)
-        # first_permanent：该词刚升到 permanent，且该 member 此前（含本次）只有 ≤1 条 permanent
+        # 掌握度：first_permanent（首个永久掌握）+ permanent 规模（一次 count 查询）。
+        # 仅当本次答题的词升到 permanent 时才查——permanent 数只在该时刻增长，故覆盖了
+        # 所有规模变化点，不必每题都查。
         if mastery is not None and mastery.level == MasteryLevel.permanent:
-            cnt = await self.session.scalar(
+            perm_cnt = await self.session.scalar(
                 select(func.count()).select_from(MasteryRecord).where(
                     MasteryRecord.member_id == member_id,
                     MasteryRecord.level == MasteryLevel.permanent,
                 )
             )
-            if cnt is not None and cnt <= 1:
+            perm_cnt = int(perm_cnt or 0)
+            if perm_cnt <= 1:
                 candidates.append("first_permanent")
+            for thr, key in PERMANENT_BADGE_THRESHOLDS:
+                if perm_cnt >= thr:
+                    candidates.append(key)
+        # 练习量 / 正确率：一次 summary 聚合（session 级 SUM，有 member_id 索引，快）。
+        summary = await StatsRepo(self.session).get_practice_summary(member_id)
+        total_q = int(summary["total_questions"])
+        for thr, key in PRACTICE_BADGE_THRESHOLDS:
+            if total_q >= thr:
+                candidates.append(key)
+        if total_q >= 200:
+            correct = int(summary["total_correct"])
+            if correct / total_q >= 0.90:
+                candidates.append("accuracy_90")
 
         new_badges: list[str] = []
         for key in candidates:
@@ -815,16 +838,8 @@ class PracticeService:
         return new_badges
 
     async def _award_badge_if_new(self, member_id: int, key: str) -> bool:
-        existing = await self.session.scalar(
-            select(MemberBadge).where(
-                MemberBadge.member_id == member_id, MemberBadge.badge_key == key,
-            )
-        )
-        if existing:
-            return False
-        self.session.add(MemberBadge(member_id=member_id, badge_key=key))
-        await self.session.flush()
-        return True
+        # 委托共享基元（badge_service）；保留薄包装以维持内部调用点签名不变。
+        return await award_badge_if_new(self.session, member_id, key)
 
     @staticmethod
     def _streak_dict(state: MemberStreak) -> dict:

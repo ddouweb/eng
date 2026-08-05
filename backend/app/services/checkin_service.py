@@ -13,10 +13,11 @@ from datetime import date
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ai.factory import get_ai_provider
-from app.gamification import xp_to_level
+from app.gamification import STREAK_BADGE_THRESHOLDS, XP_BADGE_THRESHOLDS, xp_to_level
 from app.models.member import Member
 from app.models.streak import MemberStreak
 from app.schemas.common import success
+from app.services.badge_service import award_badge_if_new
 from app.services.practice_service import PracticeService
 from app.services.stats_service import StatsService
 
@@ -107,6 +108,16 @@ class CheckinService:
 
         PracticeService._maybe_grant_monthly_freeze(state, today)
         PracticeService._advance_streak(state, today)
+        # 签到推进了 streak → 补发 streak/XP 徽章（幂等）。原先仅在练习路径发，
+        # 纯靠签到累积到阈值会漏发；下次答题虽会幂等补发，但签到当场发放体验更即时。
+        member = await self.session.get(Member, member_id)
+        for days, key in STREAK_BADGE_THRESHOLDS:
+            if state.current_streak >= days:
+                await award_badge_if_new(self.session, member_id, key)
+        if member is not None:
+            for x, key in XP_BADGE_THRESHOLDS:
+                if member.total_xp >= x:
+                    await award_badge_if_new(self.session, member_id, key)
         await self.session.commit()
 
         return success(data={

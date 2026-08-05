@@ -428,3 +428,36 @@ class StatsRepo:
             {"unit_id": r[0], "total_words": int(r[1] or 0), "mastered": int(r[2] or 0)}
             for r in rows
         ]
+
+    # ─────────────────────────────────────────────────────
+    # 徽章聚合查询（扩容用：跨周 SUM/COUNT、计划状态、模式多样性）
+    # ─────────────────────────────────────────────────────
+    async def get_total_stars(self, member_id: int) -> int:
+        """累计星数 SUM(weekly_settlement.stars)。用于 stars_total_* 徽章。"""
+        stmt = select(func.coalesce(func.sum(WeeklySettlement.stars), 0)).where(
+            WeeklySettlement.member_id == member_id
+        )
+        return int((await self.session.execute(stmt)).scalar_one())
+
+    async def get_perfect_week_count(self, member_id: int) -> int:
+        """满分周数（total_score >= 100）。用于 perfect_weeks_* 徽章。"""
+        stmt = select(func.count()).select_from(WeeklySettlement).where(
+            WeeklySettlement.member_id == member_id,
+            WeeklySettlement.total_score >= 100,
+        )
+        return int((await self.session.execute(stmt)).scalar_one())
+
+    async def get_completed_plan_count(self, member_id: int) -> int:
+        """已完成的 forward 计划数（status=completed）。用于 plan_complete_* 徽章。"""
+        stmt = select(func.count()).select_from(LearningPlan).where(
+            LearningPlan.member_id == member_id,
+            LearningPlan.status == PlanStatus.completed,
+        )
+        return int((await self.session.execute(stmt)).scalar_one())
+
+    async def get_used_mode_count(self, member_id: int) -> int:
+        """用过的练习模式数（distinct PracticeSession.mode）。用于 modes_explorer 徽章。"""
+        stmt = select(func.count(func.distinct(PracticeSession.mode))).where(
+            PracticeSession.member_id == member_id
+        )
+        return int((await self.session.execute(stmt)).scalar_one())

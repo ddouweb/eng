@@ -66,6 +66,11 @@ export interface LevelInfo {
   progress: number
 }
 
+export interface BadgeEarned {
+  key: string
+  awarded_at: string | null
+}
+
 export interface StatsProfile {
   current_streak: number
   longest_streak: number
@@ -73,7 +78,7 @@ export interface StatsProfile {
   last_active_date: string | null
   total_xp: number
   level: LevelInfo
-  badges: string[]
+  badges: BadgeEarned[]
 }
 
 export interface ReviewDue {
@@ -332,10 +337,10 @@ export interface WeekProgress {
   has_active_plan: boolean
 }
 
-// 现金里程碑发放记录（unit_complete / cumulative_words / attendance_streak 三类）
+// 现金里程碑发放记录（unit_complete / cumulative_words / attendance_streak / badge_reward 四类）
 export interface CashMilestone {
   milestone_key: string
-  milestone_type: 'unit_complete' | 'cumulative_words' | 'attendance_streak'
+  milestone_type: 'unit_complete' | 'cumulative_words' | 'attendance_streak' | 'badge_reward'
   threshold: number
   amount: number
   snapshot: Record<string, unknown> | null

@@ -8,6 +8,7 @@ from app.models.word import Word
 from app.repositories.wrong_book_repo import WrongWordBookRepo
 from app.schemas.common import success
 from app.schemas.exceptions import AppException
+from app.services.badge_service import award_badge_if_new
 
 
 class WrongBookService:
@@ -99,11 +100,18 @@ class WrongBookService:
         if not deleted:
             raise AppException(404, "该词不在错题本中")
         await self.session.commit()
+        # 错题本清零徽章：删完最后一个错题（规模归 0）时发放。
+        if await self.repo.count_by_member(member_id) == 0:
+            if await award_badge_if_new(self.session, member_id, "wrongbook_clear"):
+                await self.session.commit()
         return success(data={"word_id": word_id})
 
     async def clear(self, member_id: int) -> dict:
         removed = await self.repo.delete_all_by_member(member_id)
         await self.session.commit()
+        # 错题本清零徽章：仅当确有错题被清空（removed>0）时发放，避免空错题本误发。
+        if removed and await award_badge_if_new(self.session, member_id, "wrongbook_clear"):
+            await self.session.commit()
         return success(data={"removed": removed})
 
     async def add_manual(self, member_id: int, word_id: int) -> dict:

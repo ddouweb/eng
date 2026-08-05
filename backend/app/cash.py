@@ -152,3 +152,25 @@ def build_milestone_candidates(
                 snapshot={"attendance_streak": att_streak},
             ))
     return candidates
+
+
+def build_badge_reward_candidates(
+    earned_badge_keys: list[str], amount: float,
+) -> list[MilestoneCandidate]:
+    """对每枚已获徽章生成一次性现金奖励候选（type='badge_reward'）。
+
+    - key 形如 ``badge_reward:{badge_key}``，与现有三类里程碑共用 ``cash_milestone`` 表；
+      幂等由调用方靠 ``uq_member_milestone_key`` 保证（已发的被 SELECT 跳过）。
+    - 语义「首达」：每枚徽章终身只发一次 amount（默认 ``settings.CASH_BADGE_REWARD``）；
+      发放后徽章回收（当前无路径）也不回扣（同 snapshot 语义）。
+    """
+    return [
+        MilestoneCandidate(
+            key=f"badge_reward:{k}",
+            type="badge_reward",
+            threshold=0,
+            amount=amount,
+            snapshot={"badge_key": k},
+        )
+        for k in earned_badge_keys
+    ]

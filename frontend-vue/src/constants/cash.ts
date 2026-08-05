@@ -1,3 +1,5 @@
+import { BADGES } from '@/constants/badges'
+
 // 现金激励展示元数据。须与后端 app/cash.py 的 tier label / milestone_type 保持一致
 // （同 badges.ts 与 gamification.py 的同步约定：增改档位/类型时两端同步）。
 
@@ -25,13 +27,15 @@ export const MILESTONES: Record<string, MilestoneMeta> = {
   unit_complete: { name: '背完 Unit', icon: '📦' },
   cumulative_words: { name: '累计掌握', icon: '📚' },
   attendance_streak: { name: '连续全勤', icon: '🔥' },
+  badge_reward: { name: '徽章奖励', icon: '🏅' },
 }
 
-// 把里程碑记录格式化成展示文案（type + threshold）。
+// 把里程碑记录格式化成展示文案（type + threshold；badge_reward 用 snapshot.badge_key 查 BADGES）。
 export function milestoneDisplay(m: {
   milestone_type: string
   threshold: number
   unit_title?: string | null
+  snapshot?: Record<string, unknown> | null
 }): { icon: string; title: string } {
   const meta = MILESTONES[m.milestone_type] ?? { name: m.milestone_type, icon: '🏅' }
   switch (m.milestone_type) {
@@ -44,6 +48,11 @@ export function milestoneDisplay(m: {
       return { icon: meta.icon, title: `累计掌握 ${m.threshold} 词` }
     case 'attendance_streak':
       return { icon: meta.icon, title: `连续 ${m.threshold} 周全勤` }
+    case 'badge_reward': {
+      const bk = (m.snapshot?.badge_key as string | undefined) ?? ''
+      const b = BADGES[bk]
+      return { icon: b?.icon ?? '🏅', title: `徽章奖励 · ${b?.name ?? bk}` }
+    }
     default:
       return { icon: meta.icon, title: meta.name }
   }

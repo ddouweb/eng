@@ -64,6 +64,7 @@ class Settings(BaseSettings):
     CASH_MS_STREAK_4: float = 20.0        # 连续 4 周全勤
     CASH_MS_STREAK_8: float = 50.0
     CASH_MS_STREAK_12: float = 100.0
+    CASH_BADGE_REWARD: float = 10.0        # 每枚已获徽章的一次性奖励（元，跟随 CASH_ENABLED）
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 

@@ -6,12 +6,13 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
-from app.cash import build_milestone_candidates
+from app.cash import build_badge_reward_candidates, build_milestone_candidates
 from app.gamification import MAX_FREEZE_BALANCE, xp_to_level
 from app.models.cash_milestone import CashMilestone
 from app.models.member import Member
 from app.models.settlement import WeeklySettlement
 from app.models.streak import MemberBadge, MemberStreak
+from app.services.badge_service import award_badge_if_new
 from app.models.unit import Unit
 from app.repositories.stats_repo import StatsRepo
 from app.repositories.wrong_book_repo import WrongWordBookRepo
@@ -93,8 +94,13 @@ class StatsService:
         state = await self.session.get(MemberStreak, member_id)
         member = await self.session.get(Member, member_id)
         xp = member.total_xp if member else 0
-        stmt = select(MemberBadge.badge_key).where(MemberBadge.member_id == member_id)
-        badges = [r[0] for r in (await self.session.execute(stmt)).all()]
+        stmt = select(MemberBadge.badge_key, MemberBadge.awarded_at).where(
+            MemberBadge.member_id == member_id
+        )
+        badges = [
+            {"key": r[0], "awarded_at": r[1].isoformat() if r[1] else None}
+            for r in (await self.session.execute(stmt)).all()
+        ]
         return success(data={
             "current_streak": state.current_streak if state else 0,
             "longest_streak": state.longest_streak if state else 0,
@@ -354,15 +360,30 @@ class StatsService:
             candidate_badges.append("week_full_score")
         if active_days >= 7:
             candidate_badges.append("week_login_7")
-        new_badges: list[str] = []
-        for key in candidate_badges:
-            got = await self.session.scalar(
-                select(MemberBadge.member_id).where(
-                    MemberBadge.member_id == member_id, MemberBadge.badge_key == key,
-                )
-            )
-            if not got:
-                new_badges.append(key)
+        # settlement 类徽章 candidate：累计星数 / 满分周数 / 攻克 Unit / 完成计划。
+        # 本周 row 尚未落表 → 用「已落表累计 + 本周」口径（stars/perfect_weeks 加本周贡献）。
+        # 回算多周时逐周累加：前周已落表，后周的 get_total_stars 自然包含前周。
+        total_stars = await self.repo.get_total_stars(member_id) + stars
+        if total_stars >= 30:
+            candidate_badges.append("stars_total_30")
+        perfect_weeks = await self.repo.get_perfect_week_count(member_id) + (1 if total >= 100 else 0)
+        if perfect_weeks >= 4:
+            candidate_badges.append("perfect_weeks_4")
+        units_status = await self.repo.get_all_units_mastery_status(member_id)
+        mastered_units = sum(
+            1 for u in units_status
+            if u["total_words"] > 0 and u["mastered"] >= u["total_words"]
+        )
+        if mastered_units >= 1:
+            candidate_badges.append("unit_master_1")
+        if mastered_units >= 5:
+            candidate_badges.append("unit_master_5")
+        if await self.repo.get_completed_plan_count(member_id) >= 1:
+            candidate_badges.append("plan_complete_1")
+        if await self.repo.get_completed_plan_count(member_id) >= 5:
+            candidate_badges.append("plan_complete_5")
+        # 实际发放改在下面 savepoint 内用 award_badge_if_new 幂等发放，
+        # 命中即计入本周 new_badges → badges_granted。
 
         # plan_health（只读快照）：以该周周日 we 为基准日，回算多周时每周快照各自独立、确定。
         health = None
@@ -388,7 +409,7 @@ class StatsService:
             new_score=new_score, plan_score=plan_score, total_score=total, stars=stars,
             real_days=active_days, new_words_learned=new_words, plan_completion=plan_completion,
             bonus_xp=bonus, freeze_granted=freeze_granted,
-            badges_granted=new_badges or None, plan_health=health,
+            badges_granted=None, plan_health=health,
             cash_reward=cash_reward, cash_tier_label=cash_tier,
         )
 
@@ -409,8 +430,14 @@ class StatsService:
                             )
                 if freeze_granted and state is not None:
                     state.freeze_balance = min(freeze_balance + 1, MAX_FREEZE_BALANCE)
-                for key in new_badges:
-                    self.session.add(MemberBadge(member_id=member_id, badge_key=key))
+                # 徽章：savepoint 内幂等发放（award_badge_if_new 的 flush 受 savepoint 约束，
+                # 与 row 同原子；命中周唯一约束回滚时徽章一并回滚）。
+                new_badges: list[str] = []
+                for key in candidate_badges:
+                    if await award_badge_if_new(self.session, member_id, key):
+                        new_badges.append(key)
+                if new_badges:
+                    row.badges_granted = new_badges
                 self.session.add(row)
         except IntegrityError:
             logger.info(
@@ -438,6 +465,16 @@ class StatsService:
         mastered_total = sum(u["mastered"] for u in units_status)
         att_streak = await self.repo.get_full_attendance_week_streak(member_id)
         candidates = build_milestone_candidates(units_status, att_streak, mastered_total)
+        # 徽章一次性奖励：每枚已获徽章发 CASH_BADGE_REWARD 元，终身首达幂等（已发的
+        # badge_reward:{key} 被下面 SELECT 跳过）。与里程碑同 savepoint 累加进 cash_balance。
+        earned_badge_keys = [
+            r[0] for r in (await self.session.execute(
+                select(MemberBadge.badge_key).where(MemberBadge.member_id == member_id)
+            )).all()
+        ]
+        candidates += build_badge_reward_candidates(
+            earned_badge_keys, float(settings.CASH_BADGE_REWARD)
+        )
 
         granted_any = False
         for cand in candidates:

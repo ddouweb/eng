@@ -245,6 +245,13 @@ class TestWeeklySettlement:
         )
         service.session.add = MagicMock()
         service.session.begin_nested = MagicMock(return_value=_OkSavepoint())
+        # 扩容徽章（settlement 类）：4 个聚合查询返回 0/空，不触发新 candidate；
+        # award_badge_if_new 在 savepoint 内 await session.flush()
+        mock_repo.get_total_stars = AsyncMock(return_value=0)
+        mock_repo.get_perfect_week_count = AsyncMock(return_value=0)
+        mock_repo.get_all_units_mastery_status = AsyncMock(return_value=[])
+        mock_repo.get_completed_plan_count = AsyncMock(return_value=0)
+        service.session.flush = AsyncMock()
         return service, state, member
 
     @pytest.mark.asyncio
@@ -356,6 +363,10 @@ class TestMaybeGrantMilestones:
         service.session.add = MagicMock()
         service.session.begin_nested = MagicMock(return_value=_OkSavepoint())
         service.session.commit = AsyncMock()
+        # badge_reward 候选：已获徽章查询返回空（无 badge_reward 候选，不影响现有里程碑断言）
+        _badges = MagicMock()
+        _badges.all.return_value = []
+        service.session.execute = AsyncMock(return_value=_badges)
         return service, member
 
     def _added_keys(self, service):

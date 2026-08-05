@@ -54,6 +54,10 @@ async def test_finish_practice(service, mock_session):
     service.session_repo.get_by_id = AsyncMock(return_value=ps)
     mock_session.commit = AsyncMock()
     mock_session.refresh = AsyncMock()
+    # 模式探索徽章：get_used_mode_count 经 session.execute.scalar_one，返回 0（<10 不发）
+    mock_session.execute = AsyncMock(
+        return_value=MagicMock(scalar_one=MagicMock(return_value=0))
+    )
 
     result = await service.finish_practice(1)
 
