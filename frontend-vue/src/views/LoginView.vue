@@ -51,7 +51,7 @@ async function submit() {
 
 <template>
   <div class="login-wrap">
-    <NCard title="📚 家庭英语学习" class="login-card">
+    <NCard title="📚 英语学习" class="login-card">
       <NForm ref="formRef" :model="form" :rules="rules" @keyup.enter="submit">
         <NFormItem label="用户名" path="username">
           <NInput v-model:value="form.username" placeholder="请输入用户名" />

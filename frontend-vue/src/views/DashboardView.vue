@@ -17,7 +17,7 @@ import {
 } from 'naive-ui'
 
 import { api } from '@/api/client'
-import type { CheckinEncouragement, ReviewDue, StatsProfile, StatsToday, WeekProgress } from '@/api/types'
+import type { CheckinEncouragement, ReviewDue, StatsProfile, StatsOverview, StatsToday, WeekProgress } from '@/api/types'
 import { BADGES, type BadgeMeta } from '@/constants/badges'
 import DimensionBar from '@/components/DimensionBar.vue'
 
@@ -31,6 +31,10 @@ const profile = ref<StatsProfile | null>(null)
 const reviewDue = ref<ReviewDue | null>(null)
 const today = ref<StatsToday | null>(null)
 const week = ref<WeekProgress | null>(null)
+const overview = ref<StatsOverview | null>(null)
+// 当前 active 的 forward 计划 id：仪表盘「一键重新平衡」需要（today 接口不返回 plan_id）。
+const activeForwardPlanId = ref<number | null>(null)
+const rebalancing = ref(false)
 const loading = ref(true)
 // profile 加载错误文案；非 null 即进入错误态（NResult + 重试），与「真空态」严格区分。
 const loadError = ref<string | null>(null)
@@ -95,23 +99,19 @@ const sortedBadges = computed(() => {
   return [...earned, ...locked]
 })
 
-// 本周进度差距文案（激励向）：已断天数 / 剩余全勤日 / 新词缺口 / 计划完成率，拼一句。
+// 本周进度文案（鼓励向）：先讲已得（已学新词 / 坚持状态），不再用「计划完成 X%」当头炮打压。
 const weekGap = computed<string>(() => {
   const w = week.value
   if (!w) return ''
   const parts: string[] = []
+  parts.push(`已学新词 ${w.new_words} 个`)
   if (w.login_lost_days > 0) {
-    parts.push(`坚持已断 ${w.login_lost_days} 天`)
+    parts.push(`坚持断了 ${w.login_lost_days} 天，补上即恢复`)
   } else if (w.login_remaining_days > 0) {
-    parts.push(`坚持再保持 ${w.login_remaining_days} 天即满分`)
+    parts.push(`再坚持 ${w.login_remaining_days} 天拿满坚持分`)
   }
-  const newGap = Math.max(0, w.weekly_new_target - w.new_words)
-  if (newGap > 0) parts.push(`新词还差 ${newGap} 个`)
-  if (w.planned_slots > 0 && w.plan_completion < 1) {
-    parts.push(`计划完成 ${Math.round(w.plan_completion * 100)}%`)
-  }
-  if (!parts.length) return '🎉 本周已拿满分，保持住！'
-  return '💡 ' + parts.join(' · ') + ' 可提升本周结算'
+  if (parts.length <= 1) return '🎉 本周节奏很稳，继续保持！'
+  return '💪 ' + parts.join(' · ')
 })
 
 // 智能建议（首页顶部唯一主提示，按优先级取一条）：
@@ -158,7 +158,7 @@ const advice = computed<{ type: 'info' | 'warning' | 'success'; text: string } |
   if (h && h.on_track === false) {
     return {
       type: 'warning',
-      text: `当前节奏可能在 deadline 前背不完，建议每日新词 ${h.suggested_daily_goal ?? '?'} 个（去 📅 学习计划 点「重新平衡」）。`,
+      text: `当前节奏可能在 deadline 前背不完，建议每日新词 ${h.suggested_daily_goal ?? '?'} 个（可在下方「计划体检」一键重新平衡）。`,
     }
   }
   // 6) 全部完成
@@ -191,11 +191,13 @@ async function load() {
   loading.value = true
   loadError.value = null
   // profile 是主数据：失败 → 进入错误态（可重试）。reviewDue/today 是辅助数据：失败仅 toast，不阻塞整页。
-  const [profileResp, reviewResp, todayResp, weekResp] = await Promise.all([
+  const [profileResp, reviewResp, todayResp, weekResp, overviewResp, plansResp] = await Promise.all([
     api.getStatsProfile(),
     api.getReviewDue(),
     api.getStatsToday(),
     api.getStatsWeekProgress(),
+    api.getStatsOverview(),
+    api.listPlans('active'),
   ])
   if (profileResp.code === 200) {
     profile.value = profileResp.data
@@ -218,6 +220,19 @@ async function load() {
     week.value = weekResp.data
   } else {
     message.error(`本周进度加载失败：${weekResp.message}`)
+  }
+  // 学习概览（记牢词数 / 正确率）：首页英雄区用，失败仅 toast，不影响主流程。
+  if (overviewResp.code === 200) {
+    overview.value = overviewResp.data
+  } else {
+    message.error(`学习概览加载失败：${overviewResp.message}`)
+  }
+  // 取 active 的 forward 计划 id，供「一键重新平衡」使用（today 接口不返回 plan_id）。
+  if (plansResp.code === 200) {
+    const fwd = plansResp.data.find((p) => p.plan_type === 'forward')
+    activeForwardPlanId.value = fwd ? fwd.id : null
+  } else {
+    activeForwardPlanId.value = null
   }
   loading.value = false
 }
@@ -264,6 +279,33 @@ async function doCheckin() {
   }
 }
 
+// 一键重新平衡当前 forward 计划：把不可能完成的每日目标降到系统算出的可行档。
+// feasible→更新 daily_goal；infeasible（deadline 太紧）→引导去计划页延长截止日。
+async function rebalanceActive() {
+  const pid = activeForwardPlanId.value
+  if (pid == null) return
+  rebalancing.value = true
+  const r = await api.rebalancePlan(pid)
+  rebalancing.value = false
+  if (r.code !== 200) {
+    message.error(r.message)
+    return
+  }
+  const d = r.data
+  if (d.feasible) {
+    message.success(`已重排：每日 ${d.new_per_day ?? '?'} 个新词，剩余 ${d.remaining_learn_days ?? '?'} 天`)
+  } else {
+    dialog.warning({
+      title: '暂时无法重平衡',
+      content: '剩余词量对当前截止日太紧。去 📅 学习计划 把截止日往后延一些，再来重平衡。',
+      positiveText: '知道了',
+      negativeText: '去学习计划',
+      onNegativeClick: () => router.push('/plans'),
+    })
+  }
+  await load()
+}
+
 function goPractice() {
   router.push('/practice')
 }
@@ -277,7 +319,7 @@ onMounted(load)
 
 <template>
   <NSpin :show="loading">
-    <h2 style="margin-top: 0">📚 Family English Coach</h2>
+    <h2 style="margin-top: 0">📚 English Coach</h2>
     <p class="subtitle">词库练习 → 掌握追踪 → 每日复习</p>
 
     <!-- 错误态：profile 接口失败（非 200 / 抛错）。给重试入口，而不是整页空白或误报「暂无数据」。 -->
@@ -334,6 +376,18 @@ onMounted(load)
 
       <!-- 顶部唯一主提示（断签/回归/无计划/缺口/节奏/完成，按优先级取一条） -->
       <NAlert v-if="advice" :type="advice.type" :bordered="false">{{ advice.text }}</NAlert>
+
+      <!-- 真实进步英雄区：把她已得的成绩（记牢词/正确率/连续/段位）摆上头条，激励向，先于「本周进度」的分数/缺口出现。 -->
+      <NCard size="small" class="hero-card">
+        <template #header>🌟 我的进步</template>
+        <div class="hero-stats">
+          <NStatistic label="🌱 已记牢" :value="overview ? `${overview.mastered_count} 词` : '—'" />
+          <NStatistic label="🎯 正确率" :value="overview ? `${overview.accuracy}%` : '—'" />
+          <NStatistic label="🔥 连续学习" :value="`${profile.current_streak} 天`" />
+          <NStatistic :label="`${profile.level.level_icon} 段位`" :value="profile.level.level_name" />
+        </div>
+        <p class="hero-foot">🛡️ 断签冻结 {{ profile.freeze_balance }} 个　·　🏆 最长 {{ profile.longest_streak }} 天　·　累计 {{ profile.total_xp }} XP</p>
+      </NCard>
 
       <!-- 本周进度（实时预估，激励用：本周截至今天能拿多少分 + 还差什么） -->
       <NCard v-if="week" size="small">
@@ -406,28 +460,22 @@ onMounted(load)
               label="预计学完"
               :value="today.plan_health!.projected_finish"
             />
+            <NButton
+              v-if="today.plan_health!.on_track === false && activeForwardPlanId != null"
+              size="small"
+              type="primary"
+              ghost
+              :loading="rebalancing"
+              style="margin-top: 10px; align-self: flex-start"
+              @click="rebalanceActive"
+            >
+              ⚖️ 一键重新平衡（每日 {{ today.plan_health!.suggested_daily_goal ?? '?' }} 词）
+            </NButton>
           </div>
         </div>
       </NCard>
 
-      <!-- 4 张指标卡 -->
-      <div class="cards">
-        <NCard size="small">
-          <NStatistic label="🔥 连续学习" :value="`${profile.current_streak} 天`" />
-        </NCard>
-        <NCard size="small">
-          <NStatistic label="🛡️ 断签冻结" :value="`${profile.freeze_balance} 个`" />
-        </NCard>
-        <NCard size="small">
-          <NStatistic label="🏆 最长记录" :value="`${profile.longest_streak} 天`" />
-        </NCard>
-        <NCard size="small">
-          <NStatistic
-            :label="`${profile.level.level_icon} 段位`"
-            :value="profile.level.level_name"
-          />
-        </NCard>
-      </div>
+      <!-- 指标卡（连续/段位/冻结/最长）已并入上方「我的进步」英雄区，避免同一数字重复 -->
 
       <!-- XP 进度条（到下一段位） -->
       <NCard size="small">
@@ -476,6 +524,22 @@ onMounted(load)
 .subtitle {
   color: #666;
   margin-top: -8px;
+}
+/* 真实进步英雄区 */
+.hero-card :deep(.n-card__content) {
+  padding: 16px !important;
+}
+.hero-stats {
+  display: flex;
+  gap: 28px;
+  flex-wrap: wrap;
+}
+.hero-foot {
+  margin: 10px 0 0;
+  padding-top: 10px;
+  border-top: 1px solid #f0f0f0;
+  color: #909399;
+  font-size: 13px;
 }
 .dashboard {
   display: flex;

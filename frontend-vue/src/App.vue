@@ -142,7 +142,7 @@ function logout() {
           >
             <div class="brand">
               <span class="brand-icon" aria-hidden="true">📚</span>
-              <span v-if="!collapsed" class="brand-text">家庭英语</span>
+              <span v-if="!collapsed" class="brand-text">英语学习</span>
             </div>
             <NMenu
               :options="menuOptions"
@@ -164,7 +164,7 @@ function logout() {
             <NDrawerContent body-content-style="padding: 14px;">
               <div class="brand">
                 <span class="brand-icon" aria-hidden="true">📚</span>
-                <span class="brand-text">家庭英语</span>
+                <span class="brand-text">英语学习</span>
               </div>
               <NMenu :options="menuOptions" :value="activeKey" />
               <div class="logout">
@@ -179,7 +179,7 @@ function logout() {
               <NButton quaternary circle aria-label="打开菜单" @click="drawerOpen = true">
                 ☰
               </NButton>
-              <span class="mobile-title">📚 家庭英语</span>
+              <span class="mobile-title">📚 英语学习</span>
             </div>
             <RouterView />
           </NLayoutContent>

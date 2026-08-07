@@ -1,4 +1,4 @@
-# API — Family English Coach
+# API — English Coach
 
 所有接口前缀：`/api/v1`
 

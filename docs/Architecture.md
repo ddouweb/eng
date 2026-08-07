@@ -1,4 +1,4 @@
-# Architecture — Family English Coach
+# Architecture — English Coach
 
 ## 1. 系统架构
 

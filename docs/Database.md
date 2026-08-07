@@ -1,4 +1,4 @@
-# Database — Family English Coach
+# Database — English Coach
 
 > 表结构以 `backend/app/models/*.py` 与 `backend/alembic/versions/*.py` 为准。下列 `CREATE TABLE` 为当前线上的等价 DDL（含全部迁移至 `019_cash_reward`）。
 > 说明：**唯一约束名与索引名均与迁移真实落库一致**（见文末「索引策略」表）。外键名多为迁移未显式命名、由 MySQL 自动生成，DDL 中给出的是便于阅读的逻辑名；唯一在迁移里显式命名的外键是 `wrong_word_book` 的 `fk_wrongbook_member` / `fk_wrongbook_word`。
@@ -182,7 +182,7 @@ CREATE TABLE `member` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 ```
 
-**说明：** 家庭成员表。单人模式恒为一条记录（id=1）。`total_xp`（015）由答对累加驱动段位；`cash_balance`（019）累加周学习现金与里程碑奖金，线下兑现、系统只记账。
+**说明：** 用户表（单人）。单人模式恒为一条记录（id=1）。`total_xp`（015）由答对累加驱动段位；`cash_balance`（019）累加周学习现金与里程碑奖金，线下兑现、系统只记账。
 
 ---
 
