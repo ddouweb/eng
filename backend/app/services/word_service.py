@@ -39,7 +39,11 @@ class WordService:
         for w in words:
             d = self._to_dict(w)
             d["tags"] = [t.tag.value for t in w.tags]
-            d["mastery"] = self._mastery_from_record(w.mastery_records)
+            mrec = self._mastery_from_record(w.mastery_records)
+            d["mastery"] = mrec
+            # 前端单词列表(单词管理 / 搜词)按 mastery_level 字符串渲染掌握度标签，
+            # 故同时给出扁平 level 字符串(无记录→None→前端回落显示「未学」)。
+            d["mastery_level"] = mrec["level"] if mrec else None
             items.append(d)
         return success(data={"items": items, "total": total, "page": page, "page_size": page_size})
 
@@ -67,7 +71,9 @@ class WordService:
             d = self._to_dict(w)
             d["unit_title"] = w.unit.title if w.unit else None
             d["tags"] = [t.tag.value for t in w.tags]
-            d["mastery"] = self._mastery_from_record(w.mastery_records, member_id)
+            mrec = self._mastery_from_record(w.mastery_records, member_id)
+            d["mastery"] = mrec
+            d["mastery_level"] = mrec["level"] if mrec else None
             items.append(d)
         return success(data={"items": items, "total": total, "page": page, "page_size": page_size})
 

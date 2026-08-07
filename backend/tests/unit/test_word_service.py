@@ -123,6 +123,7 @@ async def test_search_assembles_unit_title_tags_mastery(service):
     assert item["unit_title"] == "Unit 3 - Fruits"
     assert item["tags"] == ["favorite"]
     assert item["mastery"]["level"] == "learning"
+    assert item["mastery_level"] == "learning"  # 前端单词列表按此字符串渲染掌握度
     # 透传给 repo 的参数
     kwargs = service.repo.search.call_args.kwargs
     assert kwargs["q"] == "app" and kwargs["member_id"] == 1
@@ -136,6 +137,7 @@ async def test_search_mastery_none_when_no_record(service):
     service.repo.search = AsyncMock(return_value=([w], 1))
     result = await service.search(q="ban", member_id=2)
     assert result["data"]["items"][0]["mastery"] is None
+    assert result["data"]["items"][0]["mastery_level"] is None
     assert service.repo.search.call_args.kwargs["member_id"] == 2
 
 
@@ -194,3 +196,23 @@ async def test_batch_create_passes_rich_fields_through(service, mock_session):
     created = service.repo.batch_create.call_args.args[0]
     assert created[0].phonetic == "həˈloʊ"
     assert created[0].pos == "int."
+
+
+@pytest.mark.asyncio
+async def test_get_by_unit_emits_mastery_level_string(service):
+    """单词管理页按 mastery_level(字符串)渲染掌握度;get_by_unit 必须给出该字段
+    (旧实现只给 mastery 对象,前端读不到 mastery_level,所有词都误显「未学」)。"""
+    service.repo.get_by_unit = AsyncMock(return_value=([_make_search_word()], 1))
+    result = await service.get_by_unit(3, page=1, page_size=50)
+    item = result["data"]["items"][0]
+    assert item["mastery_level"] == "learning"
+    assert item["mastery"]["level"] == "learning"  # 兼容:对象仍保留
+
+
+@pytest.mark.asyncio
+async def test_get_by_unit_mastery_level_none_when_no_record(service):
+    w = _make_search_word()
+    w.mastery_records = []  # 无记录 -> mastery_level 为 None(前端回落显示「未学」)
+    service.repo.get_by_unit = AsyncMock(return_value=([w], 1))
+    result = await service.get_by_unit(3)
+    assert result["data"]["items"][0]["mastery_level"] is None
