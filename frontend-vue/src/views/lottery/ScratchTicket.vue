@@ -270,10 +270,13 @@ onBeforeUnmount(() => {
   flex-direction: column;
   align-items: center;
   justify-content: center;
+  gap: 0;
   overflow: hidden;
   color: #1a2e3c;
 }
+/* 字号双写：px 给不支持容器查询的浏览器兜底，cqw 随票宽缩放（原版同款） */
 .cell .num {
+  font-size: 20px;
   font-size: 6.4cqw;
   font-weight: 900;
   line-height: 1.05;
@@ -281,6 +284,7 @@ onBeforeUnmount(() => {
   text-shadow: 0 0 1px currentColor;
 }
 .cell .sym {
+  font-size: 19px;
   font-size: 6cqw;
   line-height: 1.05;
   display: flex;
@@ -293,6 +297,7 @@ onBeforeUnmount(() => {
   display: block;
 }
 .cell .amt {
+  font-size: 13px;
   font-size: 4.2cqw;
   font-weight: 900;
   color: #1a2e3c;
@@ -308,14 +313,17 @@ onBeforeUnmount(() => {
   background: radial-gradient(circle at 50% 38%, #d84f26, #b93312 78%);
 }
 .cell.ws .num {
+  font-size: 20px;
   font-size: 2.8cqw;
   color: #131a2e;
   text-shadow: none;
+  transform: none;
 }
 .mult-badge {
   position: absolute;
   top: 4%;
   right: 5%;
+  font-size: 8px;
   font-size: 2.6cqw;
   font-weight: 900;
   color: #fff;
@@ -450,18 +458,21 @@ canvas.coat:active {
   justify-content: center;
   margin-top: 12px;
 }
+/* 原版金边幽灵按钮（舞台是深色红金底，金字金边才贴原版） */
 .btn-ghost {
-  border: 1px solid rgba(122, 22, 16, 0.45);
-  background: transparent;
-  color: #7a1610;
-  border-radius: 10px;
-  padding: 8px 18px;
-  font-size: 14px;
   cursor: pointer;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  color: #f5c451;
+  padding: 8px 18px;
+  border-radius: 999px;
+  border: 2px solid rgba(245, 196, 81, 0.7);
+  background: transparent;
   transition: background 0.15s;
 }
 .btn-ghost:hover {
-  background: rgba(122, 22, 16, 0.06);
+  background: rgba(245, 196, 81, 0.12);
 }
 /* 撒花（挂 body，全局 keyframes 须非 scoped——放在本组件样式外） */
 </style>

@@ -16,9 +16,6 @@ const emit = defineEmits<{
 }>()
 
 const done = computed(() => props.summary.remaining === 0)
-const settledRatio = computed(() =>
-  props.summary.size ? Math.round((props.summary.settled / props.summary.size) * 100) : 0,
-)
 </script>
 
 <template>
@@ -32,7 +29,6 @@ const settledRatio = computed(() =>
         <b class="pos">¥{{ fmtPrize(summary.total_prize) }}</b> · 最大单张
         <b>{{ summary.best_prize > 0 ? `¥${fmtPrize(summary.best_prize)}` : '—' }}</b>
       </div>
-      <div class="batch-progress"><i :style="{ width: `${settledRatio}%` }"></i></div>
     </div>
     <p v-if="done" class="batch-note">
       本批战报:{{ summary.hit_count }} 张中奖,合计 ¥{{ fmtPrize(summary.total_prize)
@@ -44,7 +40,7 @@ const settledRatio = computed(() =>
           <span class="bcard-no">No.{{ t.index }}</span>
           <span class="bcard-face">🎫</span>
         </button>
-        <div v-else class="bcard done" :class="t.prize > 0 ? 'hit' : 'miss'">
+        <div v-else class="bcard done" :class="{ hit: t.prize > 0 }">
           <span class="bcard-no">No.{{ t.index }}</span>
           <span class="bcard-prize">{{ t.prize > 0 ? `¥${fmtPrize(t.prize)}` : '未中' }}</span>
         </div>
@@ -54,104 +50,98 @@ const settledRatio = computed(() =>
 </template>
 
 <style scoped>
+/* 逐值照抄原版 css/style.css「抽卡批次面板」段——深色舞台底上金字红卡 */
 .batch-head {
   text-align: center;
-  margin-bottom: 12px;
+  margin-bottom: 14px;
 }
 .batch-title {
   font-size: 18px;
-  font-weight: 700;
+  font-weight: 900;
+  color: #f5c451;
 }
 .batch-sub {
   font-size: 12px;
-  color: #999;
-  margin: 4px 0;
+  color: #cdb98d;
+  margin-top: 4px;
 }
 .batch-stats {
   font-size: 13px;
-  color: #666;
+  color: #e8d5a3;
+  margin-top: 8px;
 }
 .batch-stats b {
-  color: #333;
+  color: #ffe9b0;
 }
 .batch-stats .pos {
-  color: #c23a28;
-}
-.batch-progress {
-  height: 4px;
-  background: #f0e6d8;
-  border-radius: 2px;
-  margin: 8px auto 0;
-  max-width: 420px;
-  overflow: hidden;
-}
-.batch-progress i {
-  display: block;
-  height: 100%;
-  background: linear-gradient(90deg, #f5c451, #c23a28);
-  transition: width 0.3s;
+  color: #7bd88f;
 }
 .batch-note {
   text-align: center;
-  font-size: 13px;
-  color: #7a1610;
-  background: rgba(245, 196, 81, 0.15);
-  border-radius: 8px;
-  padding: 8px 12px;
+  font-size: 12px;
+  color: #b9a677;
+  margin: 0 0 12px;
+  line-height: 1.7;
 }
 .batch-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
+  grid-template-columns: repeat(5, 1fr);
   gap: 8px;
-  max-width: 640px;
-  margin: 0 auto;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid rgba(245, 196, 81, 0.3);
+  border-radius: 14px;
+  padding: 12px;
 }
+/* 一张卡：未刮 = 竖版小彩票（红金），已刮 = 翻开的结果（原版同款） */
 .bcard {
-  aspect-ratio: 5 / 7;
+  aspect-ratio: 3 / 4;
+  border: none;
   border-radius: 10px;
-  border: 1px solid #e5d9c5;
-  background: linear-gradient(160deg, #fff8ec, #f3e6cf);
+  font-family: inherit;
+  cursor: pointer;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 4px;
-  cursor: pointer;
-  font-family: inherit;
-  transition:
-    transform 0.15s,
-    box-shadow 0.15s;
+  color: #ffe9b0;
+  background: linear-gradient(160deg, #d8452f, #8e1c1c);
+  box-shadow:
+    inset 0 0 0 1.5px rgba(255, 220, 150, 0.55),
+    0 3px 8px rgba(0, 0, 0, 0.4);
+  transition: transform 0.12s;
 }
-.bcard:not(.done):hover {
-  transform: translateY(-2px);
-  box-shadow: 0 6px 16px rgba(122, 22, 16, 0.18);
+.bcard:hover {
+  transform: translateY(-2px) scale(1.04);
+}
+.bcard:active {
+  transform: scale(0.97);
+}
+.bcard .bcard-no {
+  font-size: 10px;
+  color: rgba(255, 233, 176, 0.75);
+}
+.bcard .bcard-face {
+  font-size: 22px;
 }
 .bcard.done {
   cursor: default;
+  background: rgba(255, 255, 255, 0.06);
+  box-shadow: inset 0 0 0 1.5px rgba(245, 196, 81, 0.25);
+  transform: none;
 }
-.bcard-no {
-  font-size: 11px;
-  color: #a08a5f;
+.bcard.done .bcard-no {
+  color: #9d8a63;
 }
-.bcard-face {
-  font-size: 26px;
-}
-.bcard-prize {
-  font-size: 13px;
-  font-weight: 900;
+.bcard.done .bcard-prize {
+  font-size: 12px;
+  font-weight: 800;
+  color: #9d8a63;
 }
 .bcard.done.hit {
-  background: radial-gradient(circle at 50% 30%, #fff3cf, #ffe08a);
-  border-color: #f5c451;
+  box-shadow: inset 0 0 0 1.5px rgba(245, 196, 81, 0.7);
 }
 .bcard.done.hit .bcard-prize {
-  color: #c23a28;
-}
-.bcard.done.miss {
-  background: #f5f3ef;
-  border-color: #e0dcd4;
-}
-.bcard.done.miss .bcard-prize {
-  color: #b3ab9d;
+  color: #f5c451;
 }
 </style>

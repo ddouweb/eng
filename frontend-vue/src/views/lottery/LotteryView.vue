@@ -220,41 +220,47 @@ const resumable = computed<
     <h2 style="margin-top: 0">🎰 抽卡奖励</h2>
     <p class="subtitle">学习行为换抽卡次数 · 中奖金额进独立彩金账户（与现金激励分开）</p>
 
-    <!-- ── 刮票舞台（单张 / 批次挂卡共用）── -->
+    <!-- ── 刮票舞台（单张 / 批次挂卡共用）：深色红金底，样式贴原版游戏页 ── -->
     <div v-if="mode === 'single' && current" class="stage">
       <ScratchTicket :ticket="current.ticket" :outcome="outcome" @all-revealed="onAllRevealed" />
       <div class="stage-actions">
         <!-- 批次票：刮完进核对态，先自查票面再手动开奖 -->
         <template v-if="inBatch">
           <template v-if="verifying">
-            <NButton type="primary" :loading="settling" @click="verify">🔍 核对结果 · 开奖</NButton>
-            <NButton quaternary @click="backFromTicket">暂不核对，回本批</NButton>
+            <button class="btn" :disabled="settling" @click="verify">
+              {{ settling ? '⏳ 核对中…' : '🔍 核对结果 · 开奖' }}
+            </button>
+            <button class="btn-ghost" :disabled="settling" @click="backFromTicket">暂不核对，回本批</button>
           </template>
           <template v-else-if="outcome">
-            <NButton type="primary" @click="backFromTicket">
+            <button class="btn" @click="backFromTicket">
               {{ batchSummary && batchSummary.remaining > 0 ? '回到本批' : '本批刮完了 · 看战报' }}
-            </NButton>
-            <NButton quaternary :disabled="!batchSummary || batchSummary.remaining < 1" @click="pickRandom">
+            </button>
+            <button
+              class="btn-ghost"
+              :disabled="!batchSummary || batchSummary.remaining < 1"
+              @click="pickRandom"
+            >
               随机再来一张
-            </NButton>
+            </button>
           </template>
           <template v-else>
             <span class="stage-hint">刮开全部 25 格后，先自己核对票面，再点「核对结果」开奖</span>
-            <NButton quaternary @click="backFromTicket">稍后再刮，回总览</NButton>
+            <button class="btn-ghost" @click="backFromTicket">稍后再刮，回总览</button>
           </template>
         </template>
         <!-- 单张票：刮完自动开奖 -->
         <template v-else>
           <template v-if="outcome">
-            <NButton type="primary" :disabled="!state || state.draw_count < 1" @click="draw">
+            <button class="btn" :disabled="!state || state.draw_count < 1" @click="draw">
               再来一张（剩 {{ state?.draw_count ?? 0 }} 次）
-            </NButton>
-            <NButton quaternary @click="backFromTicket">收起</NButton>
+            </button>
+            <button class="btn-ghost" @click="backFromTicket">收起</button>
           </template>
           <template v-else>
             <NSpin v-if="settling" size="small" />
             <span v-else class="stage-hint">刮开全部 25 格涂层后自动开奖</span>
-            <NButton quaternary @click="backFromTicket">稍后再刮，回总览</NButton>
+            <button class="btn-ghost" @click="backFromTicket">稍后再刮，回总览</button>
           </template>
         </template>
       </div>
@@ -264,17 +270,12 @@ const resumable = computed<
     <div v-else-if="mode === 'batch' && batchSummary" class="stage">
       <BatchBoard :summary="batchSummary" @pick="pickTicket" />
       <div class="stage-actions">
-        <NButton
-          v-if="batchSummary.remaining > 0"
-          type="primary"
-          :disabled="!state || state.draw_count < 1"
-          title="从本批未核对的票里随机挑一张挂刮"
-          @click="pickRandom"
-        >
+        <!-- 批次挂卡消耗的是开批时已付的次数，这里不再看 draw_count -->
+        <button v-if="batchSummary.remaining > 0" class="btn" @click="pickRandom">
           随机刮一张（本批剩 {{ batchSummary.remaining }} 张）
-        </NButton>
-        <NButton v-else type="primary" @click="dropBatch">本批完成，收起战报</NButton>
-        <NButton quaternary @click="dropBatch">收起本批</NButton>
+        </button>
+        <button v-else class="btn" @click="dropBatch">本批完成，收起战报</button>
+        <button class="btn-ghost" @click="dropBatch">收起本批</button>
       </div>
     </div>
 
@@ -416,9 +417,17 @@ const resumable = computed<
   gap: 12px;
   flex-wrap: wrap;
 }
+/* 舞台 = 原版游戏页的红金暗底（body 渐变照抄），票面/批次卡浮在上面才有原版气质 */
 .stage {
-  max-width: 680px;
+  max-width: 560px;
   margin: 0 auto;
+  padding: 14px 14px 18px;
+  border: 1px solid rgba(245, 196, 81, 0.3);
+  border-radius: 14px;
+  background:
+    radial-gradient(1200px 600px at 50% -100px, rgba(198, 40, 40, 0.45), transparent 70%),
+    linear-gradient(180deg, #3d0d0d 0%, #2a0606 55%, #1d0404 100%);
+  color: #fff9ea;
 }
 .stage-actions {
   display: flex;
@@ -429,8 +438,54 @@ const resumable = computed<
   flex-wrap: wrap;
 }
 .stage-hint {
-  color: #999;
+  color: #cdb98d;
   font-size: 13px;
+}
+/* 舞台按钮 = 原版 .btn / .btn-ghost（红渐变圆角 + 金边幽灵） */
+.btn {
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 700;
+  color: #fff;
+  padding: 11px 26px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #e8553f, #b9301c);
+  box-shadow: 0 4px 14px rgba(183, 49, 28, 0.45);
+  transition:
+    transform 0.12s,
+    box-shadow 0.12s;
+}
+.btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px rgba(183, 49, 28, 0.55);
+}
+.btn:active:not(:disabled) {
+  transform: translateY(1px);
+}
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.btn-ghost {
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  color: #f5c451;
+  padding: 8px 18px;
+  border-radius: 999px;
+  border: 2px solid rgba(245, 196, 81, 0.7);
+  background: transparent;
+  transition: background 0.15s;
+}
+.btn-ghost:hover:not(:disabled) {
+  background: rgba(245, 196, 81, 0.12);
+}
+.btn-ghost:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 .head-card {
   margin-bottom: 12px;
