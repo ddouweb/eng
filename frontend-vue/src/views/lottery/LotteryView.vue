@@ -6,6 +6,7 @@
 // 续挂：刷新后 state.pending_single 续刮单张、state.active_batch 续挂批次（票据在后端）。
 import { computed, onMounted, ref } from 'vue'
 import {
+  NAlert,
   NButton,
   NCard,
   NEmpty,
@@ -166,12 +167,13 @@ function pickRandom(): void {
   void pickTicket(t.id)
 }
 
-/** 从单张舞台返回：批次未完回批次网格，否则回总览 */
+/** 从单张舞台返回：批次票回批次网格（未核对完），单张票回总览（进行中的批次经提示条再进） */
 function backFromTicket(): void {
+  const wasBatchTicket = current.value?.batch_id != null
   current.value = null
   outcome.value = null
   verifying.value = false
-  mode.value = batchSummary.value && batchSummary.value.remaining > 0 ? 'batch' : 'idle'
+  mode.value = wasBatchTicket && batchSummary.value && batchSummary.value.remaining > 0 ? 'batch' : 'idle'
 }
 
 function dropBatch(): void {
@@ -180,26 +182,36 @@ function dropBatch(): void {
 }
 
 onMounted(async () => {
+  // 只加载总览，不自动进入舞台——续挂票/批次经总览提示条主动进入
+  // （票据持久化在后端，何时续刮都不丢；此前一进来就被续挂票顶到刮票舞台，
+  //   想看战绩/彩金总览被卡住）
   await loadState()
-  // 续挂优先级：批次（多张未结算）> 单张（一张未结算）
+  loading.value = false
+})
+
+// 总览提示条：有未完成的对局（批次优先 > 单张续刮）时显示续挂入口
+const resumable = computed<
+  | { text: string; action: () => void }
+  | null
+>(() => {
   const active = state.value?.active_batch
-  if (active) {
-    batchSummary.value = active
-    mode.value = 'batch'
-    message.info(`接着上次的批次继续（剩 ${active.remaining} 张未核对）`)
-  } else {
-    const pending = state.value?.pending_single
-    if (pending) {
-      const r = await api.getLotteryTicket(pending.id)
-      if (r.code === 200) {
-        current.value = r.data
-        outcome.value = null
-        mode.value = 'single'
-        message.info('接着上次的票继续刮～')
-      }
+  if (active && active.remaining > 0) {
+    return {
+      text: `🎴 有一批 ${active.size} 张进行中（剩 ${active.remaining} 张未核对）`,
+      action: () => {
+        batchSummary.value = active
+        mode.value = 'batch'
+      },
     }
   }
-  loading.value = false
+  const pending = state.value?.pending_single
+  if (pending) {
+    return {
+      text: `🎟️ 有一张未刮完的票（#${pending.id}），涂层进度不保留、重刮即可`,
+      action: () => void pickTicket(pending.id),
+    }
+  }
+  return null
 })
 </script>
 
@@ -228,6 +240,7 @@ onMounted(async () => {
           </template>
           <template v-else>
             <span class="stage-hint">刮开全部 25 格后，先自己核对票面，再点「核对结果」开奖</span>
+            <NButton quaternary @click="backFromTicket">稍后再刮，回总览</NButton>
           </template>
         </template>
         <!-- 单张票：刮完自动开奖 -->
@@ -241,6 +254,7 @@ onMounted(async () => {
           <template v-else>
             <NSpin v-if="settling" size="small" />
             <span v-else class="stage-hint">刮开全部 25 格涂层后自动开奖</span>
+            <NButton quaternary @click="backFromTicket">稍后再刮，回总览</NButton>
           </template>
         </template>
       </div>
@@ -266,6 +280,14 @@ onMounted(async () => {
 
     <!-- ── 总览（idle）── -->
     <template v-else>
+      <!-- 续挂提示：有未完成的对局（批次/未刮完的单张），主动点击才进入 -->
+      <NAlert v-if="resumable" type="info" :bordered="false" class="resume-alert">
+        <div class="resume-row">
+          <span>{{ resumable.text }}</span>
+          <NButton size="small" type="primary" @click="resumable.action">继续 →</NButton>
+        </div>
+      </NAlert>
+
       <!-- 顶部统计 + 抽卡入口 -->
       <NCard size="small" class="head-card">
         <div class="head-row">
@@ -383,6 +405,16 @@ onMounted(async () => {
 .subtitle {
   color: #888;
   margin-top: -8px;
+}
+.resume-alert {
+  margin-bottom: 12px;
+}
+.resume-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
 }
 .stage {
   max-width: 680px;
