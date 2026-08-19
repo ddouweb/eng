@@ -4,6 +4,7 @@ import axios, { AxiosError, type AxiosRequestConfig } from 'axios'
 
 import type {
   ApiResp,
+  BatchSummary,
   CheckinEncouragement,
   CheckinResult,
   DailyTrend,
@@ -11,6 +12,11 @@ import type {
   ExerciseResult,
   FinishResp,
   LearningPlan,
+  LotteryBatchData,
+  LotteryDrawData,
+  LotteryHistoryData,
+  LotterySettleData,
+  LotteryStateData,
   LoginData,
   Page,
   PracticeStartData,
@@ -275,4 +281,28 @@ export const api = {
     request<null>('delete', '/wrong-book', { params: { member_id: MEMBER_ID } }),
   addWrongWord: (wordId: number) =>
     request<null>('post', `/wrong-book/${wordId}`, { params: { member_id: MEMBER_ID } }),
+
+  // ── Lottery（彩票抽卡：懒同步在 /state 单咽喉点，draw-batch 开批即定局只回 id）
+  getLotteryState: () =>
+    request<LotteryStateData>('get', '/lottery/state', { params: { member_id: MEMBER_ID } }),
+  drawLottery: () =>
+    request<LotteryDrawData>('post', '/lottery/draw', { params: { member_id: MEMBER_ID } }),
+  drawLotteryBatch: (count: number) =>
+    request<LotteryBatchData>('post', '/lottery/draw-batch', {
+      params: { member_id: MEMBER_ID, count },
+    }),
+  getLotteryTicket: (ticketId: number) =>
+    request<LotteryDrawData>('get', `/lottery/tickets/${ticketId}`, {
+      params: { member_id: MEMBER_ID },
+    }),
+  settleLotteryTicket: (ticketId: number) =>
+    request<LotterySettleData>('post', `/lottery/tickets/${ticketId}/settle`, {
+      params: { member_id: MEMBER_ID },
+    }),
+  getLotteryBatch: (batchId: string) =>
+    request<BatchSummary>('get', `/lottery/batch/${batchId}`, { params: { member_id: MEMBER_ID } }),
+  getLotteryHistory: (limit = 20) =>
+    request<LotteryHistoryData>('get', '/lottery/history', {
+      params: { member_id: MEMBER_ID, limit },
+    }),
 }

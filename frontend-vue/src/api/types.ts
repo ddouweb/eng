@@ -374,3 +374,115 @@ export interface WrongWordItem {
   mastery_wrong_count: number
   mastery_correct_count: number
 }
+
+// ── Lottery（彩票抽卡；票面 JSON 由后端 app/lottery.py build_ticket 下发，前端只渲染）
+export interface TicketCell {
+  kind: 'num' | 'cash' | 'rmb' | 'gold'
+  num?: number // kind=num 时的两位号码
+  amt: number // 格下方金额（rmb 格为×5 前的面额）
+}
+
+export interface TicketWin {
+  idx: number // 命中的「你的号码」格下标（0~19）
+  amount: number
+  reason: string // 号码匹配 / 现金币 / 人民币×5 / 金砖
+}
+
+// 全量票面（后端 lottery_ticket.ticket 列）
+export interface TicketFace {
+  prize: number
+  win_numbers: number[]
+  cells: TicketCell[]
+  wins: TicketWin[]
+}
+
+// GET /lottery/draw 响应 data
+export interface LotteryDrawData {
+  id: number
+  batch_id: string | null
+  prize: number
+  ticket: TicketFace
+  created_at: string
+  settled_at: string | null
+  draw_count_left: number
+}
+
+// 任务清单单项（GET /lottery/state）
+export interface LotteryTask {
+  key: string
+  title: string
+  icon: string
+  rule: string
+  done: boolean
+  draws: number
+  note: string
+}
+
+// 票据摘要（state.recent_tickets / pending_single / history.items）
+export interface TicketBrief {
+  id: number
+  prize: number
+  batch_id: string | null
+  created_at: string
+  settled_at: string | null
+}
+
+// 批次摘要内一张票的状态
+export interface BatchTicketItem {
+  id: number
+  index: number
+  prize: number
+  settled: boolean
+  settled_at: string | null
+  created_at: string
+}
+
+export interface BatchSummary {
+  batch_id: string
+  size: number
+  settled: number
+  remaining: number
+  total_prize: number
+  hit_count: number
+  best_prize: number
+  tickets: BatchTicketItem[]
+}
+
+// GET /lottery/state 响应 data
+export interface LotteryStateData {
+  draw_count: number
+  wealth: number
+  total_granted: number
+  total_drawn: number
+  total_won: number
+  hit_count: number
+  tasks: LotteryTask[]
+  active_batch: BatchSummary | null
+  pending_single: TicketBrief | null
+  recent_tickets: TicketBrief[]
+}
+
+// POST /lottery/draw-batch 响应 data（开批即定局，只回 id 不回 prize）
+export interface LotteryBatchData {
+  batch_id: string
+  count: number
+  ticket_ids: number[]
+  draw_count_left: number
+}
+
+// POST /lottery/tickets/{id}/settle 响应 data
+export interface LotterySettleData {
+  id: number
+  prize: number
+  wealth: number
+  already_settled: boolean
+  batch?: Pick<BatchSummary, 'batch_id' | 'size' | 'settled' | 'remaining' | 'total_prize' | 'hit_count' | 'best_prize'>
+}
+
+// GET /lottery/history 响应 data
+export interface LotteryHistoryData {
+  total: number
+  total_won: number
+  hit_count: number
+  items: TicketBrief[]
+}

@@ -21,6 +21,7 @@ const routes: RouteRecordRaw[] = [
   { path: '/wrong-book', name: 'wrong-book', component: () => import('@/views/WrongBookView.vue'), meta: { title: '错题本', icon: '📕' } },
   { path: '/search', name: 'search', component: () => import('@/views/SearchView.vue'), meta: { title: '单词查询', icon: '📖' } },
   { path: '/weekly-settlement', name: 'weekly-settlement', component: () => import('@/views/WeeklySettlementView.vue'), meta: { title: '本周结算', icon: '🌟' } },
+  { path: '/lottery', name: 'lottery', component: () => import('@/views/lottery/LotteryView.vue'), meta: { title: '抽卡奖励', icon: '🎰' } },
 ]
 
 const router = createRouter({ history: createWebHistory(), routes })

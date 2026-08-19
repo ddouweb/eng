@@ -370,6 +370,8 @@ onMounted(load)
               @click="onCheckin"
             >{{ gapDays === 0 ? '✅ 今日已签到' : '✅ 每日签到' }}</NButton>
             <NButton @click="goPlans">📅 学习计划</NButton>
+            <!-- 静态入口，不在此调 /lottery/state（懒同步只在抽卡页触发，避免首页高频补发） -->
+            <NButton @click="router.push('/lottery')">🎰 抽卡</NButton>
           </NSpace>
         </div>
       </NCard>

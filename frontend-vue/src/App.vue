@@ -56,13 +56,13 @@ watch(
   },
 )
 
-// 业务分组：11 项导航按 首页/练习/管理/数据/AI 分组，提升可读性。
+// 业务分组：12 项导航按 首页/练习/管理/数据/AI 分组，提升可读性。
 type MenuGroupDef = { label: string; names: string[] }
 const GROUPS: MenuGroupDef[] = [
   { label: '首页', names: ['dashboard'] },
   { label: '练习', names: ['practice', 'wrong-book'] },
   { label: '管理', names: ['units', 'words', 'plans', 'search'] },
-  { label: '数据', names: ['stats', 'progress', 'weekly-settlement'] },
+  { label: '数据', names: ['stats', 'progress', 'weekly-settlement', 'lottery'] },
   { label: 'AI', names: ['ai'] },
 ]
 
