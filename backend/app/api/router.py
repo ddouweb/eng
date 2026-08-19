@@ -5,6 +5,7 @@ from app.api.v1.ai import router as ai_router
 from app.api.v1.auth import router as auth_router
 from app.api.v1.checkin import router as checkin_router
 from app.api.v1.health import router as health_router
+from app.api.v1.lottery import router as lottery_router
 from app.api.v1.plan import router as plan_router
 from app.api.v1.practice import router as practice_router
 from app.api.v1.review import router as review_router
@@ -27,6 +28,6 @@ _auth = Depends(get_current_user)
 for r in [
     unit_router, word_router,
     practice_router, review_router, plan_router, stats_router,
-    ai_router, checkin_router, wrong_book_router,
+    ai_router, checkin_router, wrong_book_router, lottery_router,
 ]:
     api_router.include_router(r, dependencies=[_auth])

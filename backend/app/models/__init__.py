@@ -9,6 +9,7 @@ from app.models.wrong_book import WrongWordBook
 from app.models.streak import MemberBadge, MemberStreak
 from app.models.settlement import WeeklySettlement
 from app.models.cash_milestone import CashMilestone
+from app.models.lottery import LotteryGrant, LotteryTicket
 from app.models.enums import (
     MasteryLevel,
     PlanStatus,
@@ -35,6 +36,8 @@ __all__ = [
     "MemberBadge",
     "WeeklySettlement",
     "CashMilestone",
+    "LotteryGrant",
+    "LotteryTicket",
     "MasteryLevel",
     "PlanStatus",
     "PracticeMode",
