@@ -65,14 +65,15 @@ export function createScratchCell(canvas: HTMLCanvasElement, opts: ScratchCellOp
       const { img, rect } = photo
       const iw = img.naturalWidth
       const ih = img.naturalHeight
-      const crop = BOARD.photoCrop
-      // rect/crop 都是整张票面图的百分比，换算成照片像素再裁
+      // rect 是整张票面图的百分比，图源就是整张原图 → 直接按百分比取像素。
+      // 原版走 photoData 裁剪图 + photoCrop 线性换算（裁剪图 1px = 原图 1px），
+      // (rect.y - crop.y)/crop.h * ih_crop 化简后恰等于 rect.y/100 * ih_orig，两者数学等价
       ctx.drawImage(
         img,
-        ((rect.x - crop.x) / crop.w) * iw,
-        ((rect.y - crop.y) / crop.h) * ih,
-        (rect.w / crop.w) * iw,
-        (rect.h / crop.h) * ih,
+        (rect.x / 100) * iw,
+        (rect.y / 100) * ih,
+        (rect.w / 100) * iw,
+        (rect.h / 100) * ih,
         0,
         0,
         w,
