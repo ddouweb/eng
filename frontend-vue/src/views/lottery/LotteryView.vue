@@ -1,14 +1,28 @@
 <script setup lang="ts">
 // 抽卡奖励页（🎰 点石成金刮刮乐）：学习行为换抽卡次数，抽中金额进独立彩金账户。
-// 页面状态机 mode: idle(总览) / single(刮单张) / batch(开一批)。
-// 打开本页 = 懒同步单咽喉点（后端 /lottery/state 顺手补发 8 类条件次数），
-// 其它页面绝不触发同步；批次续挂/单张续刮都从 state.active_batch/pending_single 恢复。
+// 页面状态机 mode: idle(总览) / single(刮一张) / batch(批次网格)。
+// 打开本页 = 懒同步单咽喉点（后端 /lottery/state 顺手补发 8 类条件次数）。
+// 单张流：刮完 25 格自动开奖；批次流：刮完进核对态，玩家自查票面后手动开奖（原版同款）。
+// 续挂：刷新后 state.pending_single 续刮单张、state.active_batch 续挂批次（票据在后端）。
 import { computed, onMounted, ref } from 'vue'
-import { NButton, NCard, NEmpty, NSpace, NSpin, NStatistic, useMessage } from 'naive-ui'
+import {
+  NButton,
+  NCard,
+  NEmpty,
+  NInputNumber,
+  NModal,
+  NRadio,
+  NRadioGroup,
+  NSpace,
+  NSpin,
+  NStatistic,
+  useMessage,
+} from 'naive-ui'
 import { api } from '@/api/client'
-import type { LotteryDrawData, LotteryStateData } from '@/api/types'
-import { fmtPrize } from '@/constants/lottery'
+import type { BatchSummary, LotteryDrawData, LotteryStateData } from '@/api/types'
+import { calcOddsStats, fmtPrize } from '@/constants/lottery'
 import { useLotterySound } from '@/composables/useLotterySound'
+import BatchBoard from './BatchBoard.vue'
 import ScratchTicket from './ScratchTicket.vue'
 
 const message = useMessage()
@@ -16,14 +30,30 @@ const sound = useLotterySound()
 
 const loading = ref(true)
 const state = ref<LotteryStateData | null>(null)
-const mode = ref<'idle' | 'single'>('idle')
-// 当前单张票（含全量票面）；outcome 非 null = 已开奖
+type Mode = 'idle' | 'single' | 'batch'
+const mode = ref<Mode>('idle')
+// 当前挂刮的票（含全量票面）；outcome 非 null = 已开奖
 const current = ref<LotteryDrawData | null>(null)
 const outcome = ref<{ prize: number } | null>(null)
+// 批次票刮完进入核对态（不自动开奖，玩家自查后点「核对结果」）
+const verifying = ref(false)
 const drawing = ref(false)
 const settling = ref(false)
 
+// ── 开一批弹窗（项目首个 NModal：10/20/50/自定义 1~500）──
+const batchModalShow = ref(false)
+const batchPick = ref(10)
+const batchCustom = ref(10)
+const batchOpening = ref(false)
+const odds = calcOddsStats()
+
 const tasks = computed(() => state.value?.tasks ?? [])
+const batchCount = computed(() => (batchPick.value > 0 ? batchPick.value : batchCustom.value))
+// 挂刮中的票是否批次票（决定刮完自动开奖还是进核对态）
+const inBatch = computed(() => current.value?.batch_id != null)
+
+// 批次网格数据（active_batch 续挂 / 开批后加载）
+const batchSummary = ref<BatchSummary | null>(null)
 
 async function loadState(): Promise<void> {
   const r = await api.getLotteryState()
@@ -45,49 +75,128 @@ async function draw(): Promise<void> {
   }
   current.value = r.data
   outcome.value = null
+  verifying.value = false
   mode.value = 'single'
   if (state.value) state.value.draw_count = r.data.draw_count_left
 }
 
-/** 全部 25 格刮开：450ms 后自动结算入账（后端幂等，防双击/断网重试） */
-async function onAllRevealed(): Promise<void> {
+/** 全部 25 格刮开：单张自动开奖（450ms）；批次进核对态等玩家自查 */
+function onAllRevealed(): void {
+  if (inBatch.value) {
+    verifying.value = true
+    return
+  }
   const t = current.value
   if (!t) return
   settling.value = true
-  setTimeout(async () => {
-    const r = await api.settleLotteryTicket(t.id)
-    settling.value = false
-    if (r.code !== 200) {
-      message.error(r.message)
-      return
-    }
-    outcome.value = { prize: r.data.prize }
-    if (state.value) {
-      state.value.wealth = r.data.wealth
-      state.value.draw_count = Math.max(0, state.value.draw_count)
-    }
-    await loadState() // 刷新战绩/历史/任务清单
-  }, 450)
+  setTimeout(() => void doSettle(t.id), 450)
 }
 
-/** 再来一张 / 收起回到总览 */
-function backToIdle(): void {
-  mode.value = 'idle'
+/** 结算入账（后端幂等）；更新彩金/战绩并刷新总览 */
+async function doSettle(ticketId: number): Promise<void> {
+  const r = await api.settleLotteryTicket(ticketId)
+  settling.value = false
+  if (r.code !== 200) {
+    message.error(r.message)
+    return
+  }
+  outcome.value = { prize: r.data.prize }
+  if (state.value) state.value.wealth = r.data.wealth
+  // 批次票：顺手刷新批次网格（settle 响应只带回摘要子集，重取全量含 tickets）
+  if (batchSummary.value) await loadBatch(batchSummary.value.batch_id)
+  await loadState()
+}
+
+/** 核对结果 → 手动开奖（批次票） */
+function verify(): void {
+  const t = current.value
+  if (!t) return
+  verifying.value = false
+  settling.value = true
+  void doSettle(t.id)
+}
+
+async function loadBatch(batchId: string): Promise<void> {
+  const r = await api.getLotteryBatch(batchId)
+  if (r.code !== 200) {
+    message.error(r.message)
+    return
+  }
+  batchSummary.value = r.data
+  mode.value = 'batch'
+}
+
+/** 开一批（NModal 确认）：开批即定局，只回 id 清单，悬念在逐张核对 */
+async function openBatch(): Promise<void> {
+  const count = batchCount.value
+  if (!Number.isInteger(count) || count < 1 || count > 500) {
+    message.warning('批次数量须在 1~500 之间')
+    return
+  }
+  batchOpening.value = true
+  const r = await api.drawLotteryBatch(count)
+  batchOpening.value = false
+  if (r.code !== 200) {
+    message.error(r.message)
+    return
+  }
+  batchModalShow.value = false
+  if (state.value) state.value.draw_count = r.data.draw_count_left
+  await loadBatch(r.data.batch_id)
+}
+
+/** 点批次网格里的一张未结算卡 → 取票挂刮 */
+async function pickTicket(ticketId: number): Promise<void> {
+  const r = await api.getLotteryTicket(ticketId)
+  if (r.code !== 200) {
+    message.error(r.message)
+    return
+  }
+  current.value = r.data
+  outcome.value = null
+  verifying.value = false
+  mode.value = 'single'
+}
+
+/** 批次里随机挑一张未结算的挂刮 */
+function pickRandom(): void {
+  const pending = batchSummary.value?.tickets.filter((t) => !t.settled) ?? []
+  if (!pending.length) return
+  const t = pending[Math.floor(Math.random() * pending.length)]
+  void pickTicket(t.id)
+}
+
+/** 从单张舞台返回：批次未完回批次网格，否则回总览 */
+function backFromTicket(): void {
   current.value = null
   outcome.value = null
+  verifying.value = false
+  mode.value = batchSummary.value && batchSummary.value.remaining > 0 ? 'batch' : 'idle'
+}
+
+function dropBatch(): void {
+  batchSummary.value = null
+  mode.value = 'idle'
 }
 
 onMounted(async () => {
   await loadState()
-  // 续刮：上次刮到一半关页的单张票（票据在后端，涂层是前端状态，重刮即可）
-  const pending = state.value?.pending_single
-  if (pending) {
-    const r = await api.getLotteryTicket(pending.id)
-    if (r.code === 200) {
-      current.value = r.data
-      outcome.value = null
-      mode.value = 'single'
-      message.info('接着上次的票继续刮～')
+  // 续挂优先级：批次（多张未结算）> 单张（一张未结算）
+  const active = state.value?.active_batch
+  if (active) {
+    batchSummary.value = active
+    mode.value = 'batch'
+    message.info(`接着上次的批次继续（剩 ${active.remaining} 张未核对）`)
+  } else {
+    const pending = state.value?.pending_single
+    if (pending) {
+      const r = await api.getLotteryTicket(pending.id)
+      if (r.code === 200) {
+        current.value = r.data
+        outcome.value = null
+        mode.value = 'single'
+        message.info('接着上次的票继续刮～')
+      }
     }
   }
   loading.value = false
@@ -99,20 +208,59 @@ onMounted(async () => {
     <h2 style="margin-top: 0">🎰 抽卡奖励</h2>
     <p class="subtitle">学习行为换抽卡次数 · 中奖金额进独立彩金账户（与现金激励分开）</p>
 
-    <!-- ── 刮票舞台（单张流）── -->
+    <!-- ── 刮票舞台（单张 / 批次挂卡共用）── -->
     <div v-if="mode === 'single' && current" class="stage">
       <ScratchTicket :ticket="current.ticket" :outcome="outcome" @all-revealed="onAllRevealed" />
       <div class="stage-actions">
-        <template v-if="outcome">
-          <NButton type="primary" :disabled="!state || state.draw_count < 1" @click="draw">
-            再来一张（剩 {{ state?.draw_count ?? 0 }} 次）
-          </NButton>
-          <NButton quaternary @click="backToIdle">收起</NButton>
+        <!-- 批次票：刮完进核对态，先自查票面再手动开奖 -->
+        <template v-if="inBatch">
+          <template v-if="verifying">
+            <NButton type="primary" :loading="settling" @click="verify">🔍 核对结果 · 开奖</NButton>
+            <NButton quaternary @click="backFromTicket">暂不核对，回本批</NButton>
+          </template>
+          <template v-else-if="outcome">
+            <NButton type="primary" @click="backFromTicket">
+              {{ batchSummary && batchSummary.remaining > 0 ? '回到本批' : '本批刮完了 · 看战报' }}
+            </NButton>
+            <NButton quaternary :disabled="!batchSummary || batchSummary.remaining < 1" @click="pickRandom">
+              随机再来一张
+            </NButton>
+          </template>
+          <template v-else>
+            <span class="stage-hint">刮开全部 25 格后，先自己核对票面，再点「核对结果」开奖</span>
+          </template>
         </template>
+        <!-- 单张票：刮完自动开奖 -->
         <template v-else>
-          <NSpin v-if="settling" size="small" />
-          <span v-else class="stage-hint">刮开全部 25 格涂层后自动开奖</span>
+          <template v-if="outcome">
+            <NButton type="primary" :disabled="!state || state.draw_count < 1" @click="draw">
+              再来一张（剩 {{ state?.draw_count ?? 0 }} 次）
+            </NButton>
+            <NButton quaternary @click="backFromTicket">收起</NButton>
+          </template>
+          <template v-else>
+            <NSpin v-if="settling" size="small" />
+            <span v-else class="stage-hint">刮开全部 25 格涂层后自动开奖</span>
+          </template>
         </template>
+      </div>
+    </div>
+
+    <!-- ── 批次网格 ── -->
+    <div v-else-if="mode === 'batch' && batchSummary" class="stage">
+      <BatchBoard :summary="batchSummary" @pick="pickTicket" />
+      <div class="stage-actions">
+        <NButton
+          v-if="batchSummary.remaining > 0"
+          type="primary"
+          :disabled="!state || state.draw_count < 1"
+          title="从本批未核对的票里随机挑一张挂刮"
+          @click="pickRandom"
+        >
+          随机刮一张（本批剩 {{ batchSummary.remaining }} 张）
+        </NButton>
+        <NButton v-else type="primary" @click="dropBatch">本批完成，收起战报</NButton>
+        <NButton quaternary @click="dropBatch">收起本批</NButton>
       </div>
     </div>
 
@@ -132,11 +280,20 @@ onMounted(async () => {
             <NStatistic label="中奖张数" :value="state?.hit_count ?? 0" />
           </div>
           <NSpace :size="8">
-            <NButton type="primary" :loading="drawing" :disabled="!state || state.draw_count < 1" @click="draw">
+            <NButton
+              type="primary"
+              :loading="drawing"
+              :disabled="!state || state.draw_count < 1"
+              @click="draw"
+            >
               🎟️ 抽一张{{ state && state.draw_count > 0 ? `（剩 ${state.draw_count} 次）` : '' }}
             </NButton>
-            <NButton quaternary :disabled="!state || state.draw_count < 1" title="开一批：整包抽卡，逐张核对开奖">
-              🎴 开一批（敬请期待）
+            <NButton
+              :disabled="!state || state.draw_count < 2"
+              @click="batchModalShow = true"
+              title="整包抽卡，逐张核对开奖，战报一目了然"
+            >
+              🎴 开一批
             </NButton>
             <NButton quaternary @click="sound.toggle()">
               {{ sound.enabled ? '🔊' : '🔇' }}
@@ -179,6 +336,46 @@ onMounted(async () => {
         </div>
       </NCard>
     </template>
+
+    <!-- ── 开一批弹窗 ── -->
+    <NModal v-model:show="batchModalShow" preset="card" title="🎴 开一批" style="width: 420px">
+      <NSpace vertical :size="12">
+        <NRadioGroup v-model:value="batchPick">
+          <NSpace>
+            <NRadio :value="10">10 张</NRadio>
+            <NRadio :value="20">20 张</NRadio>
+            <NRadio :value="50">50 张</NRadio>
+            <NRadio :value="0">自定义</NRadio>
+          </NSpace>
+        </NRadioGroup>
+        <NInputNumber
+          v-if="batchPick === 0"
+          v-model:value="batchCustom"
+          :min="1"
+          :max="500"
+          :disabled="state ? batchCustom > state.draw_count : false"
+          style="width: 160px"
+        >
+          <template #suffix>张</template>
+        </NInputNumber>
+        <p class="batch-estimate">
+          这批 {{ batchCount }} 张：按真实赔率（中奖率约 {{ Math.round(odds.hitRate * 100) }}%、返还率约
+          {{ Math.round(odds.rtp * 100) }}%），期望中奖合计约 ¥{{ fmtPrize(batchCount * odds.rtp * 20) }}
+          ——开批即定局，先刮后刮都一样。
+        </p>
+        <NSpace justify="end">
+          <NButton quaternary @click="batchModalShow = false">取消</NButton>
+          <NButton
+            type="primary"
+            :loading="batchOpening"
+            :disabled="!state || batchCount < 1 || batchCount > (state?.draw_count ?? 0)"
+            @click="openBatch"
+          >
+            开批（用 {{ batchCount }} 次）
+          </NButton>
+        </NSpace>
+      </NSpace>
+    </NModal>
   </NSpin>
 </template>
 
@@ -188,7 +385,7 @@ onMounted(async () => {
   margin-top: -8px;
 }
 .stage {
-  max-width: 480px;
+  max-width: 680px;
   margin: 0 auto;
 }
 .stage-actions {
@@ -197,6 +394,7 @@ onMounted(async () => {
   align-items: center;
   gap: 10px;
   margin-top: 14px;
+  flex-wrap: wrap;
 }
 .stage-hint {
   color: #999;
@@ -306,5 +504,13 @@ onMounted(async () => {
 }
 .h-settled.ok {
   color: #2f7d5b;
+}
+.batch-estimate {
+  font-size: 13px;
+  color: #8a6d3b;
+  background: rgba(245, 196, 81, 0.12);
+  border-radius: 8px;
+  padding: 8px 12px;
+  margin: 0;
 }
 </style>
