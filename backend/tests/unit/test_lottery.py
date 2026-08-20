@@ -45,7 +45,7 @@ def test_draw_outcome_deterministic_with_seed():
 
 
 def test_draw_outcome_outside_total_is_zero():
-    # r 落在概率总和（≈0.196）之外 → 未中奖；构造 rand 恒返回 0.9 的假 rng
+    # r 落在概率总和（≈0.50）之外 → 未中奖；构造 rand 恒返回 0.9 的假 rng
     class _HighRand(random.Random):
         def random(self):
             return 0.9
@@ -54,11 +54,10 @@ def test_draw_outcome_outside_total_is_zero():
 
 
 def test_draw_outcome_all_tiers_reachable():
-    # 大样本下 12 级奖（除百万级头奖）均应被抽到过
+    # 大样本下 9 级奖均应被抽到过（最稀的 100 档 1/720，20 万样本期望 ~278 次）
     rng = random.Random(7)
     seen = {draw_outcome(rng) for _ in range(200_000)}
-    rare = {1_000_000, 100_000, 10_000, 5_000}
-    assert (set(p for p, _ in REAL_ODDS) - rare) <= seen
+    assert set(p for p, _ in REAL_ODDS) <= seen
 
 
 # ── build_ticket：落空票不变量 ──
@@ -91,10 +90,10 @@ def test_winning_ticket_replay_equals_prize():
 
 
 @pytest.mark.parametrize("mech,prize", [
-    ("match", 1_000_000),  # match 恒可选（大奖用号码匹配更有戏剧性）
-    ("cash", 100),         # cash 需 20≤prize≤1000
-    ("rmb", 500),          # rmb 需 %5==0 且 100~10000（500//5=100）
-    ("gold", 1000),        # gold 需 400~5000（10 的倍数且 ≥200）
+    ("match", 100),        # match 恒可选（封顶大奖用号码匹配更有戏剧性）
+    ("cash", 80),          # cash 需 20≤prize≤1000
+    ("rmb", 100),          # rmb 需 %5==0 且 100~10000（100//5=20）
+    ("gold", 1000),        # gold 需 400~5000（当前奖级表无此档，保留路径回归）
 ])
 def test_each_mech_plays_out(monkeypatch, mech, prize):
     monkeypatch.setattr(lottery, "_pick_mech", lambda p, r: mech)
@@ -169,8 +168,15 @@ def test_split_amount_invalid_inputs():
 
 def test_calc_odds_stats():
     stats = calc_odds_stats()
-    assert 0.60 < stats["rtp"] < 0.70          # 理论 ≈65%
-    assert 0.15 < stats["hit_rate"] < 0.25     # 理论 ≈19.6%
+    assert 0.10 < stats["rtp"] < 0.20          # 理论 ≈15.5%
+    assert 0.45 < stats["hit_rate"] < 0.55     # 理论 ≈50.4%（两张基本中一张）
+
+
+def test_prize_table_policy():
+    # 2026-08 定档：大奖封顶 100、新增 1/2/5/10 小奖档（小额常中、无高额）
+    prizes = {p for p, _ in REAL_ODDS}
+    assert max(prizes) == 100
+    assert {1, 2, 5, 10} <= prizes
 
 
 def test_monte_carlo_rtp_close_to_theory():
@@ -178,4 +184,4 @@ def test_monte_carlo_rtp_close_to_theory():
     n = 50_000
     won = sum(draw_outcome(rng) for _ in range(n))
     rtp = won / (n * lottery.TICKET_PRICE)
-    assert abs(rtp - calc_odds_stats()["rtp"]) < 0.05  # 头奖噪声容差
+    assert abs(rtp - calc_odds_stats()["rtp"]) < 0.02  # 无头奖后方差小，容差收紧

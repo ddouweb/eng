@@ -58,25 +58,24 @@ export const SPECIAL_SVGS: Record<string, string> = {
   gold: '<svg viewBox="0 0 48 48"><path d="M15 15 H33 L38 28 H10 Z" fill="#f5c451" stroke="#a97b12" stroke-width="2"/><path d="M8 30 H40 L35 39 H13 Z" fill="#d9a518" stroke="#a97b12" stroke-width="2"/><path d="M18 18.5 H30 L32 24 H16 Z" fill="#ffe08a"/></svg>',
 }
 
-// 奖级表（12 级，与后端 app/lottery.py REAL_ODDS 一致；仅展示用，开奖在后端）。
+// 奖级表（9 级，与后端 app/lottery.py REAL_ODDS 一致；仅展示用，开奖在后端）。
+// 2026-08 定档：新增 1/2/5/10 小奖档（常中）、大奖封顶 100、删除 200+ 档；
+// 返还率≈15.5%、中奖率≈50.4%（两张基本中一张）。
 export interface PrizeTier {
   prize: number
   oneIn: number
 }
 
 export const PRIZE_TABLE: PrizeTier[] = [
-  { prize: 1000000, oneIn: 1250000 },
-  { prize: 100000, oneIn: 200000 },
-  { prize: 10000, oneIn: 30000 },
-  { prize: 5000, oneIn: 15000 },
-  { prize: 1000, oneIn: 3500 },
-  { prize: 500, oneIn: 800 },
-  { prize: 200, oneIn: 250 },
-  { prize: 100, oneIn: 90 },
-  { prize: 80, oneIn: 55 },
-  { prize: 60, oneIn: 26 },
-  { prize: 40, oneIn: 10 },
-  { prize: 20, oneIn: 45 },
+  { prize: 100, oneIn: 720 },
+  { prize: 80, oneIn: 440 },
+  { prize: 60, oneIn: 104 },
+  { prize: 40, oneIn: 40 },
+  { prize: 20, oneIn: 90 },
+  { prize: 10, oneIn: 60 },
+  { prize: 5, oneIn: 16 },
+  { prize: 2, oneIn: 8 },
+  { prize: 1, oneIn: 4 },
 ]
 
 // 理论返还率 / 中奖率（原版 calcOddsStats 同款公式，任务清单/说明文案用）。
