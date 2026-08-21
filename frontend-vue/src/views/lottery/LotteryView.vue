@@ -230,7 +230,7 @@ const resumable = computed<
         :outcome="outcome"
         @all-revealed="onAllRevealed"
       />
-      <div class="stage-actions">
+      <div class="stage-actions floating">
         <!-- 批次票：刮完进核对态，先自查票面再手动开奖 -->
         <template v-if="inBatch">
           <template v-if="verifying">
@@ -426,6 +426,7 @@ const resumable = computed<
 }
 /* 舞台 = 原版游戏页的红金暗底（body 渐变照抄），票面/批次卡浮在上面才有原版气质 */
 .stage {
+  position: relative; /* 手机端悬浮操作条（.floating / ScratchTicket .ticket-actions）的挂靠祖先 */
   max-width: 560px;
   margin: 0 auto;
   padding: 14px 14px 18px;
@@ -607,8 +608,8 @@ const resumable = computed<
   padding: 8px 12px;
   margin: 0;
 }
-/* 手机刮票一屏化：压缩页头与舞台内边距给票面让高度
-   （省出的预算对应 ScratchTicket 里 dvh 公式的 260px 常量，两边须同步调） */
+/* 手机刮票一屏化：压缩页头与舞台内边距给票面让高度；
+   操作条悬浮在票面上不占文档流，票面高度预算对应 ScratchTicket 的 165px 常量 */
 @media (max-width: 767px) {
   h2 {
     font-size: 20px;
@@ -623,6 +624,22 @@ const resumable = computed<
   }
   .stage-actions {
     margin-top: 10px;
+  }
+  /* 单张模式操作条：悬浮在票面底部（玩法区止于 y86%，底沿是装饰区盖住无妨；
+     最低行格子底缘 84.8%，药丸最高到 ~88% 起，不遮格子） */
+  .stage-actions.floating {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    bottom: 12px;
+    margin-top: 0;
+    z-index: 10;
+    padding: 5px 10px;
+    border-radius: 999px;
+    background: rgba(24, 6, 6, 0.6);
+    border: 1px solid rgba(245, 196, 81, 0.3);
+    backdrop-filter: blur(6px);
+    max-width: calc(100% - 20px);
   }
 }
 </style>

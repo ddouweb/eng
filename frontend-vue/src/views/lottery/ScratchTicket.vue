@@ -243,13 +243,28 @@ onBeforeUnmount(() => {
   background: #7a1610;
 }
 /* 手机：整票按视口高缩放，一屏装下免滚动（格子/字号全为百分比 + cqw，等比无损）。
-   260px ≈ 顶栏56 + 页头/副标51 + 舞台上下pad22 + 一键刮开47 + 操作行54 + 底22 + 余量；
-   0.4877 = 1264/2592 票面宽高比；230px 下限防超矮屏把票缩成邮票，400px 上限即桌面尺寸
-   （配合 LotteryView 手机端压缩页头/舞台内边距，两者预算须同步调）。 */
+   165px ≈ 顶栏56 + 页头/副标51 + 舞台上下pad22 + 底22 + 余量——操作按钮悬浮在
+   票面上下沿、不占文档流（见下 .ticket-actions 与 LotteryView .stage-actions.floating）；
+   0.4877 = 1264/2592 票面宽高比；230px 下限防超矮屏把票缩成邮票，400px 上限即桌面尺寸。 */
 @media (max-width: 767px) {
   .ticket.photo {
-    width: min(100%, clamp(230px, calc((100vh - 260px) * 0.4877), 400px));
-    width: min(100%, clamp(230px, calc((100dvh - 260px) * 0.4877), 400px));
+    width: min(100%, clamp(230px, calc((100vh - 165px) * 0.4877), 400px));
+    width: min(100%, clamp(230px, calc((100dvh - 165px) * 0.4877), 400px));
+  }
+  /* 一键刮开悬浮在票面顶部：票面 y0~44% 是标题装饰区（首个格子 winRow 从 52.2% 起），
+   盖住无功能损失。绝对定位的挂靠祖先是 LotteryView 的 .stage（那里设了 relative） */
+  .ticket-actions {
+    position: absolute;
+    top: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+    margin-top: 0;
+    z-index: 10;
+    padding: 5px 10px;
+    border-radius: 999px;
+    background: rgba(24, 6, 6, 0.6);
+    border: 1px solid rgba(245, 196, 81, 0.3);
+    backdrop-filter: blur(6px);
   }
 }
 .ticket-img {
