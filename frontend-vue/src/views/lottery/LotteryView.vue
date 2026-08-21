@@ -222,7 +222,14 @@ const resumable = computed<
 
     <!-- ── 刮票舞台（单张 / 批次挂卡共用）：深色红金底，样式贴原版游戏页 ── -->
     <div v-if="mode === 'single' && current" class="stage">
-      <ScratchTicket :ticket="current.ticket" :outcome="outcome" @all-revealed="onAllRevealed" />
+      <!-- :key 按票 id 强制重挂载：刮层/计数器只在挂载时建一次，「再来一张」换票
+           若复用旧实例，新票会直接全裸（旧涂层已清空）且永不触发 allRevealed -->
+      <ScratchTicket
+        :key="current.id"
+        :ticket="current.ticket"
+        :outcome="outcome"
+        @all-revealed="onAllRevealed"
+      />
       <div class="stage-actions">
         <!-- 批次票：刮完进核对态，先自查票面再手动开奖 -->
         <template v-if="inBatch">
