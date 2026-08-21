@@ -252,8 +252,7 @@ const resumable = computed<
             </button>
           </template>
           <template v-else>
-            <span class="stage-hint">刮开全部 25 格后，先自己核对票面，再点「核对结果」开奖</span>
-            <button class="btn-ghost" @click="backFromTicket">稍后再刮，回总览</button>
+            <button class="btn-ghost" @click="backFromTicket">返回</button>
           </template>
         </template>
         <!-- 单张票：刮完自动开奖 -->
@@ -266,8 +265,7 @@ const resumable = computed<
           </template>
           <template v-else>
             <NSpin v-if="settling" size="small" />
-            <span v-else class="stage-hint">刮开全部 25 格涂层后自动开奖</span>
-            <button class="btn-ghost" @click="backFromTicket">稍后再刮，回总览</button>
+            <button class="btn-ghost" @click="backFromTicket">返回</button>
           </template>
         </template>
       </div>
@@ -444,10 +442,6 @@ const resumable = computed<
   gap: 10px;
   margin-top: 14px;
   flex-wrap: wrap;
-}
-.stage-hint {
-  color: #cdb98d;
-  font-size: 13px;
 }
 /* 舞台按钮 = 原版 .btn / .btn-ghost（红渐变圆角 + 金边幽灵） */
 .btn {
