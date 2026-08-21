@@ -607,4 +607,22 @@ const resumable = computed<
   padding: 8px 12px;
   margin: 0;
 }
+/* 手机刮票一屏化：压缩页头与舞台内边距给票面让高度
+   （省出的预算对应 ScratchTicket 里 dvh 公式的 260px 常量，两边须同步调） */
+@media (max-width: 767px) {
+  h2 {
+    font-size: 20px;
+    margin-bottom: 6px;
+  }
+  .subtitle {
+    font-size: 12px;
+    margin-top: 0;
+  }
+  .stage {
+    padding: 10px 10px 12px;
+  }
+  .stage-actions {
+    margin-top: 10px;
+  }
+}
 </style>

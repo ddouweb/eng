@@ -242,6 +242,16 @@ onBeforeUnmount(() => {
   container-type: inline-size; /* 格内字号用 cqw 随票宽缩放 */
   background: #7a1610;
 }
+/* 手机：整票按视口高缩放，一屏装下免滚动（格子/字号全为百分比 + cqw，等比无损）。
+   260px ≈ 顶栏56 + 页头/副标51 + 舞台上下pad22 + 一键刮开47 + 操作行54 + 底22 + 余量；
+   0.4877 = 1264/2592 票面宽高比；230px 下限防超矮屏把票缩成邮票，400px 上限即桌面尺寸
+   （配合 LotteryView 手机端压缩页头/舞台内边距，两者预算须同步调）。 */
+@media (max-width: 767px) {
+  .ticket.photo {
+    width: min(100%, clamp(230px, calc((100vh - 260px) * 0.4877), 400px));
+    width: min(100%, clamp(230px, calc((100dvh - 260px) * 0.4877), 400px));
+  }
+}
 .ticket-img {
   display: block;
   width: 100%;
